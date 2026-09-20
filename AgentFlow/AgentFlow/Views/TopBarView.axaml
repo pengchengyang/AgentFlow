@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+             xmlns:s="clr-namespace:AgentFlow.Services"
+             x:Class="AgentFlow.Views.TopBarView"
+             x:DataType="vm:MainViewModel">
+
+  <!-- LangFlow top bar: white bar, logo + primary action on the left, settings on the right -->
+  <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="12,7">
+    <DockPanel VerticalAlignment="Center">
+      <StackPanel Orientation="Horizontal" Spacing="6" DockPanel.Dock="Left" VerticalAlignment="Center">
+        <Border Width="26" Height="26" CornerRadius="7" Background="#7C3AED" VerticalAlignment="Center">
+          <TextBlock Text="AF" Foreground="White" FontWeight="Bold" FontSize="11"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <TextBlock Text="AgentFlow" FontSize="15" FontWeight="SemiBold" Foreground="#1F2937"
+                   VerticalAlignment="Center" Margin="2,0,18,0"/>
+
+        <Button Command="{Binding RunCommand}" IsEnabled="{Binding !IsRunning}"
+                Background="#7C3AED" CornerRadius="6" Padding="14,5">
+          <StackPanel Orientation="Horizontal" Spacing="5">
+            <TextBlock Text="▶" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding [Run], Source={x:Static s:Loc.Instance}}" Foreground="White"/>
+          </StackPanel>
+        </Button>
+        <Button Content="{Binding [Stop], Source={x:Static s:Loc.Instance}}" Command="{Binding StopCommand}"
+                IsEnabled="{Binding IsRunning}" CornerRadius="6" Padding="12,5"/>
+        <Button Content="{Binding [Save], Source={x:Static s:Loc.Instance}}" Command="{Binding SaveCommand}"
+                CornerRadius="6" Padding="12,5"/>
+        <Button Content="{Binding [Load], Source={x:Static s:Loc.Instance}}" Command="{Binding LoadCommand}"
+                CornerRadius="6" Padding="12,5"/>
+        <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="14,0,0,0"
+                   Foreground="#7C3AED" FontSize="12"/>
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal" Spacing="6" DockPanel.Dock="Right" HorizontalAlignment="Right">
+        <Button Content="{Binding [ClearLog], Source={x:Static s:Loc.Instance}}" Command="{Binding ClearLogCommand}" CornerRadius="6" Padding="10,5" FontSize="12"/>
+        <Button Content="中文" Command="{Binding SwitchLanguageCommand}" CommandParameter="zh" CornerRadius="6" Padding="10,5" FontSize="12"/>
+        <Button Content="EN" Command="{Binding SwitchLanguageCommand}" CommandParameter="en" CornerRadius="6" Padding="10,5" FontSize="12"/>
+        <Button Content="☀/🌙" Command="{Binding ToggleThemeCommand}" CornerRadius="6" Padding="10,5" FontSize="12"/>
+      </StackPanel>
+    </DockPanel>
+  </Border>
+</UserControl>

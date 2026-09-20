@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+             xmlns:views="clr-namespace:AgentFlow.Views"
+             mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="800"
+             x:Class="AgentFlow.Views.MainView"
+             x:DataType="vm:MainViewModel">
+
+  <!-- Layout: top bar across the top; Components spans the full left column;
+       canvas + inspector in the middle/right; log under the canvas area -->
+  <Grid RowDefinitions="Auto,*" Background="#F4F5F8">
+    <views:TopBarView Grid.Row="0"/>
+
+    <Grid Grid.Row="1" ColumnDefinitions="260,*">
+      <views:PaletteView Grid.Column="0"/>
+
+      <Grid Grid.Column="1" RowDefinitions="*,170" ColumnDefinitions="*,300">
+        <views:CanvasView Grid.Row="0" Grid.Column="0"/>
+        <views:InspectorView Grid.Row="0" Grid.Column="1"/>
+        <views:LogPanelView Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"/>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>

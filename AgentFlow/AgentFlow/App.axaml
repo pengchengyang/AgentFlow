@@ -1,0 +1,11 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgentFlow.App"
+             RequestedThemeVariant="Light">
+
+    <Application.Styles>
+        <FluentTheme />
+        <!-- Nodify 控件主题 -->
+        <StyleInclude Source="avares://Nodify.Avalonia/Themes/Controls.xaml" />
+    </Application.Styles>
+</Application>

@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+             xmlns:s="clr-namespace:AgentFlow.Services"
+             x:Class="AgentFlow.Views.PaletteView"
+             x:DataType="vm:MainViewModel">
+
+  <!-- LangFlow left sidebar: search box + categorized component cards -->
+  <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,1,0">
+    <DockPanel Margin="10">
+      <TextBlock DockPanel.Dock="Top" Text="{Binding [Components], Source={x:Static s:Loc.Instance}}"
+                 FontWeight="SemiBold" FontSize="14" Foreground="#1F2937" Margin="2,2,2,8"/>
+      <TextBox DockPanel.Dock="Top" Text="{Binding SearchText}"
+               PlaceholderText="{Binding [Search], Source={x:Static s:Loc.Instance}}"
+               CornerRadius="8" Margin="0,0,0,10" Padding="10,6"/>
+      <ListBox ItemsSource="{Binding PaletteItems}" Background="Transparent">
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Background" Value="Transparent"/>
+          </Style>
+        </ListBox.Styles>
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="vm:PaletteItem">
+            <Border Background="#F9FAFB" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="10,8">
+              <Button Background="Transparent" BorderThickness="0" Padding="0"
+                      HorizontalContentAlignment="Stretch"
+                      Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AddNodeCommand}"
+                      CommandParameter="{Binding}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Border Width="18" Height="18" CornerRadius="5" Background="{Binding Accent}" VerticalAlignment="Center">
+                      <TextBlock Text="◆" Foreground="White" FontSize="8"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Foreground="#1F2937" FontSize="13"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Category}" FontSize="10" Foreground="{Binding Accent}"
+                               VerticalAlignment="Center" Margin="4,0,0,0"/>
+                  </StackPanel>
+                  <TextBlock Text="{Binding PinSummary}" FontSize="10" Foreground="#9CA3AF"
+                             TextWrapping="Wrap" Margin="25,2,0,0"/>
+                </StackPanel>
+              </Button>
+            </Border>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+  </Border>
+</UserControl>

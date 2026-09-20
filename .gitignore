@@ -1,0 +1,96 @@
+# ============ .NET / C# ============
+
+# 构建输出
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm64/
+apphost.pdb
+
+# 发布 / 输出目录
+publish/
+artifacts/
+out/
+dist/
+build/
+drop/
+
+# Visual Studio
+.vs/
+.vsconfig
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.sln.docstates
+*.sln.ide_whitelist
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# VS Code（可选：如果要提交共享 launch/tasks，请改用白名单）
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# ============ 测试 / 覆盖率 ============
+
+TestResults/
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+*.dotCover
+coverage/
+BenchmarkDotNet.Artifacts/
+
+# ============ NuGet / 包 ============
+
+*.nupkg
+*.snupkg
+packages/
+
+# ============ 日志 / 临时文件 ============
+
+*.log
+logs/
+tmp/
+temp/
+
+# ============ 敏感文件 ============
+
+*.pfx
+*.p12
+*.snk
+*.key
+*.keystore
+*.jks
+secrets.json
+appsettings.*.local.json
+appsettings.Local.json
+connectionstrings.json
+
+# ============ 本项目的插件 / Native 输出 ============
+
+# 插件构建产物
+plugins/**/bin/
+plugins/**/obj/
+plugins/**/artifacts/
+
+# Native AOT / C ABI 插件构建产物
+*.a
+*.so
+*.dylib
+*.lib
+*.o
+*.obj
+*.pdb
+
+# 如果要提交预编译的官方/第三方插件 DLL，请用白名单放开，例如：
+# !plugins/vendor/**/*.dll
+# !plugins/runtime/**/*.so
