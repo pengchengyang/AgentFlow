@@ -6,9 +6,12 @@ namespace AgentFlow.Core;
 
 /// <summary>
 /// Workflow execution engine:
-/// 1. Instantiate nodes and their runtime pins.
-/// 2. Wire the graph: each output pin holds references to its connected input pins (Connect).
-/// 3. Execute in topological order; SetOutput -> output pin.Send -> each input pin.Receive.
+/// 1. Validate the graph (types, pins, required inputs, cycles, priority tie-breaks).
+/// 2. Instantiate nodes and their runtime pins.
+/// 3. Wire the graph: each output pin holds references to its connected input pins (Connect).
+/// 4. Run the optional node lifecycle (Initialize / Start / Execute / Stop) borrowed from
+///    ALC's filter-manager start-priority pattern.
+/// 5. Execute in topological order; SetOutput -> output pin.Send -> each input pin.Receive.
 /// Has no UI dependency and can run headless in the CLI.
 /// </summary>
 public sealed class WorkflowEngine
@@ -28,9 +31,18 @@ public sealed class WorkflowEngine
 
     public async Task RunAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
+        var errors = WorkflowValidation.Validate(_registry, graph);
+        if (errors.Count > 0)
+        {
+            var joined = string.Join(Environment.NewLine, errors);
+            _logger.LogError("Workflow validation failed:\n{Errors}", joined);
+            throw new InvalidOperationException($"Workflow validation failed:{Environment.NewLine}{joined}");
+        }
+
         // 1. Instantiate all nodes and runtime pins, build execution contexts.
         var instances = new Dictionary<string, INode>();
         var contexts = new Dictionary<string, NodeContext>();
+        var lifecycle = new Dictionary<string, ILifecycleNode>();
 
         foreach (var spec in graph.Nodes)
         {
@@ -40,6 +52,8 @@ public sealed class WorkflowEngine
             contexts[spec.Id] = new NodeContext(
                 spec.Id, node,
                 _loggerFactory.CreateLogger($"Node:{spec.Id}"), _guiBridge);
+            if (node is ILifecycleNode lc)
+                lifecycle[spec.Id] = lc;
             _logger.LogInformation("Instantiated node {Id} ({TypeId})", spec.Id, spec.TypeId);
         }
 
@@ -53,30 +67,76 @@ public sealed class WorkflowEngine
                 conn.FromNode, conn.FromPin, conn.ToNode, conn.ToPin);
         }
 
-        // 3. Topological sort (Kahn).
-        var order = TopologicalSort(graph);
+        // 3. Topological sort (Kahn) with startup-priority tie-break (ALC-inspired).
+        var order = WorkflowValidation.TopologicalSort(graph);
         _logger.LogInformation("Execution order: {Order}", string.Join(" -> ", order));
 
-        // 4. Execute in order; SetOutput pushes data directly along pin references.
-        foreach (var nodeId in order)
+        // 4. Execute lifecycle + graph body in one try/finally so StopAsync always runs
+        //    (reverse priority order, ALC stop pattern) even when Start/Execute throws.
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var node = instances[nodeId];
-            var ctx = contexts[nodeId];
-
-            _logger.LogInformation("--- Executing node {Id} ---", nodeId);
-            try
+            // 4a. Initialize lifecycle nodes before the first execute (e.g. open devices).
+            foreach (var nodeId in order)
             {
-                await node.ExecuteAsync(ctx, ct);
+                if (lifecycle.TryGetValue(nodeId, out var lc))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    _logger.LogInformation("Initializing node {Id}", nodeId);
+                    await lc.InitializeAsync(contexts[nodeId], ct);
+                }
             }
-            catch (Exception ex)
+
+            // 4b. Start lifecycle nodes in the same priority order (ALC start priority).
+            foreach (var nodeId in order)
             {
-                _logger.LogError(ex, "Node {Id} failed", nodeId);
-                throw;
+                if (lifecycle.TryGetValue(nodeId, out var lc))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    _logger.LogInformation("Starting node {Id}", nodeId);
+                    await lc.StartAsync(contexts[nodeId], ct);
+                }
+            }
+
+            // 4c+5. Execute in order; SetOutput pushes data directly along pin references.
+            foreach (var nodeId in order)
+            {
+                ct.ThrowIfCancellationRequested();
+                var node = instances[nodeId];
+                var ctx = contexts[nodeId];
+
+                _logger.LogInformation("--- Executing node {Id} ---", nodeId);
+                try
+                {
+                    await node.ExecuteAsync(ctx, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Node {Id} failed", nodeId);
+                    throw;
+                }
+            }
+
+            _logger.LogInformation("Workflow completed");
+        }
+        finally
+        {
+            // Stop lifecycle nodes in reverse priority order (ALC stop pattern).
+            foreach (var nodeId in Enumerable.Reverse(order))
+            {
+                if (lifecycle.TryGetValue(nodeId, out var lc))
+                {
+                    try
+                    {
+                        _logger.LogInformation("Stopping node {Id}", nodeId);
+                        await lc.StopAsync(contexts[nodeId], ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Node {Id} failed to stop", nodeId);
+                    }
+                }
             }
         }
-
-        _logger.LogInformation("Workflow completed");
     }
 
     /// <summary>JSON-deserialized parameter values are JsonElements; convert to native types.</summary>
@@ -96,30 +156,6 @@ public sealed class WorkflowEngine
                 _ => je.ToString()
             }
             : value;
-
-    private static List<string> TopologicalSort(WorkflowGraph graph)
-    {
-        var indegree = graph.Nodes.ToDictionary(n => n.Id, _ => 0);
-        foreach (var c in graph.Connections)
-            indegree[c.ToNode]++;
-
-        var queue = new Queue<string>(indegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
-        var order = new List<string>();
-
-        while (queue.Count > 0)
-        {
-            var id = queue.Dequeue();
-            order.Add(id);
-            foreach (var c in graph.Connections.Where(c => c.FromNode == id))
-                if (--indegree[c.ToNode] == 0)
-                    queue.Enqueue(c.ToNode);
-        }
-
-        if (order.Count != graph.Nodes.Count)
-            throw new InvalidOperationException("The workflow contains a cycle; cannot topologically sort");
-
-        return order;
-    }
 
     /// <summary>
     /// Node execution context: owns all runtime pins of one node.

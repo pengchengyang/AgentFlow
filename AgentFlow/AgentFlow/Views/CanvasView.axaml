@@ -17,10 +17,36 @@
         </Canvas>
       </VisualBrush.Visual>
     </VisualBrush>
-  </UserControl.Resources>
 
-  <Grid Background="#F4F5F8">
-    <nodify:NodifyEditor Background="{StaticResource DotsBrush}"
+    <!-- Override the default straight dashed pending-connection with a smooth cubic bezier,
+         matching the solid connection below. -->
+    <ControlTheme x:Key="{x:Type conn:PendingConnection}" TargetType="conn:PendingConnection">
+      <Setter Property="IsHitTestVisible" Value="False"/>
+      <Setter Property="StrokeThickness" Value="3"/>
+      <Setter Property="StrokeDashArray" Value="5,5"/>
+      <Setter Property="Stroke" Value="#7C3AED"/>
+      <Setter Property="IsVisible" Value="False"/>
+      <Setter Property="ClipToBounds" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="conn:PendingConnection">
+            <Canvas>
+              <conn:Connection Source="{TemplateBinding SourceAnchor}"
+                               Target="{TemplateBinding TargetAnchor}"
+                               Stroke="{TemplateBinding Stroke}"
+                               StrokeThickness="{TemplateBinding StrokeThickness}"
+                               StrokeDashArray="{TemplateBinding StrokeDashArray}"
+                               Direction="{TemplateBinding Direction}"
+                               Spacing="0"
+                               SourceOffsetMode="None" TargetOffsetMode="None"/>
+            </Canvas>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </ControlTheme>
+  </UserControl.Resources>
+  <Grid Background="#F4F5F8" DragDrop.AllowDrop="True" DragDrop.Drop="OnCanvasDrop">
+    <nodify:NodifyEditor x:Name="Editor" Background="{StaticResource DotsBrush}"
                          ItemsSource="{Binding Nodes}"
                          Connections="{Binding Connections}"
                          ConnectionCompletedCommand="{Binding ConnectionCompletedCommand}"
@@ -77,7 +103,7 @@
                           <Border Width="15" Height="15" CornerRadius="8" Background="White"
                                   BorderBrush="{Binding Node.Accent}" BorderThickness="2"
                                   VerticalAlignment="Center">
-                            <nodes:NodeInput Anchor="{Binding Anchor, Mode=OneWayToSource}"
+                            <nodes:NodeInput Anchor="{Binding Anchor, Mode=OneWayToSource}" IsConnected="True"
                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
                           </Border>
                           <StackPanel VerticalAlignment="Center">
@@ -102,7 +128,7 @@
                           <Border Width="15" Height="15" CornerRadius="8" Background="{Binding Node.Accent}"
                                   BorderBrush="White" BorderThickness="2"
                                   VerticalAlignment="Center">
-                            <nodes:NodeOutput Anchor="{Binding Anchor, Mode=OneWayToSource}"
+                            <nodes:NodeOutput Anchor="{Binding Anchor, Mode=OneWayToSource}" IsConnected="True"
                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                           </Border>
                         </StackPanel>
@@ -120,7 +146,7 @@
         <DataTemplate DataType="vm:ConnectionViewModel">
           <conn:Connection Source="{Binding Source.Anchor}"
                            Target="{Binding Target.Anchor}"
-                           Stroke="#7C3AED" StrokeThickness="2"
+                           Stroke="#7C3AED" StrokeThickness="2" Spacing="40"
                            DisconnectCommand="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).RemoveConnectionCommand}"/>
         </DataTemplate>
       </nodify:NodifyEditor.ConnectionTemplate>
@@ -128,3 +154,4 @@
     </nodify:NodifyEditor>
   </Grid>
 </UserControl>
+

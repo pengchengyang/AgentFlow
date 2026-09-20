@@ -40,6 +40,9 @@ public sealed class Loc : ObservableObject
         ["ErrTypeMismatch"] = ("Type mismatch", "类型不匹配"),
         ["ErrPinOccupied"] = ("Input pin already connected", "输入 Pin 已有连接"),
         ["ErrorPrefix"] = ("Error", "错误"),
+        ["DisplayName"] = ("Display Name", "显示名称"),
+        ["Priority"] = ("Priority", "优先级"),
+        ["ValidationFailed"] = ("Validation failed", "校验失败"),
     };
 
     private string _lang = "en";

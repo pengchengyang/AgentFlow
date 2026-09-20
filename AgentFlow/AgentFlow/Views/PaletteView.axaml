@@ -23,7 +23,10 @@
         </ListBox.Styles>
         <ListBox.ItemTemplate>
           <DataTemplate DataType="vm:PaletteItem">
-            <Border Background="#F9FAFB" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="10,8">
+            <Border Background="#F9FAFB" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="10,8"
+                      PointerPressed="OnPaletteItemPointerPressed"
+                      PointerMoved="OnPaletteItemPointerMoved"
+                      PointerReleased="OnPaletteItemPointerReleased">
               <Button Background="Transparent" BorderThickness="0" Padding="0"
                       HorizontalContentAlignment="Stretch"
                       Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AddNodeCommand}"
@@ -50,3 +53,4 @@
     </DockPanel>
   </Border>
 </UserControl>
+

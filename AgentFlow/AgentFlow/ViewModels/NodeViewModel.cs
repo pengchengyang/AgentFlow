@@ -15,6 +15,7 @@ public static class CategoryColors
         ["Input"] = Color.Parse("#3B82F6"),   // Blue
         ["Logic"] = Color.Parse("#8B5CF6"),   // Purple
         ["Output"] = Color.Parse("#10B981"),  // Green
+        ["Flow"] = Color.Parse("#0D9488"),    // Teal
         ["General"] = Color.Parse("#64748B"), // Gray
     };
 
@@ -76,12 +77,22 @@ public partial class NodeViewModel : ViewModelBase
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
     public NodeDescriptor Descriptor { get; }
     public string TypeId => Descriptor.TypeId;
-    public string Title => Descriptor.DisplayName;
+
+    /// <summary>Canvas title: user-editable instance name falls back to the type display name.</summary>
+    public string Title => string.IsNullOrWhiteSpace(Name) ? Descriptor.DisplayName : Name;
     public string Category => Descriptor.Category;
 
     /// <summary>Category accent color (header icon dot / header tint).</summary>
     public SolidColorBrush Accent { get; }
     public SolidColorBrush AccentTint { get; }
+
+    [ObservableProperty]
+    private string _name = "";
+
+    [ObservableProperty]
+    private int _priority;
+
+    partial void OnNameChanged(string value) => OnPropertyChanged(nameof(Title));
 
     [ObservableProperty]
     private Point _location;

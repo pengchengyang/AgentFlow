@@ -26,11 +26,12 @@ public sealed class PluginLoader
             return;
         }
 
-        foreach (var dll in Directory.EnumerateFiles(pluginDir, "*.dll"))
+        var fullDir = Path.GetFullPath(pluginDir);
+        foreach (var dll in Directory.EnumerateFiles(fullDir, "*.dll"))
         {
             try
             {
-                LoadAssembly(dll, registry);
+                LoadAssembly(Path.GetFullPath(dll), registry);
             }
             catch (Exception ex)
             {
@@ -47,7 +48,7 @@ public sealed class PluginLoader
         {
             // Resolve plugin dependencies from the plugin directory first.
             var candidate = Path.Combine(Path.GetDirectoryName(dllPath)!, name.Name + ".dll");
-            return File.Exists(candidate) ? alc.LoadFromAssemblyPath(candidate) : null;
+            return File.Exists(candidate) ? alc.LoadFromAssemblyPath(Path.GetFullPath(candidate)) : null;
         };
         _contexts.Add(alc);
 

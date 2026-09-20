@@ -22,6 +22,24 @@
           </StackPanel>
           <TextBlock Text="{Binding TypeId}" FontSize="11" Foreground="#9CA3AF"/>
           <Border Height="1" Background="#E5E7EB" Margin="0,4"/>
+
+          <!-- ALC-style instance metadata: user editable display name + start priority -->
+          <StackPanel Spacing="6">
+            <StackPanel>
+              <TextBlock Text="{Binding [DisplayName], Source={x:Static s:Loc.Instance}}"
+                         FontSize="11" Foreground="#6B7280"/>
+              <TextBox Text="{Binding Name}" CornerRadius="6" Padding="8,5" Margin="0,2,0,0"/>
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Text="{Binding [Priority], Source={x:Static s:Loc.Instance}}"
+                         FontSize="11" Foreground="#6B7280"/>
+              <NumericUpDown Value="{Binding Priority}" Minimum="0" Maximum="999"
+                             Increment="1" HorizontalAlignment="Left" MinWidth="120"
+                             CornerRadius="6" Margin="0,2,0,0"/>
+            </StackPanel>
+          </StackPanel>
+
+          <Border Height="1" Background="#E5E7EB" Margin="0,4"/>
           <TextBlock Text="{Binding [Parameters], Source={x:Static s:Loc.Instance}}"
                      FontWeight="SemiBold" Foreground="#374151" FontSize="12"/>
           <ItemsControl ItemsSource="{Binding Parameters}">

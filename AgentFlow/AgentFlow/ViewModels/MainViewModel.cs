@@ -104,19 +104,19 @@ public partial class MainViewModel : ViewModelBase
         StatusText = L.Fmt("NodesLoaded", _registry.Nodes.Count);
     }
 
-    /// <summary>Add a node from the palette.</summary>
+    /// <summary>Add a node from the palette (auto-positioned for click-to-add).</summary>
     [RelayCommand]
     private void AddNode(PaletteItem item)
+        => AddNodeAt(item, new Point(60 + (_nodeSpawnIndex % 6) * 60, 60 + (_nodeSpawnIndex % 6) * 40));
+
+    /// <summary>Create a node from a palette item at a specific graph-space location (drag &amp; drop).</summary>
+    public void AddNodeAt(PaletteItem item, Point graphLocation)
     {
-        var node = new NodeViewModel(_registry.Get(item.TypeId))
-        {
-            Location = new Point(60 + (_nodeSpawnIndex % 6) * 60, 60 + (_nodeSpawnIndex % 6) * 40)
-        };
+        var node = new NodeViewModel(_registry.Get(item.TypeId)) { Location = graphLocation };
         _nodeSpawnIndex++;
         HookSelection(node);
         Nodes.Add(node);
     }
-
     private void HookSelection(NodeViewModel node)
     {
         node.PropertyChanged += (_, e) =>
@@ -164,8 +164,19 @@ public partial class MainViewModel : ViewModelBase
     {
         if (parameter is null) return (null, null);
         var t = parameter.GetType();
-        var sp = t.GetProperty("SourceConnector")?.GetValue(parameter) ?? t.GetProperty("Item1")?.GetValue(parameter);
-        var tp = t.GetProperty("TargetConnector")?.GetValue(parameter) ?? t.GetProperty("Item2")?.GetValue(parameter);
+
+        // Nodify passes a ValueTuple<object, object> (Item1 = source, Item2 = target), whose
+        // Item1/Item2 are FIELDS, while other producers may use properties. Read both so the
+        // source/target pins are never lost.
+        object? Read(string name)
+        {
+            var prop = t.GetProperty(name);
+            if (prop is not null) return prop.GetValue(parameter);
+            return t.GetField(name)?.GetValue(parameter);
+        }
+
+        var sp = Read("SourceConnector") ?? Read("Item1");
+        var tp = Read("TargetConnector") ?? Read("Item2");
         return (sp as PinViewModel, tp as PinViewModel);
     }
 
@@ -198,6 +209,8 @@ public partial class MainViewModel : ViewModelBase
                 TypeId = n.TypeId,
                 X = n.Location.X,
                 Y = n.Location.Y,
+                Name = n.Name,
+                Priority = n.Priority,
                 Parameters = n.Parameters.ToDictionary(p => p.Key, p => p.ToValue())
             });
         }
@@ -225,6 +238,8 @@ public partial class MainViewModel : ViewModelBase
             var node = new NodeViewModel(_registry.Get(spec.TypeId))
             {
                 Id = spec.Id,
+                Name = spec.Name ?? "",
+                Priority = spec.Priority,
                 Location = new Point(spec.X, spec.Y)
             };
             node.ApplyParameterValues(spec.Parameters);
@@ -253,6 +268,14 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var graph = ToGraph();
+            var validationErrors = WorkflowValidation.Validate(_registry, graph);
+            if (validationErrors.Count > 0)
+            {
+                StatusText = L["ValidationFailed"];
+                foreach (var err in validationErrors)
+                    Logs.Add($"[{L["ErrorPrefix"]}] {err}");
+                return;
+            }
             var engine = new WorkflowEngine(_registry, _loggerFactory, _guiBridge);
             await Task.Run(() => engine.RunAsync(graph, _runCts.Token));
             StatusText = L["RunCompleted"];

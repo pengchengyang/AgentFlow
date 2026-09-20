@@ -8,6 +8,13 @@ public sealed class NodeSpec
 {
     public string Id { get; set; } = "";
     public string TypeId { get; set; } = "";
+
+    /// <summary>User-editable instance name shown on the canvas (falls back to the type display name).</summary>
+    public string? Name { get; set; }
+
+    /// <summary>Start-up priority, mirroring ALC's "Startup Priority": lower runs earlier; bigger means later.</summary>
+    public int Priority { get; set; }
+
     public Dictionary<string, object?> Parameters { get; set; } = new();
     // UI layout info (written by the editor, ignored by the engine).
     public double X { get; set; }
