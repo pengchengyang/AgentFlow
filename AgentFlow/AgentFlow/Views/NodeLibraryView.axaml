@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+             xmlns:s="clr-namespace:AgentFlow.Services"
+             x:Class="AgentFlow.Views.NodeLibraryView"
+             x:DataType="vm:MainViewModel">
+
+  <UserControl.Styles>
+    <!-- 节点库列表项 -->
+    <Style Selector="Border.libitem">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="10,9"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Border.libitem:pointerover">
+      <Setter Property="Background" Value="#F3F4F6"/>
+    </Style>
+    <Style Selector="Border.libitem:pressed">
+      <Setter Property="Background" Value="#E5E7EB"/>
+    </Style>
+  </UserControl.Styles>
+
+  <!-- 右侧节点库 -->
+  <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1,0,0,0">
+    <DockPanel Margin="12,14">
+      <TextBlock DockPanel.Dock="Top"
+                 Text="{Binding [Components], Source={x:Static s:Loc.Instance}}"
+                 FontWeight="SemiBold" FontSize="13" Foreground="#111827" Margin="4,0,0,10"/>
+
+      <!-- 搜索框 -->
+      <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+        <TextBox Text="{Binding SearchText, Mode=TwoWay}"
+                 Padding="28,7,8,7" FontSize="13"
+                 PlaceholderText="{Binding [Search], Source={x:Static s:Loc.Instance}}"/>
+        <TextBlock Text="🔍" FontSize="11" Foreground="#9CA3AF" Margin="10,0,0,0"
+                   IsHitTestVisible="False" VerticalAlignment="Center"/>
+      </Grid>
+
+      <!-- 节点列表（点击添加 / 拖拽到画布） -->
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding PaletteItems}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:PaletteItem">
+              <Border Classes="libitem" Margin="0,0,0,4"
+                      PointerPressed="OnItemPointerPressed"
+                      PointerMoved="OnItemPointerMoved"
+                      PointerReleased="OnItemPointerReleased">
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Grid.Column="0" Text="◆" FontSize="13"
+                             Foreground="{Binding Accent}" VerticalAlignment="Center"/>
+                  <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="Medium"
+                               Foreground="#111827"/>
+                    <TextBlock Text="{Binding PinSummary}" FontSize="10" Foreground="#9CA3AF"
+                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</UserControl>

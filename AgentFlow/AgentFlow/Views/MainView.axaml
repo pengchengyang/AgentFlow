@@ -8,10 +8,10 @@
              x:Class="AgentFlow.Views.MainView"
              x:DataType="vm:MainViewModel">
 
-  <Grid RowDefinitions="Auto,*,40" Background="#F5F5F5">
+  <Grid RowDefinitions="Auto,*" Background="#F5F5F5">
     <views:TopBarView Grid.Row="0"/>
 
-    <Grid Grid.Row="1" ColumnDefinitions="44,260,*">
+    <Grid Grid.Row="1" ColumnDefinitions="44,*,264">
       <!-- 最左侧图标工具栏 -->
       <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,1,0">
         <Border.Styles>
@@ -50,26 +50,33 @@
         </StackPanel>
       </Border>
 
-      <views:PaletteView Grid.Column="1"/>
-      <views:CanvasView Grid.Column="2"/>
-    </Grid>
+      <!-- 中间：画布 + 可折叠日志面板 + 底部条 -->
+      <Grid Grid.Column="1" RowDefinitions="*,Auto,40">
+        <views:CanvasView Grid.Row="0"/>
 
-    <!-- 底部条 -->
-    <Border Grid.Row="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-        <Button Grid.Column="0" Classes="ghost" Content="+  New Custom Component"
-                FontSize="13" Foreground="#374151" Margin="12,0,0,0" Padding="8,4"/>
-        <Button Grid.Column="1" Classes="secondary" Content="›_  Logs"
-                FontSize="13" Padding="12,4" Margin="8,0,0,0"/>
-        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
-          <TextBlock Text="🔒" FontSize="12" Foreground="#9CA3AF" VerticalAlignment="Center"/>
-          <TextBlock Text="100%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
-          <TextBlock Text="⌃⌄" FontSize="10" Foreground="#9CA3AF" VerticalAlignment="Center"/>
-          <Border Width="20" Height="20" CornerRadius="10" Background="#F3F4F6" VerticalAlignment="Center">
-            <TextBlock Text="?" FontSize="11" Foreground="#6B7280" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-        </StackPanel>
+        <!-- 日志面板（Logs 按钮展开/收起） -->
+        <views:LogPanelView Grid.Row="1" IsVisible="{Binding IsLogPanelOpen}"/>
+
+        <!-- 底部条 -->
+        <Border Grid.Row="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" Classes="secondary" Content="›_  Logs"
+                    Command="{Binding ToggleLogPanelCommand}"
+                    FontSize="13" Padding="12,4" Margin="12,0,0,0"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="🔒" FontSize="12" Foreground="#9CA3AF" VerticalAlignment="Center"/>
+              <TextBlock Text="100%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
+              <TextBlock Text="⌃⌄" FontSize="10" Foreground="#9CA3AF" VerticalAlignment="Center"/>
+              <Border Width="20" Height="20" CornerRadius="10" Background="#F3F4F6" VerticalAlignment="Center">
+                <TextBlock Text="?" FontSize="11" Foreground="#6B7280" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </StackPanel>
+          </Grid>
+        </Border>
       </Grid>
-    </Border>
+
+      <!-- 右侧节点库 -->
+      <views:NodeLibraryView Grid.Column="2"/>
+    </Grid>
   </Grid>
 </UserControl>

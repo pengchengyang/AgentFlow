@@ -100,6 +100,16 @@ public partial class NodeViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSelected;
 
+    /// <summary>Section visibility flags (empty sections collapse in the card template).</summary>
+    [ObservableProperty]
+    private bool _hasInputs;
+
+    [ObservableProperty]
+    private bool _hasOutputs;
+
+    [ObservableProperty]
+    private bool _hasParameters;
+
     public ObservableCollection<PinViewModel> Inputs { get; } = new();
     public ObservableCollection<PinViewModel> Outputs { get; } = new();
     public ObservableCollection<ParameterViewModel> Parameters { get; } = new();
@@ -120,6 +130,15 @@ public partial class NodeViewModel : ViewModelBase
         // Auto-generate property panel editors from parameter declarations (with defaults).
         foreach (var param in descriptor.Parameters)
             Parameters.Add(new ParameterViewModel(param));
+
+        RefreshSectionFlags();
+    }
+
+    private void RefreshSectionFlags()
+    {
+        HasInputs = Inputs.Count > 0;
+        HasOutputs = Outputs.Count > 0;
+        HasParameters = Parameters.Count > 0;
     }
 
     /// <summary>Override parameter values from a saved JSON document.</summary>
@@ -139,5 +158,7 @@ public partial class NodeViewModel : ViewModelBase
                 Parameters.Add(legacy);
             }
         }
+
+        RefreshSectionFlags();
     }
 }

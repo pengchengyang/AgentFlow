@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Nodify.Avalonia.Connections;
 
 namespace AgentFlow.ViewModels;
 
@@ -21,6 +22,9 @@ public partial class MainViewModel : ViewModelBase
     private readonly InProcessGuiBridge _guiBridge = new();
     private CancellationTokenSource? _runCts;
     private int _nodeSpawnIndex;
+    private bool _isLoading;
+
+    private string WorkflowPath => Path.Combine(AppContext.BaseDirectory, "workflow.json");
 
     /// <summary>Localization (XAML can also use Loc.Instance directly).</summary>
     public Loc L => Loc.Instance;
@@ -29,6 +33,9 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<PaletteItem> PaletteItems { get; } = new();
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ConnectionViewModel> Connections { get; } = new();
+    public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
+    /// <summary>The pending (drag-in-progress) connection; lets us redirect its start anchor when dragging from a connected input.</summary>
+    public PendingConnection PendingConnection { get; } = new();
     public ObservableCollection<string> Logs { get; } = new();
 
     [ObservableProperty]
@@ -42,6 +49,10 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _isDarkTheme;
+
+    /// <summary>Whether the bottom log panel is expanded (toggled by the Logs button).</summary>
+    [ObservableProperty]
+    private bool _isLogPanelOpen;
 
     [ObservableProperty]
     private string _searchText = "";
@@ -68,6 +79,13 @@ public partial class MainViewModel : ViewModelBase
         });
 
         LoadPlugins();
+
+        // Auto-persist graph on every structural change (add/remove node, wire, or drag move).
+        Nodes.CollectionChanged += (_, _) => AutoSave();
+        Connections.CollectionChanged += (_, _) => AutoSave();
+
+        // Restore the previous graph on startup.
+        AutoLoad();
 
         // Show messages that nodes publish to the external GUI in the log (GuiBridge demo).
         _guiBridge.Subscribe("result", msg =>
@@ -123,7 +141,48 @@ public partial class MainViewModel : ViewModelBase
         {
             if (e.PropertyName == nameof(NodeViewModel.IsSelected) && node.IsSelected)
                 SelectedNode = node;
+            // Persist when the node is dragged to a new location.
+            if (e.PropertyName == nameof(NodeViewModel.Location))
+                AutoSave();
         };
+    }
+
+    /// <summary>Write the current graph to disk (no-op while we are itself loading).</summary>
+    private void AutoSave()
+    {
+        if (_isLoading) return;
+        try { ToGraph().Save(WorkflowPath); }
+        catch { /* best-effort persistence */ }
+    }
+
+    /// <summary>Reload the graph from disk if it exists.</summary>
+    private void AutoLoad()
+    {
+        if (!File.Exists(WorkflowPath)) return;
+        try
+        {
+            _isLoading = true;
+            LoadGraph(WorkflowGraph.Load(WorkflowPath));
+            StatusText = $"{L["LoadedFrom"]}: {WorkflowPath}";
+        }
+        catch (Exception ex)
+        {
+            Logs.Add($"[{L["LoadFailed"]}] {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    /// <summary>Callback when a Nodify connection drag starts.</summary>
+    [RelayCommand]
+    private void ConnectionStarted(object? parameter)
+    {
+        // 从已连接的输入脚拖起时，把预览线起点改到上游输出脚，让线从 out 画向鼠标。
+        var pin = ExtractConnectors(parameter).source as PinViewModel;
+        if (pin is { IsInput: true, Source: { } upstream })
+            PendingConnection.Source = upstream;
     }
 
     /// <summary>Callback when a Nodify connection drag completes.</summary>
@@ -131,6 +190,14 @@ public partial class MainViewModel : ViewModelBase
     private void ConnectionCompleted(object? parameter)
     {
         var (source, target) = ExtractConnectors(parameter);
+
+        // 从已连接的输入脚拖到画布空白：断开该连接
+        if (source is { Direction: PinDirection.Input } && target is null)
+        {
+            DisconnectInput(source);
+            return;
+        }
+
         if (source is null || target is null) return;
 
         // Normalize direction: source must be the output, target the input.
@@ -144,7 +211,31 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        Establish(source, target);
+    }
+
+    /// <summary>Detach the single wire connected to this input pin (drag input pin onto empty canvas).</summary>
+    private void DisconnectInput(PinViewModel input)
+    {
+        var conn = Connections.FirstOrDefault(c => ReferenceEquals(c.Target, input));
+        if (conn is not null) Teardown(conn);
+    }
+
+    /// <summary>
+    /// Create a wire both visually and in the pin model: the output pin stores a reference
+    /// to the input pin so it can Send data "over the wire".
+    /// </summary>
+    private void Establish(PinViewModel source, PinViewModel target)
+    {
+        source.ConnectTo(target);
         Connections.Add(new ConnectionViewModel(source, target));
+    }
+
+    /// <summary>Remove one wire and detach the pin references on both ends.</summary>
+    private void Teardown(ConnectionViewModel connection)
+    {
+        connection.Source.DisconnectTarget(connection.Target);
+        Connections.Remove(connection);
     }
 
     private string? ValidateConnection(PinViewModel source, PinViewModel target)
@@ -181,24 +272,44 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void RemoveConnection(ConnectionViewModel connection) => Connections.Remove(connection);
+    private void RemoveConnection(ConnectionViewModel connection) => Teardown(connection);
 
     [RelayCommand]
     private void RemoveSelectedConnections()
     {
         var selected = Connections.Where(c => c.IsSelected).ToList();
-        foreach (var c in selected) Connections.Remove(c);
+        foreach (var c in selected) Teardown(c);
+    }
+
+    /// <summary>Delete key: remove selected wires first, then the selected node.</summary>
+    [RelayCommand]
+    private void DeleteSelection()
+    {
+        foreach (var c in SelectedConnections.ToList())
+        {
+            SelectedConnections.Remove(c);
+            Teardown(c);
+        }
+        if (SelectedNode is not null)
+            RemoveNode(SelectedNode);
     }
 
     [RelayCommand]
     private void RemoveNode(NodeViewModel node)
     {
+        // Detach every wire touching this node so the opposite pins drop their references.
+        foreach (var pin in node.Inputs.Concat(node.Outputs))
+            pin.DetachAll();
+
         var related = Connections
             .Where(c => ReferenceEquals(c.Source.Node, node) || ReferenceEquals(c.Target.Node, node))
             .ToList();
         foreach (var c in related) Connections.Remove(c);
         Nodes.Remove(node);
     }
+
+    [RelayCommand]
+    private void ToggleLogPanel() => IsLogPanelOpen = !IsLogPanelOpen;
 
     [RelayCommand]
     private void ClearLog() => Logs.Clear();
@@ -259,7 +370,7 @@ public partial class MainViewModel : ViewModelBase
         {
             var source = map[spec.FromNode].Outputs.First(p => p.Name == spec.FromPin);
             var target = map[spec.ToNode].Inputs.First(p => p.Name == spec.ToPin);
-            Connections.Add(new ConnectionViewModel(source, target));
+            Establish(source, target);
         }
     }
 
