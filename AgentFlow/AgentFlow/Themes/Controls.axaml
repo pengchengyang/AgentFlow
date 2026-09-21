@@ -1,0 +1,82 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============ 主按钮（紫色填充，用于 Run 等主操作） ============ -->
+    <Style Selector="Button.primary">
+        <Setter Property="Background" Value="{DynamicResource BrushBrand}" />
+        <Setter Property="Foreground" Value="{StaticResource BrushTextInverse}" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="16,8" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.primary:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushBrandHover}" />
+    </Style>
+    <Style Selector="Button.primary:pressed">
+        <Setter Property="Background" Value="{DynamicResource BrushBrandActive}" />
+    </Style>
+    <Style Selector="Button.primary:disabled">
+        <Setter Property="Background" Value="#C4B5FD" />
+        <Setter Property="Foreground" Value="#FFFFFF" />
+    </Style>
+
+    <!-- ============ 次按钮（白底灰边） ============ -->
+    <Style Selector="Button.secondary">
+        <Setter Property="Background" Value="{DynamicResource BrushCard}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="14,7" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.secondary:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushSurface}" />
+        <Setter Property="BorderBrush" Value="#D1D5DB" />
+    </Style>
+    <Style Selector="Button.secondary:pressed">
+        <Setter Property="Background" Value="#E5E7EB" />
+    </Style>
+
+    <!-- ============ 文字小按钮（语言/主题等） ============ -->
+    <Style Selector="Button.ghost">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10,6" />
+    </Style>
+    <Style Selector="Button.ghost:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushSurface}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    </Style>
+
+    <!-- ============ 输入框 / 搜索框 ============ -->
+    <Style Selector="TextBox">
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource BrushCard}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="PlaceholderForeground" Value="{DynamicResource TextTertiary}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBox:focus">
+        <Setter Property="BorderBrush" Value="{DynamicResource BrushBorderFocus}" />
+        <Setter Property="BorderThickness" Value="1.5" />
+    </Style>
+
+    <!-- ============ 数字输入框 ============ -->
+    <Style Selector="NumericUpDown">
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+</Styles>

@@ -9,22 +9,19 @@
              x:DataType="vm:MainViewModel">
 
   <UserControl.Resources>
-    <!-- LangFlow dotted canvas background -->
     <VisualBrush x:Key="DotsBrush" TileMode="Tile" Stretch="None" DestinationRect="0,0,22,22">
       <VisualBrush.Visual>
         <Canvas Width="22" Height="22">
-          <Ellipse Canvas.Left="10" Canvas.Top="10" Width="2" Height="2" Fill="#C9CEDA"/>
+          <Ellipse Canvas.Left="10" Canvas.Top="10" Width="2" Height="2" Fill="#D1D5DB"/>
         </Canvas>
       </VisualBrush.Visual>
     </VisualBrush>
 
-    <!-- Override the default straight dashed pending-connection with a smooth cubic bezier,
-         matching the solid connection below. -->
     <ControlTheme x:Key="{x:Type conn:PendingConnection}" TargetType="conn:PendingConnection">
       <Setter Property="IsHitTestVisible" Value="False"/>
-      <Setter Property="StrokeThickness" Value="3"/>
+      <Setter Property="StrokeThickness" Value="2"/>
       <Setter Property="StrokeDashArray" Value="5,5"/>
-      <Setter Property="Stroke" Value="#7C3AED"/>
+      <Setter Property="Stroke" Value="#333333"/>
       <Setter Property="IsVisible" Value="False"/>
       <Setter Property="ClipToBounds" Value="False"/>
       <Setter Property="Template">
@@ -37,7 +34,7 @@
                                StrokeThickness="{TemplateBinding StrokeThickness}"
                                StrokeDashArray="{TemplateBinding StrokeDashArray}"
                                Direction="{TemplateBinding Direction}"
-                               Spacing="0"
+                               Spacing="60"
                                SourceOffsetMode="None" TargetOffsetMode="None"/>
             </Canvas>
           </ControlTemplate>
@@ -45,12 +42,18 @@
       </Setter>
     </ControlTheme>
   </UserControl.Resources>
-  <Grid Background="#F4F5F8" DragDrop.AllowDrop="True" DragDrop.Drop="OnCanvasDrop">
+
+  <Grid Background="#F5F5F5" DragDrop.AllowDrop="True" DragDrop.Drop="OnCanvasDrop">
     <nodify:NodifyEditor x:Name="Editor" Background="{StaticResource DotsBrush}"
                          ItemsSource="{Binding Nodes}"
                          Connections="{Binding Connections}"
-                         ConnectionCompletedCommand="{Binding ConnectionCompletedCommand}"
-                         GridCellSize="22">
+                         ConnectionCompletedCommand="{Binding ConnectionCompletedCommand}">
+
+      <nodify:NodifyEditor.KeyBindings>
+        <KeyBinding Gesture="Delete"
+                   Command="{Binding RemoveNodeCommand}"
+                   CommandParameter="{Binding SelectedNode}"/>
+      </nodify:NodifyEditor.KeyBindings>
 
       <nodify:NodifyEditor.ItemContainerTheme>
         <ControlTheme TargetType="nodify:ItemContainer" BasedOn="{StaticResource {x:Type nodify:ItemContainer}}" x:DataType="vm:NodeViewModel">
@@ -59,94 +62,112 @@
         </ControlTheme>
       </nodify:NodifyEditor.ItemContainerTheme>
 
-      <!-- LangFlow node card: white rounded card, tinted header, left input pins / right output pins -->
       <nodify:NodifyEditor.ItemTemplate>
         <DataTemplate DataType="vm:NodeViewModel">
-          <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1"
-                  CornerRadius="12" MinWidth="200"
-                  BoxShadow="0 2 8 0 #14000000">
-            <Border.Styles>
-              <Style Selector="Border:pointerover">
-                <Setter Property="BorderBrush" Value="#C4B5FD"/>
-              </Style>
-            </Border.Styles>
-            <Grid RowDefinitions="Auto,*">
-
-              <!-- Header: category tint + icon + title + delete button -->
-              <Border Grid.Row="0" Background="{Binding AccentTint}" CornerRadius="12,12,0,0" Padding="12,8">
-                <DockPanel>
-                  <Button DockPanel.Dock="Right" Content="✕" FontSize="10" Padding="5,1"
-                          Background="Transparent" BorderThickness="0" Foreground="#B91C1C"
-                          VerticalAlignment="Center"
+          <!-- 节点卡片：ClipToBounds=False 让 Pin 突出边缘不被裁 -->
+          <Border Background="White" CornerRadius="12" MinWidth="280"
+                  ClipToBounds="False"
+                  BoxShadow="0 2 12 0 #14000000">
+            <Border.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="删除节点" Foreground="#DC2626"
                           Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).RemoveNodeCommand}"
                           CommandParameter="{Binding}"/>
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Border Width="20" Height="20" CornerRadius="6" Background="{Binding Accent}" VerticalAlignment="Center">
-                      <TextBlock Text="◆" Foreground="White" FontSize="9"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" Foreground="#1F2937"
-                               VerticalAlignment="Center"/>
+              </ContextMenu>
+            </Border.ContextMenu>
+
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+
+              <!-- 头部：图标 + 标题 + 播放三角 -->
+              <Border Grid.Row="0" Padding="16,14,14,8">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Text="▷" FontSize="13"
+                             Foreground="#9CA3AF" VerticalAlignment="Center"/>
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="◆" FontSize="15" Foreground="{Binding Accent}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"
+                               Foreground="#111827" VerticalAlignment="Center"/>
                   </StackPanel>
                 </DockPanel>
               </Border>
 
-              <!-- Pin area: inputs on the left column, outputs on the right column.
-                   Connectors use the built-in template (guaranteed hit-testing and anchor tracking);
-                   a colored ring is drawn around each connector via a surrounding Border. -->
-              <Grid Grid.Row="1" ColumnDefinitions="*,*" Margin="4,10,4,12">
-                <StackPanel Grid.Column="0" Spacing="8">
-                  <ItemsControl ItemsSource="{Binding Inputs}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate DataType="vm:PinViewModel">
-                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,0,0,0">
-                          <Border Width="15" Height="15" CornerRadius="8" Background="White"
-                                  BorderBrush="{Binding Node.Accent}" BorderThickness="2"
-                                  VerticalAlignment="Center">
-                            <nodes:NodeInput Anchor="{Binding Anchor, Mode=OneWayToSource}" IsConnected="True"
-                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                          </Border>
-                          <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#374151"/>
-                            <TextBlock Text="{Binding TypeName}" FontSize="9" Foreground="#9CA3AF"/>
-                          </StackPanel>
-                        </StackPanel>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
+              <!-- 描述 -->
+              <Border Grid.Row="1" Padding="16,0,16,10">
+                <TextBlock Text="{Binding TypeId}" FontSize="12" Foreground="#6B7280" TextWrapping="Wrap"/>
+              </Border>
 
-                <StackPanel Grid.Column="1" Spacing="8" HorizontalAlignment="Right">
-                  <ItemsControl ItemsSource="{Binding Outputs}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate DataType="vm:PinViewModel">
-                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,4,0">
-                          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#374151" TextAlignment="Right"/>
-                            <TextBlock Text="{Binding TypeName}" FontSize="9" Foreground="#9CA3AF" TextAlignment="Right"/>
-                          </StackPanel>
-                          <Border Width="15" Height="15" CornerRadius="8" Background="{Binding Node.Accent}"
-                                  BorderBrush="White" BorderThickness="2"
-                                  VerticalAlignment="Center">
+              <!-- 分隔线 -->
+              <Border Grid.Row="2" Height="1" Background="#F3F4F6" Margin="16,0"/>
+
+              <!-- 参数区 -->
+              <ItemsControl Grid.Row="3" ItemsSource="{Binding Parameters}" Padding="16,12,16,4">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:ParameterViewModel">
+                    <StackPanel Margin="0,0,0,10">
+                      <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="Medium"
+                                 Foreground="#111827" Margin="0,0,0,6"/>
+                      <Border Background="#F3F4F6" CornerRadius="6" Padding="12,9">
+                        <TextBlock Text="{Binding Value, FallbackValue=Receiving input}"
+                                   FontSize="12" Foreground="#9CA3AF"/>
+                      </Border>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <!-- 底部输出条 -->
+              <Border Grid.Row="4" Background="#F3F4F6" CornerRadius="0,0,12,12" Padding="16,10">
+                <ItemsControl ItemsSource="{Binding Outputs}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:PinViewModel">
+                      <Grid Height="24">
+                        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="Medium"
+                                   Foreground="#111827" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                          <TextBlock Text="⚙" FontSize="12" Foreground="#9CA3AF" VerticalAlignment="Center"/>
+                          <!-- 输出 Pin：完整圆，突出卡片右边缘 -->
+                          <Border Width="10" Height="10" CornerRadius="5"
+                                  Background="#4F46E5" Margin="2,0,-21,0"
+                                  VerticalAlignment="Center" ClipToBounds="False">
                             <nodes:NodeOutput Anchor="{Binding Anchor, Mode=OneWayToSource}" IsConnected="True"
-                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                               Width="10" Height="10" Background="Transparent"
+                                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
                           </Border>
                         </StackPanel>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-              </Grid>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Border>
+
+              <!-- 输入 Pin 覆盖层：悬浮在卡片左边缘，不参与布局 -->
+              <ItemsControl Grid.Row="1" Grid.RowSpan="3" ItemsSource="{Binding Inputs}"
+                            IsHitTestVisible="True" Margin="0,40,0,0">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:PinViewModel">
+                    <Border Width="10" Height="10" CornerRadius="5"
+                            Background="White" BorderBrush="#4F46E5" BorderThickness="2"
+                            Margin="-5,14,0,0" ClipToBounds="False">
+                      <nodes:NodeInput Anchor="{Binding Anchor, Mode=OneWayToSource}" IsConnected="True"
+                                       Width="10" Height="10" Background="Transparent"
+                                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
             </Grid>
           </Border>
         </DataTemplate>
       </nodify:NodifyEditor.ItemTemplate>
 
+      <!-- 连线：深灰细线，无箭头 -->
       <nodify:NodifyEditor.ConnectionTemplate>
         <DataTemplate DataType="vm:ConnectionViewModel">
           <conn:Connection Source="{Binding Source.Anchor}"
                            Target="{Binding Target.Anchor}"
-                           Stroke="#7C3AED" StrokeThickness="2" Spacing="40"
+                           Stroke="#333333" StrokeThickness="2"
+                           Spacing="60"
+                           SourceOffsetMode="None" TargetOffsetMode="None"
                            DisconnectCommand="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).RemoveConnectionCommand}"/>
         </DataTemplate>
       </nodify:NodifyEditor.ConnectionTemplate>
@@ -154,4 +175,3 @@
     </nodify:NodifyEditor>
   </Grid>
 </UserControl>
-

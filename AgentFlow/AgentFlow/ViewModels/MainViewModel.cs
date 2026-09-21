@@ -184,6 +184,13 @@ public partial class MainViewModel : ViewModelBase
     private void RemoveConnection(ConnectionViewModel connection) => Connections.Remove(connection);
 
     [RelayCommand]
+    private void RemoveSelectedConnections()
+    {
+        var selected = Connections.Where(c => c.IsSelected).ToList();
+        foreach (var c in selected) Connections.Remove(c);
+    }
+
+    [RelayCommand]
     private void RemoveNode(NodeViewModel node)
     {
         var related = Connections

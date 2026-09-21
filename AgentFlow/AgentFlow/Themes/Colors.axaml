@@ -1,0 +1,65 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============ 品牌主色（LangFlow 紫色系） ============ -->
+    <Color x:Key="Brand50">#F5F3FF</Color>
+    <Color x:Key="Brand100">#EDE9FE</Color>
+    <Color x:Key="Brand300">#A78BFA</Color>
+    <Color x:Key="Brand500">#7C3AED</Color>
+    <Color x:Key="Brand600">#6D28D9</Color>
+    <Color x:Key="Brand700">#5B21B6</Color>
+
+    <!-- ============ 节点分类色 ============ -->
+    <Color x:Key="CatInput">#3B82F6</Color>
+    <Color x:Key="CatLogic">#8B5CF6</Color>
+    <Color x:Key="CatOutput">#10B981</Color>
+    <Color x:Key="CatFlow">#0D9488</Color>
+    <Color x:Key="CatGeneral">#64748B</Color>
+
+    <!-- ============ 文字色 ============ -->
+    <Color x:Key="TextPrimary">#1F2937</Color>
+    <Color x:Key="TextSecondary">#6B7280</Color>
+    <Color x:Key="TextTertiary">#9CA3AF</Color>
+    <Color x:Key="TextInverse">#FFFFFF</Color>
+
+    <!-- ============ 背景 / 边框 ============ -->
+    <Color x:Key="CanvasBg">#F4F5F8</Color>
+    <Color x:Key="CardBg">#FFFFFF</Color>
+    <Color x:Key="SurfaceBg">#F9FAFB</Color>
+    <Color x:Key="BorderLight">#E5E7EB</Color>
+    <Color x:Key="BorderFocus">#7C3AED</Color>
+
+    <!-- ============ 语义色 ============ -->
+    <Color x:Key="Danger">#DC2626</Color>
+    <Color x:Key="DangerBg">#FEF2F2</Color>
+    <Color x:Key="Success">#10B981</Color>
+    <Color x:Key="Warning">#F59E0B</Color>
+
+    <!-- ============ 画刷（供 XAML 直接引用） ============ -->
+    <SolidColorBrush x:Key="BrushBrand" Color="{StaticResource Brand500}" />
+    <SolidColorBrush x:Key="BrushBrandHover" Color="{StaticResource Brand600}" />
+    <SolidColorBrush x:Key="BrushBrandActive" Color="{StaticResource Brand700}" />
+    <SolidColorBrush x:Key="BrushBrandSoft" Color="{StaticResource Brand100}" />
+    <SolidColorBrush x:Key="BrushBrandFaint" Color="{StaticResource Brand50}" />
+    <SolidColorBrush x:Key="BrushBrand300" Color="{StaticResource Brand300}" />
+
+    <SolidColorBrush x:Key="BrushCanvas" Color="{StaticResource CanvasBg}" />
+    <SolidColorBrush x:Key="BrushCard" Color="{StaticResource CardBg}" />
+    <SolidColorBrush x:Key="BrushSurface" Color="{StaticResource SurfaceBg}" />
+    <SolidColorBrush x:Key="BrushBorder" Color="{StaticResource BorderLight}" />
+    <SolidColorBrush x:Key="BrushBorderFocus" Color="{StaticResource BorderFocus}" />
+
+    <SolidColorBrush x:Key="BrushTextPrimary" Color="{StaticResource TextPrimary}" />
+    <SolidColorBrush x:Key="BrushTextSecondary" Color="{StaticResource TextSecondary}" />
+    <SolidColorBrush x:Key="BrushTextTertiary" Color="{StaticResource TextTertiary}" />
+    <SolidColorBrush x:Key="BrushTextInverse" Color="{StaticResource TextInverse}" />
+
+    <SolidColorBrush x:Key="BrushDanger" Color="{StaticResource Danger}" />
+    <SolidColorBrush x:Key="BrushDangerBg" Color="{StaticResource DangerBg}" />
+    <SolidColorBrush x:Key="BrushSuccess" Color="{StaticResource Success}" />
+    <SolidColorBrush x:Key="BrushWarning" Color="{StaticResource Warning}" />
+
+    <SolidColorBrush x:Key="BrushInputPin" Color="#9CA3AF" />
+    <SolidColorBrush x:Key="BrushInputPinRing" Color="#FFFFFF" />
+
+</ResourceDictionary>
