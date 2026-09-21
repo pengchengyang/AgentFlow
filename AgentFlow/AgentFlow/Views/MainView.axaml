@@ -14,7 +14,7 @@
     <Grid Grid.Row="1" ColumnDefinitions="44,260,*">
       <!-- 最左侧图标工具栏 -->
       <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,1,0">
-        <Border.Resources>
+        <Border.Styles>
           <Style Selector="Button.toolbtn">
             <Setter Property="Width" Value="40"/>
             <Setter Property="Height" Value="36"/>
@@ -31,7 +31,11 @@
           <Style Selector="Button.toolbtn:pressed">
             <Setter Property="Background" Value="#E5E7EB"/>
           </Style>
-        </Border.Resources>
+          <Style Selector="Button.toolbtn:disabled">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Opacity" Value="1"/>
+          </Style>
+        </Border.Styles>
         <StackPanel Spacing="2" Margin="0,8">
           <TextBlock Text="≡" FontSize="18" Foreground="#111827" HorizontalAlignment="Center" Margin="0,6,0,10"/>
           <Button Classes="toolbtn" Command="{Binding RunCommand}" IsEnabled="{Binding !IsRunning}" ToolTip.Tip="Run">
