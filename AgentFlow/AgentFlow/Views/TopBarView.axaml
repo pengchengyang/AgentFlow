@@ -3,7 +3,7 @@
              xmlns:vm="clr-namespace:AgentFlow.ViewModels"
              xmlns:s="clr-namespace:AgentFlow.Services"
              x:Class="AgentFlow.Views.TopBarView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:TopBarViewModel">
 
   <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
     <Grid ColumnDefinitions="Auto,*,Auto" Height="44">

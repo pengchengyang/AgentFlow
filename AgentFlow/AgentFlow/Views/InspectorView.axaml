@@ -3,7 +3,7 @@
              xmlns:vm="clr-namespace:AgentFlow.ViewModels"
              xmlns:s="clr-namespace:AgentFlow.Services"
              x:Class="AgentFlow.Views.InspectorView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:InspectorViewModel">
 
   <!-- LangFlow 右侧属性面板 -->
   <Border Background="{DynamicResource BrushCard}"

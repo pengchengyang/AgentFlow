@@ -3,7 +3,7 @@
              xmlns:vm="clr-namespace:AgentFlow.ViewModels"
              xmlns:s="clr-namespace:AgentFlow.Services"
              x:Class="AgentFlow.Views.NodeLibraryView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:NodeLibraryViewModel">
 
   <UserControl.Styles>
     <!-- 节点库列表项 -->

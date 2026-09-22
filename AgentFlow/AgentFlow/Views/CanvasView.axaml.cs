@@ -19,9 +19,9 @@ public partial class CanvasView : UserControl
 
 /// <summary>
 /// 纯 Avalonia Canvas：节点卡片、pin 圆点、贝塞尔曲线全部通过 <see cref="Render"/>
-/// 用 DrawingContext 自绘。这是一个无模板的 <see cref="Control"/>，因此自绘内容不会被
-/// 模板覆盖。交互（节点拖拽、输出→输入连线、点曲线删除、Delete 删除）都在这里处理，
-/// 实际连接/断开/数据逻辑仍由 MainViewModel -> AgentFlow.Core.EditorGraph 完成。
+/// 用 DrawingContext 自绘。这是一个无模板的 <see cref="Control"/>，因此自绘内容不会被模板覆盖。
+/// 本视图只负责：布局计算、自绘渲染、命中测试，以及把原始指针/键盘输入转发给
+/// <see cref="CanvasViewModel"/>。所有业务逻辑（选中、拖拽、连线、平移、缩放、删除）都在 ViewModel 中。
 /// </summary>
 public sealed class GraphCanvas : Control
 {
@@ -49,26 +49,13 @@ public sealed class GraphCanvas : Control
 
     private readonly Dictionary<NodeViewModel, NodeLayout> _layouts = new();
 
-    private bool _draggingNode;
-    private NodeViewModel? _dragNode;
-    private Point _dragOffset;
-
-    private bool _connecting;
-    private PinViewModel? _connectSource;
-    private Point _pointer;
-
-    private bool _panning;
-    private Point _panStartPointer;
-    private double _panStartX;
-    private double _panStartY;
-
     public GraphCanvas()
     {
         Focusable = true;
         ClipToBounds = true;
         DataContextChanged += (_, _) =>
         {
-            if (DataContext is MainViewModel vm)
+            if (DataContext is CanvasViewModel vm)
             {
                 vm.Nodes.CollectionChanged += OnNodesChanged;
                 vm.Connections.CollectionChanged += (_, _) => InvalidateVisual();
@@ -77,6 +64,8 @@ public sealed class GraphCanvas : Control
             }
         };
     }
+
+    private CanvasViewModel? Vm => DataContext as CanvasViewModel;
 
     // ================= 布局 =================
 
@@ -141,7 +130,8 @@ public sealed class GraphCanvas : Control
 
     private void RefreshLayouts()
     {
-        if (DataContext is not MainViewModel vm) return;
+        var vm = Vm;
+        if (vm is null) return;
         _layouts.Clear();
         foreach (var n in vm.Nodes) ComputeLayout(n);
     }
@@ -152,7 +142,8 @@ public sealed class GraphCanvas : Control
     {
         base.Render(ctx);
         ctx.DrawRectangle(new SolidColorBrush(ColorBg), null, new Rect(0, 0, Bounds.Width, Bounds.Height));
-        if (DataContext is not MainViewModel vm) return;
+        var vm = Vm;
+        if (vm is null) return;
 
         using (ctx.PushTransform(ViewTransform()))
         {
@@ -162,15 +153,13 @@ public sealed class GraphCanvas : Control
             foreach (var conn in vm.Connections)
                 DrawBezier(ctx, conn.Source.Anchor, conn.Target.Anchor, conn.IsSelected);
 
-            if (_connecting && _connectSource is not null)
-                DrawBezier(ctx, _connectSource.Anchor, _pointer, false, dashed: true);
+            if (vm.IsConnecting && vm.ConnectSource is not null)
+                DrawBezier(ctx, vm.ConnectSource.Anchor, vm.Pointer, false, dashed: true);
 
             foreach (var n in BottomFirstNodes(vm))
                 DrawNode(ctx, n);
         }
     }
-
-    private MainViewModel? Vm => DataContext as MainViewModel;
 
     private Matrix ViewTransform()
     {
@@ -189,12 +178,12 @@ public sealed class GraphCanvas : Control
 
     private void DrawDots(DrawingContext ctx)
     {
+        var vm = Vm;
+        if (vm is null) return;
         var brush = new SolidColorBrush(ColorDot);
         double spacing = 20;
         // Keep on-screen spacing roughly constant while zooming so dot density stays stable
         // and the render loop stays bounded even at low zoom (smooth wheel-zoom).
-        var vm = Vm;
-        if (vm is null) return;
         while (spacing * vm.Zoom < 14) spacing *= 2;
         double ox = Math.Floor((0 - vm.PanX) / vm.Zoom / spacing) * spacing;
         double oy = Math.Floor((0 - vm.PanY) / vm.Zoom / spacing) * spacing;
@@ -204,6 +193,7 @@ public sealed class GraphCanvas : Control
             for (double y = oy; y < h; y += spacing)
                 ctx.DrawEllipse(brush, null, new Point(x, y), 1, 1);
     }
+
     private void DrawNode(DrawingContext ctx, NodeViewModel node)
     {
         var l = _layouts[node];
@@ -322,21 +312,80 @@ public sealed class GraphCanvas : Control
         return ft.Width;
     }
 
-    // ================= 交互 =================
+    // ================= 层叠顺序 =================
+
+    /// <summary>Nodes in top-to-bottom order for hit testing (highest z / last-drawn first).</summary>
+    private IEnumerable<NodeViewModel> TopFirstNodes(CanvasViewModel vm)
+        => vm.Nodes.Select((n, i) => (n, i))
+            .OrderByDescending(x => x.n.ZIndex)
+            .ThenByDescending(x => x.i)
+            .Select(x => x.n);
+
+    /// <summary>Nodes in bottom-to-top order for rendering (highest z drawn last = on top).</summary>
+    private IEnumerable<NodeViewModel> BottomFirstNodes(CanvasViewModel vm)
+        => vm.Nodes.Select((n, i) => (n, i))
+            .OrderBy(x => x.n.ZIndex)
+            .ThenBy(x => x.i)
+            .Select(x => x.n);
+
+    // ================= 命中测试 =================
+
+    private NodeViewModel? HitTestNode(Point pos)
+    {
+        var vm = Vm;
+        if (vm is null) return null;
+        foreach (var node in TopFirstNodes(vm))
+            if (_layouts.TryGetValue(node, out var l) && l.Body.Contains(pos)) return node;
+        return null;
+    }
+
+    private PinViewModel? HitTestInputPin(Point pos)
+    {
+        var vm = Vm;
+        if (vm is null) return null;
+        foreach (var node in TopFirstNodes(vm))
+        {
+            if (!_layouts.TryGetValue(node, out var l)) continue;
+            for (int i = 0; i < l.InputHits.Count; i++)
+                if (l.InputHits[i].Contains(pos)) return node.Inputs[i];
+        }
+        return null;
+    }
+
+    private PinViewModel? HitTestOutputPin(Point pos)
+    {
+        var vm = Vm;
+        if (vm is null) return null;
+        foreach (var node in TopFirstNodes(vm))
+        {
+            if (!_layouts.TryGetValue(node, out var l)) continue;
+            for (int i = 0; i < l.OutputHits.Count; i++)
+                if (l.OutputHits[i].Contains(pos)) return node.Outputs[i];
+        }
+        return null;
+    }
+
+    private ConnectionViewModel? HitTestConnection(Point pos)
+    {
+        var vm = Vm;
+        if (vm is null) return null;
+        foreach (var c in vm.Connections)
+            if (DistanceToBezier(pos, c.Source.Anchor, c.Target.Anchor) < 7) return c;
+        return null;
+    }
+
+    // ================= 交互（仅转发输入，业务在 CanvasViewModel） =================
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
         Focus();
-        var vm = DataContext as MainViewModel;
+        var vm = Vm;
         if (vm is null) return;
 
         if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
         {
-            _panning = true;
-            _panStartPointer = e.GetPosition(this);
-            _panStartX = vm.PanX;
-            _panStartY = vm.PanY;
+            vm.BeginPan(e.GetPosition(this));
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -348,7 +397,7 @@ public sealed class GraphCanvas : Control
         {
             if (HitTestNode(pos) is { } rn)
             {
-                BringToFront(vm, rn);
+                vm.BringToFront(rn);
                 vm.SelectOnly(rn);
                 ShowNodeContextMenu(rn);
             }
@@ -362,10 +411,7 @@ public sealed class GraphCanvas : Control
 
         if (HitTestOutputPin(pos) is { } outPin)
         {
-            _connecting = true;
-            _connectSource = outPin;
-            _pointer = pos;
-            vm.SelectOnly(outPin.Node);
+            vm.BeginConnect(outPin, pos);
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -382,23 +428,21 @@ public sealed class GraphCanvas : Control
 
         if (HitTestNode(pos) is { } node)
         {
-            BringToFront(vm, node);
+            vm.BringToFront(node);
             // Ctrl+左键：切换该节点选中状态并保留其它已选节点；普通左键：单选。
             if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
                 vm.ToggleSelection(node);
             else
                 vm.SelectOnly(node);
-            // 双击节点：请求弹出参数配置对话框（业务由 MainViewModel 处理，此处仅转发事件）。
+            // 双击节点：请求弹出参数配置对话框（业务在 ViewModel）。
             if (e.ClickCount >= 2)
             {
-                vm.OpenNodeParametersCommand.Execute(node);
+                vm.OpenNodeParameters(node);
                 e.Handled = true;
                 return;
             }
 
-            _draggingNode = true;
-            _dragNode = node;
-            _dragOffset = pos - node.Location;
+            vm.BeginDrag(node, pos);
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -417,23 +461,24 @@ public sealed class GraphCanvas : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        var screen = e.GetPosition(this);
         var vm = Vm;
-        if (_panning && vm is not null)
+        if (vm is null) return;
+        var screen = e.GetPosition(this);
+        if (vm.IsPanning)
         {
-            vm.PanX = _panStartX + (screen.X - _panStartPointer.X);
-            vm.PanY = _panStartY + (screen.Y - _panStartPointer.Y);
+            vm.UpdatePan(screen);
             InvalidateVisual();
             return;
         }
-        _pointer = ScreenToWorld(screen);
-        if (_draggingNode && _dragNode is not null)
+        var world = ScreenToWorld(screen);
+        if (vm.IsDragging)
         {
-            _dragNode.Location = _pointer - _dragOffset;
+            vm.UpdateDrag(world);
             InvalidateVisual();
         }
-        else if (_connecting)
+        else if (vm.IsConnecting)
         {
+            vm.UpdateConnect(world);
             InvalidateVisual();
         }
     }
@@ -441,52 +486,27 @@ public sealed class GraphCanvas : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        var vm = DataContext as MainViewModel;
-        if (_panning)
+        var vm = Vm;
+        if (vm is null) { e.Pointer.Capture(null); return; }
+
+        if (vm.IsPanning)
         {
-            _panning = false;
+            vm.EndPan();
             e.Pointer.Capture(null);
             return;
         }
-        if (_connecting && _connectSource is not null)
+
+        if (vm.IsConnecting)
         {
-            if (HitTestInputPin(ScreenToWorld(e.GetPosition(this))) is { } target && !ReferenceEquals(target, _connectSource))
-                vm?.TryCreateConnection(_connectSource, target);
-            _connecting = false;
-            _connectSource = null;
+            var target = HitTestInputPin(ScreenToWorld(e.GetPosition(this)));
+            vm.EndConnect(target);
             InvalidateVisual();
         }
 
-        if (_draggingNode)
-        {
-            _draggingNode = false;
-            _dragNode = null;
-        }
+        if (vm.IsDragging)
+            vm.EndDrag();
+
         e.Pointer.Capture(null);
-    }
-
-    /// <summary>在指定屏幕位置弹出所选节点的右键上下文菜单（Send / Delete）。</summary>
-    private void ShowNodeContextMenu(NodeViewModel node)
-    {
-        var menu = new ContextMenu();
-
-        var send = new MenuItem { Header = "Send" };
-        send.Click += (_, _) =>
-        {
-            if (DataContext is MainViewModel vm) vm.SendNodeCommand.Execute(node);
-        };
-
-        var delete = new MenuItem { Header = "Delete" };
-        delete.Click += (_, _) =>
-        {
-            if (DataContext is MainViewModel vm) vm.RemoveNodeCommand.Execute(node);
-        };
-
-        menu.Items.Add(send);
-        menu.Items.Add(delete);
-        this.ContextMenu = menu;
-        menu.Placement = PlacementMode.Pointer;
-        menu.Open(this);
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -499,76 +519,39 @@ public sealed class GraphCanvas : Control
         }
         e.Handled = true;
     }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         if (e.Key == Key.Delete || e.Key == Key.Back)
         {
-            if (DataContext is MainViewModel vm) vm.DeleteSelection();
+            if (Vm is { } vm) vm.DeleteSelection();
             e.Handled = true;
         }
     }
 
-
-
-    /// <summary>Raise a node to the top of the stack (so the clicked node is the visually topmost).</summary>
-    private static void BringToFront(MainViewModel vm, NodeViewModel node)
-        => node.ZIndex = vm.Nodes.Count == 0 ? 0 : vm.Nodes.Max(n => n.ZIndex) + 1;
-    // ================= 层叠顺序 =================
-
-    /// <summary>Nodes in top-to-bottom order for hit testing (highest z / last-drawn first).</summary>
-    private IEnumerable<NodeViewModel> TopFirstNodes(MainViewModel vm)
-        => vm.Nodes.Select((n, i) => (n, i))
-            .OrderByDescending(x => x.n.ZIndex)
-            .ThenByDescending(x => x.i)
-            .Select(x => x.n);
-
-    /// <summary>Nodes in bottom-to-top order for rendering (highest z drawn last = on top).</summary>
-    private IEnumerable<NodeViewModel> BottomFirstNodes(MainViewModel vm)
-        => vm.Nodes.Select((n, i) => (n, i))
-            .OrderBy(x => x.n.ZIndex)
-            .ThenBy(x => x.i)
-            .Select(x => x.n);
-    // ================= 命中测试 =================
-
-    private NodeViewModel? HitTestNode(Point pos)
+    /// <summary>在指定屏幕位置弹出所选节点的右键上下文菜单（Send / Delete）。纯展示，动作绑定到 ViewModel 命令。</summary>
+    private void ShowNodeContextMenu(NodeViewModel node)
     {
-        if (DataContext is not MainViewModel vm) return null;
-        foreach (var node in TopFirstNodes(vm))
-            if (_layouts.TryGetValue(node, out var l) && l.Body.Contains(pos)) return node;
-        return null;
-    }
+        var menu = new ContextMenu();
 
-    private PinViewModel? HitTestInputPin(Point pos)
-    {
-        if (DataContext is not MainViewModel vm) return null;
-        foreach (var node in TopFirstNodes(vm))
+        var send = new MenuItem { Header = "Send" };
+        send.Click += (_, _) =>
         {
-            if (!_layouts.TryGetValue(node, out var l)) continue;
-            for (int i = 0; i < l.InputHits.Count; i++)
-                if (l.InputHits[i].Contains(pos)) return node.Inputs[i];
-        }
-        return null;
-    }
+            if (Vm is { } vm) vm.SendNodeCommand.Execute(node);
+        };
 
-    private PinViewModel? HitTestOutputPin(Point pos)
-    {
-        if (DataContext is not MainViewModel vm) return null;
-        foreach (var node in TopFirstNodes(vm))
+        var delete = new MenuItem { Header = "Delete" };
+        delete.Click += (_, _) =>
         {
-            if (!_layouts.TryGetValue(node, out var l)) continue;
-            for (int i = 0; i < l.OutputHits.Count; i++)
-                if (l.OutputHits[i].Contains(pos)) return node.Outputs[i];
-        }
-        return null;
-    }
+            if (Vm is { } vm) vm.RemoveNodeCommand.Execute(node);
+        };
 
-    private ConnectionViewModel? HitTestConnection(Point pos)
-    {
-        if (DataContext is not MainViewModel vm) return null;
-        foreach (var c in vm.Connections)
-            if (DistanceToBezier(pos, c.Source.Anchor, c.Target.Anchor) < 7) return c;
-        return null;
+        menu.Items.Add(send);
+        menu.Items.Add(delete);
+        this.ContextMenu = menu;
+        menu.Placement = PlacementMode.Pointer;
+        menu.Open(this);
     }
 
     // ================= 数据变化订阅 =================
@@ -585,9 +568,9 @@ public sealed class GraphCanvas : Control
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MainViewModel.Zoom)
-            or nameof(MainViewModel.PanX)
-            or nameof(MainViewModel.PanY))
+        if (e.PropertyName is nameof(CanvasViewModel.Zoom)
+            or nameof(CanvasViewModel.PanX)
+            or nameof(CanvasViewModel.PanY))
             InvalidateVisual();
     }
 
@@ -602,10 +585,3 @@ public sealed class GraphCanvas : Control
             InvalidateVisual();
     }
 }
-
-
-
-
-
-
-

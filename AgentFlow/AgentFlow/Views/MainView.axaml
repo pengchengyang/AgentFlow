@@ -9,7 +9,7 @@
              x:DataType="vm:MainViewModel">
 
   <Grid RowDefinitions="Auto,*" Background="#F5F5F5">
-    <views:TopBarView Grid.Row="0"/>
+    <views:TopBarView Grid.Row="0" DataContext="{Binding TopBar}"/>
 
     <Grid Grid.Row="1" ColumnDefinitions="44,*,Auto">
       <!-- 最左侧图标工具栏 -->
@@ -52,10 +52,10 @@
 
       <!-- 中间：画布 + 可折叠日志面板 + 底部条 -->
       <Grid Grid.Column="1" RowDefinitions="*,Auto,40">
-        <views:CanvasView Grid.Row="0"/>
+        <views:CanvasView Grid.Row="0" DataContext="{Binding Canvas}"/>
 
         <!-- 日志面板（Logs 按钮展开/收起） -->
-        <views:LogPanelView Grid.Row="1" IsVisible="{Binding IsLogPanelOpen}"/>
+        <views:LogPanelView Grid.Row="1" DataContext="{Binding LogPanel}" IsVisible="{Binding IsLogPanelOpen}"/>
 
         <!-- 底部条 -->
         <Border Grid.Row="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0">
@@ -65,7 +65,7 @@
                     FontSize="13" Padding="12,4" Margin="12,0,0,0"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="🔒" FontSize="12" Foreground="#9CA3AF" VerticalAlignment="Center"/>
-              <TextBlock Text="100%" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding Canvas.ZoomText}" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
               <TextBlock Text="⌃⌄" FontSize="10" Foreground="#9CA3AF" VerticalAlignment="Center"/>
               <Border Width="20" Height="20" CornerRadius="10" Background="#F3F4F6" VerticalAlignment="Center">
                 <TextBlock Text="?" FontSize="11" Foreground="#6B7280" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -76,7 +76,7 @@
       </Grid>
 
       <!-- 右侧节点库 -->
-      <views:NodeLibraryView Grid.Column="2" Width="264" IsVisible="{Binding IsSidebarVisible}"/>
+      <views:NodeLibraryView Grid.Column="2" Width="264" DataContext="{Binding NodeLibrary}" IsVisible="{Binding IsSidebarVisible}"/>
     </Grid>
   </Grid>
 </UserControl>

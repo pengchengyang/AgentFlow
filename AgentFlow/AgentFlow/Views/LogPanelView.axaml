@@ -3,7 +3,7 @@
              xmlns:vm="clr-namespace:AgentFlow.ViewModels"
              xmlns:s="clr-namespace:AgentFlow.Services"
              x:Class="AgentFlow.Views.LogPanelView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:LogPanelViewModel">
 
   <!-- LangFlow 底部日志窄条 -->
   <Border Background="White"

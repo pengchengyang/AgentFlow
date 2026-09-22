@@ -55,7 +55,7 @@ public partial class NodeLibraryView : UserControl
     private void OnItemPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         // A plain click (no drag) adds the node at the default location.
-        if (!_dragStarted && _pendingItem is not null && DataContext is MainViewModel vm)
+        if (!_dragStarted && _pendingItem is not null && DataContext is NodeLibraryViewModel vm)
             vm.AddNodeCommand.Execute(_pendingItem);
 
         _pendingPress = null;

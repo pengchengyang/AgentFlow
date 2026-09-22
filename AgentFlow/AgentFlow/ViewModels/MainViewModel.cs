@@ -37,6 +37,13 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
     public ObservableCollection<string> Logs { get; } = new();
 
+    // ---- Dedicated view-models (1 view &lt;-&gt; 1 view-model) ----
+    public TopBarViewModel TopBar { get; }
+    public NodeLibraryViewModel NodeLibrary { get; }
+    public LogPanelViewModel LogPanel { get; }
+    public InspectorViewModel Inspector { get; }
+    public CanvasViewModel Canvas { get; }
+
     [ObservableProperty]
     private NodeViewModel? _selectedNode;
 
@@ -53,40 +60,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isLogPanelOpen;
 
-
-    // ============ 画布视图变换（缩放 / 平移） ============
-
-    /// <summary>Canvas zoom factor (1.0 = 100%, base scale).</summary>
-    [ObservableProperty]
-    private double _zoom = 1.0;
-
-    /// <summary>Canvas horizontal pan offset (screen px).</summary>
-    [ObservableProperty]
-    private double _panX;
-
-    /// <summary>Canvas vertical pan offset (screen px).</summary>
-    [ObservableProperty]
-    private double _panY;
-
-    /// <summary>Zoom around a given screen point (mouse cursor), clamped to a sensible range.</summary>
-    public void ZoomAt(double cursorX, double cursorY, double factor)
-    {
-        double newZoom = Math.Clamp(Zoom * factor, 0.2, 5.0);
-        double wX = (cursorX - PanX) / Zoom;
-        double wY = (cursorY - PanY) / Zoom;
-        Zoom = newZoom;
-        PanX = cursorX - wX * Zoom;
-        PanY = cursorY - wY * Zoom;
-    }
-
-    /// <summary>Reset the canvas zoom/pan back to its original (default) transform.</summary>
+    /// <summary>Reset the canvas zoom/pan back to its default transform (delegates to the canvas view-model).</summary>
     [RelayCommand]
-    private void ResetZoom()
-    {
-        Zoom = 1.0;
-        PanX = 0;
-        PanY = 0;
-    }
+    private void ResetZoom() => Canvas.ResetZoom();
+
     [ObservableProperty]
     private string _searchText = "";
 
@@ -128,6 +105,13 @@ public partial class MainViewModel : ViewModelBase
 
         // Show messages that nodes publish to the external GUI through the reusable broadcast DLL.
         BroadcastHub.Instance.Register(this);
+
+        // Dedicated view-models (composed per view).
+        TopBar = new TopBarViewModel(this);
+        NodeLibrary = new NodeLibraryViewModel(this);
+        LogPanel = new LogPanelViewModel(this);
+        Inspector = new InspectorViewModel(this);
+        Canvas = new CanvasViewModel(this);
     }
 
     [BroadcastHandler("result")]
@@ -188,6 +172,11 @@ public partial class MainViewModel : ViewModelBase
         if (node.IsSelected)
             SelectedNode = node;
     }
+
+
+    /// <summary>Raise a node to the top of the visual stacking order.</summary>
+    public void BringToFront(NodeViewModel node)
+        => node.ZIndex = Nodes.Count == 0 ? 0 : Nodes.Max(n => n.ZIndex) + 1;
     /// <summary>Single-selection mode: select only the given node and deselect every other node.</summary>
     public void SelectOnly(NodeViewModel? node)
     {

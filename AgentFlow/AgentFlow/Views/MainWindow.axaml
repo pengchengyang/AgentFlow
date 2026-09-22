@@ -6,8 +6,8 @@
         xmlns:views="clr-namespace:AgentFlow.Views"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="AgentFlow.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="AgentFlow" WindowState="Maximized">
-        <views:MainView />
+        <views:MainView DataContext="{Binding Main}" />
 </Window>
-
