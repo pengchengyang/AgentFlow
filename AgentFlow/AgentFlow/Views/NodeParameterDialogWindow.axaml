@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgentFlow.Views.NodeParameterDialogWindow"
+        x:DataType="vm:NodeParameterDialogViewModel"
+        Title="{Binding Title} - 参数配置"
+        Width="440" Height="520"
+        MinWidth="360" MinHeight="300"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Manual"
+        Background="#F9FAFB">
+
+    <Border Margin="1" CornerRadius="0" Background="#F9FAFB">
+        <DockPanel LastChildFill="True">
+
+            <!-- 标题栏 -->
+            <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="20,16">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="参数配置" FontSize="17" FontWeight="SemiBold" Foreground="#111827"/>
+                    <TextBlock Text="{Binding Title}" FontSize="13" Foreground="#6B7280"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 底部按钮 -->
+            <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="20,14">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                    <Button Classes="secondary" Content="取消" Command="{Binding CancelCommand}" MinWidth="88"/>
+                    <Button Classes="primary" Content="确认" Command="{Binding ConfirmCommand}" MinWidth="88"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 参数列表 -->
+            <ScrollViewer Padding="20,16">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="参数配置" IsVisible="{Binding HasNoParameters}"
+                               Foreground="#9CA3AF" HorizontalAlignment="Center" Margin="0,40,0,0"/>
+                    <ItemsControl ItemsSource="{Binding Parameters}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ParameterEditRow">
+                                <StackPanel Spacing="6">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Label}"
+                                                   FontSize="13" FontWeight="Medium" Foreground="#374151"/>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding TypeName}"
+                                                   FontSize="11" Foreground="#9CA3AF" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                    <TextBox Text="{Binding Value, Mode=TwoWay}" Padding="10,7"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+        </DockPanel>
+    </Border>
+</Window>

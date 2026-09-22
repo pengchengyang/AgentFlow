@@ -53,6 +53,40 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isLogPanelOpen;
 
+
+    // ============ 画布视图变换（缩放 / 平移） ============
+
+    /// <summary>Canvas zoom factor (1.0 = 100%, base scale).</summary>
+    [ObservableProperty]
+    private double _zoom = 1.0;
+
+    /// <summary>Canvas horizontal pan offset (screen px).</summary>
+    [ObservableProperty]
+    private double _panX;
+
+    /// <summary>Canvas vertical pan offset (screen px).</summary>
+    [ObservableProperty]
+    private double _panY;
+
+    /// <summary>Zoom around a given screen point (mouse cursor), clamped to a sensible range.</summary>
+    public void ZoomAt(double cursorX, double cursorY, double factor)
+    {
+        double newZoom = Math.Clamp(Zoom * factor, 0.2, 5.0);
+        double wX = (cursorX - PanX) / Zoom;
+        double wY = (cursorY - PanY) / Zoom;
+        Zoom = newZoom;
+        PanX = cursorX - wX * Zoom;
+        PanY = cursorY - wY * Zoom;
+    }
+
+    /// <summary>Reset the canvas zoom/pan back to its original (default) transform.</summary>
+    [RelayCommand]
+    private void ResetZoom()
+    {
+        Zoom = 1.0;
+        PanX = 0;
+        PanY = 0;
+    }
     [ObservableProperty]
     private string _searchText = "";
 
@@ -147,6 +181,21 @@ public partial class MainViewModel : ViewModelBase
         HookSelection(node);
         Nodes.Add(node);
     }
+    /// <summary>Toggle the given node's selection, preserving other selected nodes (Ctrl+click).</summary>
+    public void ToggleSelection(NodeViewModel node)
+    {
+        node.IsSelected = !node.IsSelected;
+        if (node.IsSelected)
+            SelectedNode = node;
+    }
+    /// <summary>Single-selection mode: select only the given node and deselect every other node.</summary>
+    public void SelectOnly(NodeViewModel? node)
+    {
+        foreach (var n in Nodes)
+            n.IsSelected = ReferenceEquals(n, node);
+        SelectedNode = node;
+    }
+
     private void HookSelection(NodeViewModel node)
     {
         node.PropertyChanged += (_, e) =>
@@ -292,8 +341,11 @@ public partial class MainViewModel : ViewModelBase
             SelectedConnections.Remove(c);
             Teardown(c);
         }
-        if (SelectedNode is not null)
-            RemoveNode(SelectedNode);
+        // 删除所有被选中的节点（支持多选）。
+        var selected = Nodes.Where(n => n.IsSelected).ToList();
+        foreach (var n in selected)
+            RemoveNode(n);
+        SelectedNode = null;
     }
 
     [RelayCommand]
@@ -311,6 +363,34 @@ public partial class MainViewModel : ViewModelBase
         Nodes.Remove(node);
     }
 
+
+
+    /// <summary>Whether the right node-library sidebar is visible (Admin only).</summary>
+    [ObservableProperty]
+    private bool _isSidebarVisible;
+
+    /// <summary>Raised when the login dialog should be shown (View layer listens to open a window).</summary>
+    public event EventHandler<LoginDialogViewModel>? LoginRequested;
+
+    /// <summary>Top-right Login button: show the login dialog and update sidebar visibility by role.</summary>
+    [RelayCommand]
+    private void OpenLogin()
+    {
+        var dialog = new LoginDialogViewModel();
+        dialog.RequestClose += (_, isAdmin) => IsSidebarVisible = isAdmin;
+        LoginRequested?.Invoke(this, dialog);
+    }
+
+    /// <summary>Raised when a node parameter dialog should be shown (View layer listens to open a window).</summary>
+    public event EventHandler<NodeParameterDialogViewModel>? DialogRequested;
+
+    /// <summary>双击节点：创建参数配置对话框 ViewModel 并请求 View 层弹出窗口。</summary>
+    [RelayCommand]
+    private void OpenNodeParameters(NodeViewModel? node)
+    {
+        if (node is null) return;
+        DialogRequested?.Invoke(this, new NodeParameterDialogViewModel(node));
+    }
     /// <summary>上下文菜单 Send：让指定节点立即执行一次并向下游推送数据。</summary>
     [RelayCommand]
     private async Task SendNode(NodeViewModel node)

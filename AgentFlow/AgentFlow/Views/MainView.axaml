@@ -11,7 +11,7 @@
   <Grid RowDefinitions="Auto,*" Background="#F5F5F5">
     <views:TopBarView Grid.Row="0"/>
 
-    <Grid Grid.Row="1" ColumnDefinitions="44,*,264">
+    <Grid Grid.Row="1" ColumnDefinitions="44,*,Auto">
       <!-- 最左侧图标工具栏 -->
       <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,1,0">
         <Border.Styles>
@@ -76,7 +76,7 @@
       </Grid>
 
       <!-- 右侧节点库 -->
-      <views:NodeLibraryView Grid.Column="2"/>
+      <views:NodeLibraryView Grid.Column="2" Width="264" IsVisible="{Binding IsSidebarVisible}"/>
     </Grid>
   </Grid>
 </UserControl>

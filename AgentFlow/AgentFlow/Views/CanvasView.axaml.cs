@@ -33,12 +33,12 @@ public sealed class GraphCanvas : Control
     private const double OutputRow = 28;
     private const double ParamRow = 62;
 
-    private static readonly Color ColorBg = Color.Parse("#F4F5F8");
-    private static readonly Color ColorDot = Color.Parse("#DDE3EA");
+    private static readonly Color ColorBg = Color.Parse("#F9F5EB");
+    private static readonly Color ColorDot = Color.Parse("#E4DBCD");
     private static readonly Color ColorTitle = Color.Parse("#111827");
     private static readonly Color ColorTypeId = Color.Parse("#6B7280");
     private static readonly Color ColorMuted = Color.Parse("#9CA3AF");
-    private static readonly Color ColorBorder = Color.Parse("#E5E7EB");
+    private static readonly Color ColorBorder = Color.Parse("#94A3B8");
     private static readonly Color ColorDivider = Color.Parse("#F3F4F6");
     private static readonly Color ColorSelected = Color.Parse("#F59E0B");
     private static readonly Color ColorLine = Color.Parse("#3F3F46");
@@ -57,9 +57,6 @@ public sealed class GraphCanvas : Control
     private PinViewModel? _connectSource;
     private Point _pointer;
 
-    private double _zoom = 1.0;
-    private double _panX;
-    private double _panY;
     private bool _panning;
     private Point _panStartPointer;
     private double _panStartX;
@@ -76,9 +73,8 @@ public sealed class GraphCanvas : Control
                 vm.Nodes.CollectionChanged += OnNodesChanged;
                 vm.Connections.CollectionChanged += (_, _) => InvalidateVisual();
                 foreach (var n in vm.Nodes) n.PropertyChanged += OnNodePropertyChanged;
+                vm.PropertyChanged += OnVmPropertyChanged;
             }
-            RefreshLayouts();
-            InvalidateVisual();
         };
     }
 
@@ -174,21 +170,21 @@ public sealed class GraphCanvas : Control
         }
     }
 
+    private MainViewModel? Vm => DataContext as MainViewModel;
+
     private Matrix ViewTransform()
-        => Matrix.CreateScale(new Vector(_zoom, _zoom)) * Matrix.CreateTranslation(new Vector(_panX, _panY));
+    {
+        var vm = Vm;
+        if (vm is null) return Matrix.Identity;
+        return Matrix.CreateScale(new Vector(vm.Zoom, vm.Zoom))
+            * Matrix.CreateTranslation(new Vector(vm.PanX, vm.PanY));
+    }
 
     private Point ScreenToWorld(Point p)
-        => new((p.X - _panX) / _zoom, (p.Y - _panY) / _zoom);
-
-    private void ZoomAt(Point cursor, double factor)
     {
-        double newZoom = Math.Clamp(_zoom * factor, 0.2, 5.0);
-        double wX = (cursor.X - _panX) / _zoom;
-        double wY = (cursor.Y - _panY) / _zoom;
-        _zoom = newZoom;
-        _panX = cursor.X - wX * _zoom;
-        _panY = cursor.Y - wY * _zoom;
-        InvalidateVisual();
+        var vm = Vm;
+        if (vm is null) return p;
+        return new Point((p.X - vm.PanX) / vm.Zoom, (p.Y - vm.PanY) / vm.Zoom);
     }
 
     private void DrawDots(DrawingContext ctx)
@@ -197,11 +193,13 @@ public sealed class GraphCanvas : Control
         double spacing = 20;
         // Keep on-screen spacing roughly constant while zooming so dot density stays stable
         // and the render loop stays bounded even at low zoom (smooth wheel-zoom).
-        while (spacing * _zoom < 14) spacing *= 2;
-        double ox = Math.Floor((0 - _panX) / _zoom / spacing) * spacing;
-        double oy = Math.Floor((0 - _panY) / _zoom / spacing) * spacing;
-        double w = Bounds.Width / _zoom;
-        double h = Bounds.Height / _zoom;
+        var vm = Vm;
+        if (vm is null) return;
+        while (spacing * vm.Zoom < 14) spacing *= 2;
+        double ox = Math.Floor((0 - vm.PanX) / vm.Zoom / spacing) * spacing;
+        double oy = Math.Floor((0 - vm.PanY) / vm.Zoom / spacing) * spacing;
+        double w = Bounds.Width / vm.Zoom;
+        double h = Bounds.Height / vm.Zoom;
         for (double x = ox; x < w; x += spacing)
             for (double y = oy; y < h; y += spacing)
                 ctx.DrawEllipse(brush, null, new Point(x, y), 1, 1);
@@ -337,8 +335,8 @@ public sealed class GraphCanvas : Control
         {
             _panning = true;
             _panStartPointer = e.GetPosition(this);
-            _panStartX = _panX;
-            _panStartY = _panY;
+            _panStartX = vm.PanX;
+            _panStartY = vm.PanY;
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -351,12 +349,12 @@ public sealed class GraphCanvas : Control
             if (HitTestNode(pos) is { } rn)
             {
                 BringToFront(vm, rn);
-                rn.IsSelected = true;
+                vm.SelectOnly(rn);
                 ShowNodeContextMenu(rn);
             }
             else
             {
-                foreach (var n in vm.Nodes) n.IsSelected = false;
+                vm.SelectOnly(null);
             }
             e.Handled = true;
             return;
@@ -367,7 +365,7 @@ public sealed class GraphCanvas : Control
             _connecting = true;
             _connectSource = outPin;
             _pointer = pos;
-            outPin.Node.IsSelected = true;
+            vm.SelectOnly(outPin.Node);
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -375,7 +373,7 @@ public sealed class GraphCanvas : Control
 
         if (HitTestInputPin(pos) is { } inPin)
         {
-            inPin.Node.IsSelected = true;
+            vm.SelectOnly(inPin.Node);
             if (inPin.IsConnected)
                 vm.DisconnectInputPin(inPin);
             e.Handled = true;
@@ -385,10 +383,22 @@ public sealed class GraphCanvas : Control
         if (HitTestNode(pos) is { } node)
         {
             BringToFront(vm, node);
+            // Ctrl+左键：切换该节点选中状态并保留其它已选节点；普通左键：单选。
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                vm.ToggleSelection(node);
+            else
+                vm.SelectOnly(node);
+            // 双击节点：请求弹出参数配置对话框（业务由 MainViewModel 处理，此处仅转发事件）。
+            if (e.ClickCount >= 2)
+            {
+                vm.OpenNodeParametersCommand.Execute(node);
+                e.Handled = true;
+                return;
+            }
+
             _draggingNode = true;
             _dragNode = node;
             _dragOffset = pos - node.Location;
-            node.IsSelected = true;
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -401,17 +411,18 @@ public sealed class GraphCanvas : Control
             return;
         }
 
-        foreach (var n in vm.Nodes) n.IsSelected = false;
+        vm.SelectOnly(null);
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
         var screen = e.GetPosition(this);
-        if (_panning)
+        var vm = Vm;
+        if (_panning && vm is not null)
         {
-            _panX = _panStartX + (screen.X - _panStartPointer.X);
-            _panY = _panStartY + (screen.Y - _panStartPointer.Y);
+            vm.PanX = _panStartX + (screen.X - _panStartPointer.X);
+            vm.PanY = _panStartY + (screen.Y - _panStartPointer.Y);
             InvalidateVisual();
             return;
         }
@@ -481,10 +492,13 @@ public sealed class GraphCanvas : Control
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        ZoomAt(e.GetPosition(this), e.Delta.Y > 0 ? 1.2 : 1.0 / 1.2);
+        if (Vm is { } vm)
+        {
+            var p = e.GetPosition(this);
+            vm.ZoomAt(p.X, p.Y, e.Delta.Y > 0 ? 1.2 : 1.0 / 1.2);
+        }
         e.Handled = true;
     }
-
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
@@ -567,6 +581,14 @@ public sealed class GraphCanvas : Control
             foreach (NodeViewModel n in e.OldItems) n.PropertyChanged -= OnNodePropertyChanged;
         RefreshLayouts();
         InvalidateVisual();
+    }
+
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.Zoom)
+            or nameof(MainViewModel.PanX)
+            or nameof(MainViewModel.PanY))
+            InvalidateVisual();
     }
 
     private void OnNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
