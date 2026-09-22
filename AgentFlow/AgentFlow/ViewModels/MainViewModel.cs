@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-using AgentFlow.Contracts;
+using AgentFlow.Broadcast;
 using AgentFlow.Core;
 using AgentFlow.Services;
 using Avalonia;
@@ -8,7 +8,6 @@ using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
-using Nodify.Avalonia.Connections;
 
 namespace AgentFlow.ViewModels;
 
@@ -18,6 +17,8 @@ public sealed record PaletteItem(string TypeId, string DisplayName, string Categ
 public partial class MainViewModel : ViewModelBase
 {
     private readonly NodeRegistry _registry = new();
+    private readonly PluginLoader _pluginLoader;
+    private readonly EditorGraph _graph;
     private readonly ILoggerFactory _loggerFactory;
     private readonly InProcessGuiBridge _guiBridge = new();
     private CancellationTokenSource? _runCts;
@@ -34,8 +35,6 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ConnectionViewModel> Connections { get; } = new();
     public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
-    /// <summary>The pending (drag-in-progress) connection; lets us redirect its start anchor when dragging from a connected input.</summary>
-    public PendingConnection PendingConnection { get; } = new();
     public ObservableCollection<string> Logs { get; } = new();
 
     [ObservableProperty]
@@ -76,7 +75,13 @@ public partial class MainViewModel : ViewModelBase
         {
             b.SetMinimumLevel(LogLevel.Debug);
             b.AddProvider(new UiLoggerProvider(Logs));
+
         });
+
+        _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
+
+        _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader, _guiBridge);
+        _graph.GraphChanged += RefreshPinConnections;
 
         LoadPlugins();
 
@@ -87,10 +92,15 @@ public partial class MainViewModel : ViewModelBase
         // Restore the previous graph on startup.
         AutoLoad();
 
-        // Show messages that nodes publish to the external GUI in the log (GuiBridge demo).
-        _guiBridge.Subscribe("result", msg =>
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                Logs.Add($"[GuiBridge] topic={msg.Topic} payload={msg.Payload}")));
+        // Show messages that nodes publish to the external GUI through the reusable broadcast DLL.
+        BroadcastHub.Instance.Register(this);
+    }
+
+    [BroadcastHandler("result")]
+    private void OnGuiResult(BroadcastMessage msg)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            Logs.Add($"[GuiBridge] topic={msg.Topic} payload={msg.Payload}"));
     }
 
     // ---------- Language / theme switching ----------
@@ -109,8 +119,7 @@ public partial class MainViewModel : ViewModelBase
     private void LoadPlugins()
     {
         var pluginDir = Path.Combine(AppContext.BaseDirectory, "plugins");
-        new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)))
-            .LoadFromDirectory(pluginDir, _registry);
+        _pluginLoader.LoadFromDirectory(pluginDir, _registry);
 
         foreach (var d in _registry.Nodes.OrderBy(n => n.Category).ThenBy(n => n.DisplayName))
         {
@@ -131,6 +140,9 @@ public partial class MainViewModel : ViewModelBase
     public void AddNodeAt(PaletteItem item, Point graphLocation)
     {
         var node = new NodeViewModel(_registry.Get(item.TypeId)) { Location = graphLocation };
+        // Core 层创建运行时节点实例（持有 INode + 运行时 pin）
+        node.Runtime = _graph.AddNode(item.TypeId, graphLocation.X, graphLocation.Y);
+        node.Id = node.Runtime.Id;
         _nodeSpawnIndex++;
         HookSelection(node);
         Nodes.Add(node);
@@ -145,6 +157,26 @@ public partial class MainViewModel : ViewModelBase
             if (e.PropertyName == nameof(NodeViewModel.Location))
                 AutoSave();
         };
+    }
+
+    /// <summary>Core 层连接/断开后，刷新所有 pin 的 IsConnected 外观。</summary>
+    private void RefreshPinConnections()
+    {
+        foreach (var node in Nodes)
+        {
+            foreach (var pin in node.Inputs)
+            {
+                var connected = _graph.Connections.Any(c =>
+                    c.ToNode.Id == node.Id && c.ToPin == pin.Name);
+                pin.IsConnected = connected;
+            }
+            foreach (var pin in node.Outputs)
+            {
+                var connected = _graph.Connections.Any(c =>
+                    c.FromNode.Id == node.Id && c.FromPin == pin.Name);
+                pin.IsConnected = connected;
+            }
+        }
     }
 
     /// <summary>Write the current graph to disk (no-op while we are itself loading).</summary>
@@ -175,66 +207,55 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Callback when a Nodify connection drag starts.</summary>
-    [RelayCommand]
-    private void ConnectionStarted(object? parameter)
+    /// <summary>Called by the canvas when a connection drag is dropped on an input pin.</summary>
+    public bool TryCreateConnection(PinViewModel source, PinViewModel target)
     {
-        // 从已连接的输入脚拖起时，把预览线起点改到上游输出脚，让线从 out 画向鼠标。
-        var pin = ExtractConnectors(parameter).source as PinViewModel;
-        if (pin is { IsInput: true, Source: { } upstream })
-            PendingConnection.Source = upstream;
-    }
-
-    /// <summary>Callback when a Nodify connection drag completes.</summary>
-    [RelayCommand]
-    private void ConnectionCompleted(object? parameter)
-    {
-        var (source, target) = ExtractConnectors(parameter);
-
-        // 从已连接的输入脚拖到画布空白：断开该连接
-        if (source is { Direction: PinDirection.Input } && target is null)
-        {
-            DisconnectInput(source);
-            return;
-        }
-
-        if (source is null || target is null) return;
-
         // Normalize direction: source must be the output, target the input.
         if (source.Direction == PinDirection.Input && target.Direction == PinDirection.Output)
             (source, target) = (target, source);
+
+        if (source.Direction != PinDirection.Output || target.Direction != PinDirection.Input)
+        {
+            Logs.Add(L["ErrMustOutToIn"]);
+            return false;
+        }
 
         var error = ValidateConnection(source, target);
         if (error is not null)
         {
             Logs.Add($"[{L["ConnRejected"]}] {error}");
-            return;
+            return false;
         }
 
         Establish(source, target);
+        return true;
     }
 
     /// <summary>Detach the single wire connected to this input pin (drag input pin onto empty canvas).</summary>
-    private void DisconnectInput(PinViewModel input)
+    public void DisconnectInputPin(PinViewModel input)
     {
         var conn = Connections.FirstOrDefault(c => ReferenceEquals(c.Target, input));
         if (conn is not null) Teardown(conn);
     }
 
     /// <summary>
-    /// Create a wire both visually and in the pin model: the output pin stores a reference
-    /// to the input pin so it can Send data "over the wire".
+    /// 在 Core 层建立连接：输出 pin 保存输入 pin 引用。
+    /// GUI 只负责加一条视觉连线。
     /// </summary>
     private void Establish(PinViewModel source, PinViewModel target)
     {
-        source.ConnectTo(target);
+        _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
         Connections.Add(new ConnectionViewModel(source, target));
     }
 
-    /// <summary>Remove one wire and detach the pin references on both ends.</summary>
+    /// <summary>在 Core 层移除连接并删视觉线。</summary>
     private void Teardown(ConnectionViewModel connection)
     {
-        connection.Source.DisconnectTarget(connection.Target);
+        var conn = _graph.Connections.FirstOrDefault(c =>
+            c.FromNode.Id == connection.Source.Node.Id && c.FromPin == connection.Source.Name &&
+            c.ToNode.Id == connection.Target.Node.Id && c.ToPin == connection.Target.Name);
+        if (conn is not null)
+            _graph.Disconnect(conn);
         Connections.Remove(connection);
     }
 
@@ -251,28 +272,9 @@ public partial class MainViewModel : ViewModelBase
         return null;
     }
 
-    private static (PinViewModel? source, PinViewModel? target) ExtractConnectors(object? parameter)
-    {
-        if (parameter is null) return (null, null);
-        var t = parameter.GetType();
-
-        // Nodify passes a ValueTuple<object, object> (Item1 = source, Item2 = target), whose
-        // Item1/Item2 are FIELDS, while other producers may use properties. Read both so the
-        // source/target pins are never lost.
-        object? Read(string name)
-        {
-            var prop = t.GetProperty(name);
-            if (prop is not null) return prop.GetValue(parameter);
-            return t.GetField(name)?.GetValue(parameter);
-        }
-
-        var sp = Read("SourceConnector") ?? Read("Item1");
-        var tp = Read("TargetConnector") ?? Read("Item2");
-        return (sp as PinViewModel, tp as PinViewModel);
-    }
 
     [RelayCommand]
-    private void RemoveConnection(ConnectionViewModel connection) => Teardown(connection);
+    public void RemoveConnection(ConnectionViewModel connection) => Teardown(connection);
 
     [RelayCommand]
     private void RemoveSelectedConnections()
@@ -283,7 +285,7 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Delete key: remove selected wires first, then the selected node.</summary>
     [RelayCommand]
-    private void DeleteSelection()
+    public void DeleteSelection()
     {
         foreach (var c in SelectedConnections.ToList())
         {
@@ -295,17 +297,34 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void RemoveNode(NodeViewModel node)
+    public void RemoveNode(NodeViewModel node)
     {
-        // Detach every wire touching this node so the opposite pins drop their references.
-        foreach (var pin in node.Inputs.Concat(node.Outputs))
-            pin.DetachAll();
+        // Core 层删除节点及其所有连线（输出 pin 自动断开对端引用）
+        if (node.Runtime is not null)
+            _graph.RemoveNode(node.Runtime);
 
+        // 同步删视觉连线
         var related = Connections
             .Where(c => ReferenceEquals(c.Source.Node, node) || ReferenceEquals(c.Target.Node, node))
             .ToList();
         foreach (var c in related) Connections.Remove(c);
         Nodes.Remove(node);
+    }
+
+    /// <summary>上下文菜单 Send：让指定节点立即执行一次并向下游推送数据。</summary>
+    [RelayCommand]
+    private async Task SendNode(NodeViewModel node)
+    {
+        if (node.Runtime is null) return;
+        try
+        {
+            await _graph.SendAsync(node.Runtime);
+            Logs.Add($"[Send] {node.Title} executed.");
+        }
+        catch (Exception ex)
+        {
+            Logs.Add($"[{L["ErrorPrefix"]}] {ex.Message}");
+        }
     }
 
     [RelayCommand]
@@ -318,49 +337,36 @@ public partial class MainViewModel : ViewModelBase
 
     public WorkflowGraph ToGraph()
     {
-        var graph = new WorkflowGraph();
         foreach (var n in Nodes)
         {
-            graph.Nodes.Add(new NodeSpec
-            {
-                Id = n.Id,
-                TypeId = n.TypeId,
-                X = n.Location.X,
-                Y = n.Location.Y,
-                Name = n.Name,
-                Priority = n.Priority,
-                Parameters = n.Parameters.ToDictionary(p => p.Key, p => p.ToValue())
-            });
+            if (n.Runtime is not null)
+                _graph.UpdateNode(n.Runtime, n.Name, n.Priority, n.Location.X, n.Location.Y,
+                    n.Parameters.ToDictionary(p => p.Key, p => p.ToValue()));
         }
-        foreach (var c in Connections)
-        {
-            graph.Connections.Add(new ConnectionSpec
-            {
-                FromNode = c.Source.Node.Id,
-                FromPin = c.Source.Name,
-                ToNode = c.Target.Node.Id,
-                ToPin = c.Target.Name
-            });
-        }
-        return graph;
+        return _graph.ToWorkflowGraph();
     }
 
     public void LoadGraph(WorkflowGraph graph)
     {
         Nodes.Clear();
         Connections.Clear();
+        _graph.Clear();
 
         var map = new Dictionary<string, NodeViewModel>();
         foreach (var spec in graph.Nodes)
         {
             var node = new NodeViewModel(_registry.Get(spec.TypeId))
             {
-                Id = spec.Id,
                 Name = spec.Name ?? "",
                 Priority = spec.Priority,
                 Location = new Point(spec.X, spec.Y)
             };
             node.ApplyParameterValues(spec.Parameters);
+            // Core 层创建运行时节点
+            node.Runtime = _graph.AddNode(spec.TypeId, spec.X, spec.Y,
+                node.Parameters.ToDictionary(p => p.Key, p => p.ToValue()),
+                spec.Id, spec.Name, spec.Priority);
+            node.Id = node.Runtime.Id;
             HookSelection(node);
             Nodes.Add(node);
             map[spec.Id] = node;
@@ -447,3 +453,10 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
+
+
+
+
+
+
+

@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using AgentFlow.ViewModels;
-
+using AgentFlow.Services;
 namespace AgentFlow.Views;
 
 /// <summary>
@@ -63,3 +63,4 @@ public partial class NodeLibraryView : UserControl
         _dragStarted = false;
     }
 }
+

@@ -1,6 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\AgentFlow.Broadcast\AgentFlow.Broadcast.csproj" />
     <ProjectReference Include="..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
   </ItemGroup>
 

@@ -16,12 +16,12 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
-    <PackageReference Include="Nodify.Avalonia" Version="2.0.0" />
+
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AgentFlow.Broadcast\AgentFlow.Broadcast.csproj" />
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
-    <ProjectReference Include="..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
   </ItemGroup>
   <Target Name="CopyPlugins" AfterTargets="Build">
     <ItemGroup>
@@ -30,3 +30,5 @@
     <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
   </Target>
 </Project>
+
+

@@ -53,8 +53,6 @@
                   <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="Medium"
                                Foreground="#111827"/>
-                    <TextBlock Text="{Binding PinSummary}" FontSize="10" Foreground="#9CA3AF"
-                               TextWrapping="Wrap" Margin="0,2,0,0"/>
                   </StackPanel>
                 </Grid>
               </Border>

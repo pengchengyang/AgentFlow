@@ -1,13 +1,10 @@
 using System.Collections.ObjectModel;
-using AgentFlow.Contracts;
 using AgentFlow.Core;
 using Avalonia;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgentFlow.ViewModels;
-
-/// <summary>Category -> accent color mapping (LangFlow-style coloring).</summary>
 public static class CategoryColors
 {
     private static readonly Dictionary<string, Color> Map = new(StringComparer.OrdinalIgnoreCase)
@@ -30,7 +27,7 @@ public static class CategoryColors
 /// <summary>Node parameter (an auto-generated editor row in the property panel).</summary>
 public partial class ParameterViewModel : ViewModelBase
 {
-    public ParameterDefinition Definition { get; }
+    public ParameterDescriptor Definition { get; }
 
     public string Key => Definition.Name;
     public string Label => Definition.DisplayName;
@@ -40,7 +37,7 @@ public partial class ParameterViewModel : ViewModelBase
     [ObservableProperty]
     private string _value = "";
 
-    public ParameterViewModel(ParameterDefinition definition)
+    public ParameterViewModel(ParameterDescriptor definition)
     {
         Definition = definition;
         Value = definition.DefaultValue?.ToString() ?? "";
@@ -78,6 +75,9 @@ public partial class NodeViewModel : ViewModelBase
     public NodeDescriptor Descriptor { get; }
     public string TypeId => Descriptor.TypeId;
 
+    /// <summary>Core 层编辑态节点（持有 INode 实例和运行时 pin）。GUI 不直接操作它的 pin。</summary>
+    public EditorNode? Runtime { get; set; }
+
     /// <summary>Canvas title: user-editable instance name falls back to the type display name.</summary>
     public string Title => string.IsNullOrWhiteSpace(Name) ? Descriptor.DisplayName : Name;
     public string Category => Descriptor.Category;
@@ -100,6 +100,10 @@ public partial class NodeViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSelected;
 
+    /// <summary>Visual stacking order (higher = rendered on top, hit-tested first).</summary>
+    [ObservableProperty]
+    private int _zIndex;
+
     /// <summary>Section visibility flags (empty sections collapse in the card template).</summary>
     [ObservableProperty]
     private bool _hasInputs;
@@ -120,13 +124,10 @@ public partial class NodeViewModel : ViewModelBase
         Accent = CategoryColors.Accent(descriptor.Category);
         AccentTint = CategoryColors.AccentTint(descriptor.Category);
 
-        foreach (var pin in descriptor.Pins)
-        {
-            if (pin.Direction == PinDirection.Input)
-                Inputs.Add(new PinViewModel(this, pin));
-            else
-                Outputs.Add(new PinViewModel(this, pin));
-        }
+        foreach (var pin in descriptor.InputPins)
+            Inputs.Add(new PinViewModel(this, pin));
+        foreach (var pin in descriptor.OutputPins)
+            Outputs.Add(new PinViewModel(this, pin));
         // Auto-generate property panel editors from parameter declarations (with defaults).
         foreach (var param in descriptor.Parameters)
             Parameters.Add(new ParameterViewModel(param));
@@ -153,7 +154,7 @@ public partial class NodeViewModel : ViewModelBase
             {
                 // Backward compatibility: undeclared parameters are kept as strings.
                 var legacy = new ParameterViewModel(
-                    new ParameterDefinition(kv.Key, typeof(string), kv.Key));
+                    new ParameterDescriptor(kv.Key, typeof(string), kv.Key));
                 legacy.Value = kv.Value?.ToString() ?? "";
                 Parameters.Add(legacy);
             }
@@ -162,3 +163,4 @@ public partial class NodeViewModel : ViewModelBase
         RefreshSectionFlags();
     }
 }
+

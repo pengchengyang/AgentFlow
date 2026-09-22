@@ -1,4 +1,3 @@
-using AgentFlow.Contracts;
 
 namespace AgentFlow.Core;
 
@@ -47,8 +46,8 @@ public static class WorkflowValidation
             var fromDesc = registry.Get(fromNode.TypeId);
             var toDesc = registry.Get(toNode.TypeId);
 
-            var fromPin = fromDesc.Pins.FirstOrDefault(p => p.Name == conn.FromPin && p.Direction == PinDirection.Output);
-            var toPin = toDesc.Pins.FirstOrDefault(p => p.Name == conn.ToPin && p.Direction == PinDirection.Input);
+            var fromPin = fromDesc.OutputPins.FirstOrDefault(p => p.Name == conn.FromPin);
+            var toPin = toDesc.InputPins.FirstOrDefault(p => p.Name == conn.ToPin);
 
             if (fromPin is null)
             {
@@ -75,7 +74,7 @@ public static class WorkflowValidation
             if (!registry.Contains(node.TypeId))
                 continue;
             var desc = registry.Get(node.TypeId);
-            foreach (var pin in desc.Pins.Where(p => p.Direction == PinDirection.Input && p.Required))
+            foreach (var pin in desc.InputPins.Where(p => p.Required))
             {
                 if (!graph.Connections.Any(c => c.ToNode == node.Id && c.ToPin == pin.Name))
                     errors.Add($"Node '{node.Id}' is missing required input '{pin.Name}'.");
@@ -130,3 +129,5 @@ public static class WorkflowValidation
         return order;
     }
 }
+
+

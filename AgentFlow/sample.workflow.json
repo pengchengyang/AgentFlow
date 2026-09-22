@@ -1,13 +1,9 @@
 {
   "Nodes": [
-    { "Id": "n1", "TypeId": "basic.number", "Parameters": { "Value": 3.0 }, "X": 0, "Y": 0 },
-    { "Id": "n2", "TypeId": "basic.number", "Parameters": { "Value": 4.0 }, "X": 0, "Y": 120 },
-    { "Id": "n3", "TypeId": "basic.add", "Parameters": {}, "X": 250, "Y": 60 },
-    { "Id": "n4", "TypeId": "basic.print", "Parameters": {}, "X": 500, "Y": 60 }
+    { "Id": "n1", "TypeId": "nodes.string-source", "Parameters": { "Text": "hello agentflow" }, "X": 0, "Y": 0 },
+    { "Id": "n2", "TypeId": "nodes.string-upper", "Parameters": {}, "X": 300, "Y": 0 }
   ],
   "Connections": [
-    { "FromNode": "n1", "FromPin": "Value", "ToNode": "n3", "ToPin": "A" },
-    { "FromNode": "n2", "FromPin": "Value", "ToNode": "n3", "ToPin": "B" },
-    { "FromNode": "n3", "FromPin": "Sum", "ToNode": "n4", "ToPin": "Value" }
+    { "FromNode": "n1", "FromPin": "Output", "ToNode": "n2", "ToPin": "Input" }
   ]
 }

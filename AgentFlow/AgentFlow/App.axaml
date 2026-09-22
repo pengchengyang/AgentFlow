@@ -13,8 +13,6 @@
 
     <Application.Styles>
         <FluentTheme />
-        <!-- Nodify 控件主题 -->
-        <StyleInclude Source="avares://Nodify.Avalonia/Themes/Controls.xaml" />
         <!-- 全局颜色与控件样式 -->
         <StyleInclude Source="avares://AgentFlow/Themes/Controls.axaml" />
 
@@ -36,3 +34,4 @@
         </Style>
     </Application.Styles>
 </Application>
+

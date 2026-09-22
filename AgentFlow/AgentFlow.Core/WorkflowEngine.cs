@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentFlow.Contracts;
+using ContractPinDirection = AgentFlow.Contracts.PinDirection;
 using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Core;
@@ -177,13 +178,11 @@ public sealed class WorkflowEngine
             Logger = logger;
             Gui = gui;
 
-            foreach (var pin in node.Pins)
-            {
-                if (pin.Direction == PinDirection.Input)
-                    _inputs[pin.Name] = new RuntimeInputPin(pin);
-                else
-                    _outputs[pin.Name] = new RuntimeOutputPin(pin);
-            }
+            foreach (var pin in node.InputPins)
+                _inputs[pin.Name] = new RuntimeInputPin(pin, node, this);
+
+            foreach (var pin in node.OutputPins)
+                _outputs[pin.Name] = new RuntimeOutputPin(pin, node);
         }
 
         public RuntimeInputPin GetInputPin(string name) =>
@@ -208,3 +207,8 @@ public sealed class WorkflowEngine
         }
     }
 }
+
+
+
+
+

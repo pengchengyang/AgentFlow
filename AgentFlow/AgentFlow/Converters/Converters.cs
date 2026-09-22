@@ -1,7 +1,7 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
 
-namespace AgentFlow.Views;
+namespace AgentFlow.Converters;
 
 /// <summary>Inverts a boolean (used to switch between connected / disconnected pin visuals).</summary>
 public sealed class InverseBoolConverter : IValueConverter

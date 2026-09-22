@@ -1,11 +1,11 @@
 using Avalonia.Input;
 using AgentFlow.ViewModels;
 
-namespace AgentFlow.Views;
+namespace AgentFlow.Services;
 
 /// <summary>
-/// Shared drag-and-drop data formats. Both the palette (drag source) and the canvas
-/// (drop target) must use the very same <see cref="DataFormat{T}"/> instance so the
+/// Shared drag-and-drop data formats. The palette (drag source) uses the very same
+/// <see cref="DataFormat{T}"/> instance that a future drop target would, so the
 /// in-process format equality check succeeds.
 /// </summary>
 internal static class DragFormats
