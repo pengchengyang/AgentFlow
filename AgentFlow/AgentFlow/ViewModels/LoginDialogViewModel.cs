@@ -25,7 +25,7 @@ public partial class LoginDialogViewModel : ViewModelBase
     private string _selectedRole = nameof(Role.Admin);
 
     [ObservableProperty]
-    private string _password = "";
+    private string _password = nameof(Role.Admin); // Dev: prefill Admin password so no typing needed.
 
     [ObservableProperty]
     private string? _errorMessage;

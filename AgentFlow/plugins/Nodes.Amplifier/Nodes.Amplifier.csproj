@@ -23,6 +23,13 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+	  
+    <Company>Your Company Name</Company>
+    <Copyright>Copyright © 2026 Your Company. All rights reserved.</Copyright>
+    <Product>AgentFlow Node Plugin</Product>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0.0</InformationalVersion>
   </PropertyGroup>
 
 </Project>

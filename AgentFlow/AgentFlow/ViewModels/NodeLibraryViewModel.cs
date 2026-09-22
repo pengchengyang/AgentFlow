@@ -31,7 +31,7 @@ public sealed class NodeLibraryViewModel : ViewModelBase
         set => _main.SearchText = value;
     }
 
-    /// <summary>Whether this sidebar is visible (Admin login only).</summary>
+    /// <summary>Whether this Sidebar is visible (Admin login only).</summary>
     public bool IsSidebarVisible => _main.IsSidebarVisible;
 
     public ICommand AddNodeCommand => _main.AddNodeCommand;

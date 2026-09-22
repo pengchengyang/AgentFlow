@@ -354,19 +354,36 @@ public partial class MainViewModel : ViewModelBase
 
 
 
-    /// <summary>Whether the right node-library sidebar is visible (Admin only).</summary>
+    /// <summary>Whether the current user is logged in as Admin (Admin-only features gate on this).</summary>
     [ObservableProperty]
-    private bool _isSidebarVisible;
+    private bool _isAdmin = true; // Dev: default account is Admin so admin-only UI is available on open.
+
+    /// <summary>Whether the right node-library Sidebar is visible (Admin only).</summary>
+    [ObservableProperty]
+    private bool _isSidebarVisible = true; // Dev: default to open.
+
+    /// <summary>Arrow glyph for the Sidebar toggle: left chevron when open (click to hide), right when closed (click to show).</summary>
+    public string SidebarToggleArrow => IsSidebarVisible ? "‹" : "›";
+
+    /// <summary>Toggle the right node-library Sidebar (Admin only).</summary>
+    [RelayCommand]
+    private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
+
+    partial void OnIsSidebarVisibleChanged(bool value) => OnPropertyChanged(nameof(SidebarToggleArrow));
 
     /// <summary>Raised when the login dialog should be shown (View layer listens to open a window).</summary>
     public event EventHandler<LoginDialogViewModel>? LoginRequested;
 
-    /// <summary>Top-right Login button: show the login dialog and update sidebar visibility by role.</summary>
+    /// <summary>Top-right Login button: show the login dialog and update admin/Sidebar state by role.</summary>
     [RelayCommand]
     private void OpenLogin()
     {
         var dialog = new LoginDialogViewModel();
-        dialog.RequestClose += (_, isAdmin) => IsSidebarVisible = isAdmin;
+        dialog.RequestClose += (_, isAdmin) =>
+        {
+            IsAdmin = isAdmin;
+            IsSidebarVisible = isAdmin;
+        };
         LoginRequested?.Invoke(this, dialog);
     }
 
