@@ -6,6 +6,7 @@
         mc:Ignorable="d"
         x:Class="AgentFlow.Views.NodeParamDlgWindow"
         x:DataType="vm:NodeParameterDialogViewModel"
+        Icon="/Assets/avalonia-logo.ico"
         Title="{Binding Title} - 参数配置"
         Width="440" Height="520"
         MinWidth="360" MinHeight="300"
@@ -58,3 +59,4 @@
         </DockPanel>
     </Border>
 </Window>
+

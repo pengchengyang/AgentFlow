@@ -45,7 +45,9 @@
             <TextBlock Text="■" FontSize="13" Foreground="#EF4444"/>
           </Button>
           <Button Classes="toolbtn" Content="✎" FontSize="15"/>
-          <Button Classes="toolbtn" Content="⊞" FontSize="15"/>
+          <Button Classes="toolbtn" Command="{Binding ClearGraphCommand}" ToolTip.Tip="Clear Canvas">
+            <TextBlock Text="🧹" FontSize="14"/>
+          </Button>
           <Button Classes="toolbtn" Content="📁" FontSize="15"/>
         </StackPanel>
       </Border>
@@ -64,7 +66,8 @@
                     Command="{Binding ToggleLogPanelCommand}"
                     FontSize="13" Padding="12,4" Margin="12,0,0,0"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
-              <TextBlock Text="🔒" FontSize="12" Foreground="#9CA3AF" VerticalAlignment="Center"/>
+              <TextBlock Text="🔒" FontSize="12" Foreground="#9CA3AF"
+                         VerticalAlignment="Center" IsVisible="{Binding !IsAdmin}"/>
               <TextBlock Text="{Binding Canvas.ZoomText}" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
               <Button Classes="ghost" Command="{Binding ToggleSidebarCommand}"
                       IsVisible="{Binding IsAdmin}" ToolTip.Tip="Toggle Sidebar" Padding="4,0">
@@ -80,3 +83,5 @@
     </Grid>
   </Grid>
 </UserControl>
+
+

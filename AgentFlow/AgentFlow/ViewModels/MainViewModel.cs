@@ -380,6 +380,11 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isAdmin = true; // Dev: default account is Admin so admin-only UI is available on open.
 
+    /// <summary>Bottom-right lock icon: unlocked (🔓) for Admin, locked (🔒) for all other accounts.</summary>
+    public string LockIcon => IsAdmin ? "🔓" : "🔒";
+
+    partial void OnIsAdminChanged(bool value) => OnPropertyChanged(nameof(LockIcon));
+
     /// <summary>Whether the right node-library Sidebar is visible (Admin only).</summary>
     [ObservableProperty]
     private bool _isSidebarVisible = true; // Dev: default to open.
@@ -440,6 +445,28 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand]
     private void ClearLog() => Logs.Clear();
+    /// <summary>Raised when the clear-canvas confirmation dialog should be shown (View layer listens to open a window).</summary>
+    public event EventHandler<ConfirmDialogViewModel>? ClearRequested;
+
+    /// <summary>清空整个画布：先弹出确认框，仅确认后删除所有节点与连线并清空 Core 层（含 PluginLoader 实例容器）的底层数据。</summary>
+    [RelayCommand]
+    private void ClearGraph()
+    {
+        var dialog = new ConfirmDialogViewModel(
+            "Clear Canvas",
+            "Clear the entire canvas and all underlying data? This cannot be undone.",
+            "Confirm", "Cancel");
+        dialog.RequestClose += (_, confirmed) =>
+        {
+            if (!confirmed) return;
+            Nodes.Clear();
+            Connections.Clear();
+            SelectedNode = null;
+            _graph.Clear();
+            Logs.Add("Canvas cleared.");
+        };
+        ClearRequested?.Invoke(this, dialog);
+    }
 
     // ---------- Graph <-> ViewModel mapping ----------
 

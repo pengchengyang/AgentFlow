@@ -16,6 +16,7 @@ public partial class MainView : UserControl
         if (DataContext is MainViewModel vm)
         {
             vm.DialogRequested += OnDialogRequested;
+            vm.ClearRequested += OnClearRequested;
             vm.LoginRequested += OnLoginRequested;
         }
     }
@@ -24,6 +25,16 @@ public partial class MainView : UserControl
     private async void OnDialogRequested(object? sender, NodeParameterDialogViewModel dialog)
     {
         var win = new NodeParamDlgWindow { DataContext = dialog };
+        if (TopLevel.GetTopLevel(this) is Window owner)
+            await win.ShowDialog(owner);
+        else
+            win.Show();
+    }
+
+    /// <summary>在顶层窗口之上打开清空画布确认对话框（modal）。仅做展示与窗口生命周期。</summary>
+    private async void OnClearRequested(object? sender, ConfirmDialogViewModel dialog)
+    {
+        var win = new ConfirmDialogWindow { DataContext = dialog };
         if (TopLevel.GetTopLevel(this) is Window owner)
             await win.ShowDialog(owner);
         else
@@ -40,3 +51,4 @@ public partial class MainView : UserControl
             win.Show();
     }
 }
+

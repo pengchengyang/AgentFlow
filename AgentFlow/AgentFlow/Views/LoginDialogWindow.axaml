@@ -6,6 +6,7 @@
         mc:Ignorable="d"
         x:Class="AgentFlow.Views.LoginDialogWindow"
         x:DataType="vm:LoginDialogViewModel"
+        Icon="/Assets/avalonia-logo.ico"
         Title="Login"
         Width="360" Height="360"
         MinWidth="320" MinHeight="320"
@@ -62,3 +63,4 @@
         </DockPanel>
     </Border>
 </Window>
+
