@@ -14,14 +14,15 @@ namespace Nodes.StringUpper;
 /// String to-upper logger: a single INPUT pin. Whatever string it receives is
 /// converted to upper case and written to the log.
 /// </summary>
-[Node("nodes.string-upper", "String To Upper / Log", "Logic")]
 public sealed class StringUpperLogNode : BaseNode
 {
     public override string TypeId => "nodes.string-upper";
     public override string DisplayName => "String To Upper / Log";
+    public override string Category => "Logic";
 
     public StringUpperLogNode()
     {
+        Uuid = "nodes.string-upper";
         AddInputPin(new("Input", typeof(string), PinDirection.Input));
     }
 

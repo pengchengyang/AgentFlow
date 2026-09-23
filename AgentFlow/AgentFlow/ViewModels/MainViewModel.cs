@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 using AgentFlow.Models;
 using AgentFlow.Broadcast;
 using AgentFlow.Core;
@@ -58,6 +59,21 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isRunning;
 
+    /// <summary>Single Run/Stop toggle command: Start when idle, Stop while running.</summary>
+    public ICommand RunStopCommand => IsRunning ? StopCommand : RunCommand;
+
+    /// <summary>Tooltip for the Run/Stop toggle button.</summary>
+    public string RunStopToolTip => IsRunning ? "Stop" : "Run";
+
+    /// <summary>True while the workflow is idle (not running). Drives the Start icon visibility.</summary>
+    public bool IsIdle => !IsRunning;
+
+    partial void OnIsRunningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RunStopCommand));
+        OnPropertyChanged(nameof(RunStopToolTip));
+        OnPropertyChanged(nameof(IsIdle));
+    }
     /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
     [ObservableProperty]
     private bool _isDirty;
@@ -574,20 +590,28 @@ public partial class MainViewModel : ViewModelBase
     private async Task RunAsync()
     {
         if (IsRunning) return;
+
+        // Validate BEFORE marking running, so a validation failure doesn't flash the button.
+        var graph = ToGraph();
+        var validationErrors = WorkflowValidation.Validate(_registry, graph);
+        if (validationErrors.Count > 0)
+        {
+            StatusText = L["ValidationFailed"];
+            foreach (var err in validationErrors)
+                Logs.Add($"[{L["ErrorPrefix"]}] {err}");
+            return;
+        }
+
         IsRunning = true;
         StatusText = L["Running"];
         _runCts = new CancellationTokenSource();
+
+        // Yield to the UI thread so the Stop icon renders before the run starts.
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+            () => { }, Avalonia.Threading.DispatcherPriority.Render);
+
         try
         {
-            var graph = ToGraph();
-            var validationErrors = WorkflowValidation.Validate(_registry, graph);
-            if (validationErrors.Count > 0)
-            {
-                StatusText = L["ValidationFailed"];
-                foreach (var err in validationErrors)
-                    Logs.Add($"[{L["ErrorPrefix"]}] {err}");
-                return;
-            }
             var engine = new WorkflowEngine(_registry, _loggerFactory, _guiBridge);
             await Task.Run(() => engine.RunAsync(graph, _runCts.Token));
             StatusText = L["RunCompleted"];
@@ -684,3 +708,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
+
+
+
+

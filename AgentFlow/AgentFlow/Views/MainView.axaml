@@ -43,11 +43,11 @@
         </Border.Styles>
         <StackPanel Spacing="2" Margin="0,8">
           <TextBlock Text="≡" FontSize="18" Foreground="#111827" HorizontalAlignment="Center" Margin="0,6,0,10"/>
-          <Button Classes="toolbtn" Command="{Binding RunCommand}" IsEnabled="{Binding !IsRunning}" ToolTip.Tip="Run">
-            <TextBlock Text="▶" FontSize="14" Foreground="#10B981"/>
-          </Button>
-          <Button Classes="toolbtn" Command="{Binding StopCommand}" IsEnabled="{Binding IsRunning}" ToolTip.Tip="Stop">
-            <TextBlock Text="■" FontSize="13" Foreground="#EF4444"/>
+          <Button Classes="toolbtn" Command="{Binding RunStopCommand}" ToolTip.Tip="{Binding RunStopToolTip}">
+            <Grid>
+              <Image Source="avares://AgentFlow/Assets/icons8-start-94.png"  Width="22" Height="22" IsVisible="{Binding IsIdle}"/>
+              <Image Source="avares://AgentFlow/Assets/icons8-cancel-94.png" Width="22" Height="22" IsVisible="{Binding IsRunning}"/>
+            </Grid>
           </Button>
           <Button Classes="toolbtn" Command="{Binding SaveAsCommand}" ToolTip.Tip="Save As...">
             <TextBlock Text="💾" FontSize="15"/>

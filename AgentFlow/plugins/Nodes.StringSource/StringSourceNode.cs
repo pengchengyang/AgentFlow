@@ -14,16 +14,17 @@ namespace Nodes.StringSource;
 /// <summary>
 /// String source node: a single OUTPUT pin that emits a (configurable) string.
 /// </summary>
-[Node("nodes.string-source", "String Source", "Input")]
 public sealed class StringSourceNode : BaseNode
 {
     private string _text = "Hello, AgentFlow!";
 
     public override string TypeId => "nodes.string-source";
     public override string DisplayName => "String Source";
+    public override string Category => "Input";
 
     public StringSourceNode()
     {
+        Uuid = "nodes.string-source";
         AddOutputPin(new("Output", typeof(string), PinDirection.Output));
     }
 

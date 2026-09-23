@@ -167,8 +167,7 @@ public sealed class PluginLoader
 
         foreach (var type in asm.GetTypes())
         {
-            var attr = type.GetCustomAttribute<NodeAttribute>();
-            if (attr is null || !typeof(BaseNode).IsAssignableFrom(type) || type.IsAbstract)
+            if (!typeof(BaseNode).IsAssignableFrom(type) || type.IsAbstract)
                 continue;
 
             // Instantiate once to probe the pin/parameter metadata (static per type).
@@ -176,10 +175,10 @@ public sealed class PluginLoader
                 continue;
 
             registry.Register(new NodeDescriptor(
-                attr.TypeId, attr.DisplayName, attr.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
+                probe.TypeId, probe.DisplayName, probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
 
             _logger.LogInformation("Registered node: {TypeId} ({Name}) <- {Dll}",
-                attr.TypeId, attr.DisplayName, Path.GetFileName(dllPath));
+                probe.TypeId, probe.DisplayName, Path.GetFileName(dllPath));
         }
     }
 }

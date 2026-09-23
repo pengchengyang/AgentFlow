@@ -5,7 +5,6 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
-using System.Reflection;
 using System.Text.Json.Nodes;
 
 namespace AgentFlow.Contracts;
@@ -22,33 +21,31 @@ public abstract class BaseNode
 {
     private readonly List<BasePin> _inputPins = new();
     private readonly List<BasePin> _outputPins = new();
-    private string? _category;
+    private readonly List<NodeParameter> _nodeParameters = new();
 
     protected BaseNode()
     {
-        Uuid = Guid.NewGuid().ToString("N");
+        // Uuid is intentionally left empty here. Each derived class assigns its own
+        // value as the unique type identifier of that subclass.
     }
 
-    /// <summary>Node type id (must match NodeAttribute.TypeId).</summary>
+    /// <summary>Node type id (globally unique, e.g. "basic.add"). Serialized into JSON.</summary>
     public abstract string TypeId { get; }
 
     /// <summary>Unique id of this node instance. Assigned/managed by AgentFlow.Core.</summary>
     public int InstanceId { get; set; }
 
     /// <summary>
-    /// Stable unique identifier of this node instance across save / load cycles.
-    /// The base constructor generates it; <see cref="DeserializeParameters"/> restores it.
+    /// Unique type identifier of this subclass. It is left empty in <see cref="BaseNode"/>
+    /// and must be assigned by each derived class (representing the unique type of that node).
     /// </summary>
-    public string Uuid { get; protected set; }
+    public string Uuid { get; protected set; } = string.Empty;
 
     /// <summary>Display name in the UI.</summary>
     public abstract string DisplayName { get; }
 
-    /// <summary>
-    /// Node category (used by the palette grouping and accent color).
-    /// Read from the <see cref="NodeAttribute"/> on the concrete node type.
-    /// </summary>
-    public virtual string Category => _category ??= GetType().GetCustomAttribute<NodeAttribute>()?.Category ?? "General";
+    /// <summary>Node category (used by the palette grouping and accent color).</summary>
+    public abstract string Category { get; }
 
     /// <summary>All input pin definitions (the left-hand ports), append via <see cref="AddInputPin"/>.</summary>
     public IReadOnlyList<BasePin> InputPins => _inputPins;
@@ -64,6 +61,19 @@ public abstract class BaseNode
 
     /// <summary>Parameter declarations (used to auto-generate the property panel).</summary>
     public virtual IReadOnlyList<ParameterDefinition> Parameters => Array.Empty<ParameterDefinition>();
+
+    /// <summary>Parameters attached to this node (type + value + editable flag).</summary>
+    public IReadOnlyList<NodeParameter> NodeParameters => _nodeParameters;
+
+    /// <summary>
+    /// Append a parameter (type + value + editable flag) to this node, tagged with a
+    /// <paramref name="group"/> identifier so related parameters are grouped together.
+    /// </summary>
+    public void AddParameter(NodeParameter parameter, string group)
+    {
+        parameter.Group = group;
+        _nodeParameters.Add(parameter);
+    }
 
     /// <summary>
     /// Called by an input pin when data arrives from an upstream output pin.
@@ -136,3 +146,5 @@ public abstract class BaseNode
     public virtual Task Stop(INodeContext context, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 }
+
+

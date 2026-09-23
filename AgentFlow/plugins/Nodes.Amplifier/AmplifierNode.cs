@@ -16,16 +16,17 @@ namespace Nodes.Amplifier;
 /// input scaled by the "Gain" parameter (default 4x), so it acts as a multi-way
 /// amplifier / fan-out stage.
 /// </summary>
-[Node("nodes.amplifier", "Amplifier", "Math")]
 public sealed class AmplifierNode : BaseNode
 {
     private double _gain = 4.0;
 
     public override string TypeId => "nodes.amplifier";
     public override string DisplayName => "Amplifier";
+    public override string Category => "Math";
 
     public AmplifierNode()
     {
+        Uuid = "nodes.amplifier";
         AddInputPin(new("In", typeof(double), PinDirection.Input));
         AddOutputPin(new("Out1", typeof(double), PinDirection.Output));
         AddOutputPin(new("Out2", typeof(double), PinDirection.Output));
@@ -66,3 +67,4 @@ public sealed class AmplifierNode : BaseNode
         return Task.CompletedTask;
     }
 }
+

@@ -1,0 +1,71 @@
+[33mcommit 2c006006a3af1baea6d8fae48796ac216b6ad8b2[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Wed Sep 23 14:39:29 2026 +0800
+
+    Add author
+
+[33mcommit 863d58db4e07daaa2f7c8af43497087c20988035[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Wed Sep 23 13:00:40 2026 +0800
+
+    Add icon
+
+[33mcommit 06d09828cb51eb4b349b16658286e3dbb640b65f[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Wed Sep 23 12:11:32 2026 +0800
+
+    Fixed logic
+
+[33mcommit 5a8358b98e32b0488842de4635bf8e799e9b2698[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Wed Sep 23 01:24:22 2026 +0800
+
+    Add toogle sidebar
+
+[33mcommit 85ee591edec2acaf17ca03e77e31fc57a4c5ee37[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Wed Sep 23 01:01:00 2026 +0800
+
+    Zoom percent added
+
+[33mcommit a6dca391322e0d877079654528dc708d28a0202c[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Wed Sep 23 00:21:31 2026 +0800
+
+    Login button added
+
+[33mcommit 05b80a5a86f840452738c1e56037f8be2c4a0941[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Tue Sep 22 17:56:54 2026 +0800
+
+    delete Nodify
+
+[33mcommit feac513aa127186ff0a631f1e499f321b34c697d[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Mon Sep 21 23:28:33 2026 +0800
+
+    fixed bugs
+
+[33mcommit 27f461cd39c4d1f90a82eaed46a8d198f8f72a75[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Mon Sep 21 18:29:05 2026 +0800
+
+    LangFlow style2
+
+[33mcommit f9a35cef3cac0223d9e8dd0913d09bd56775a9ee[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Mon Sep 21 17:26:40 2026 +0800
+
+    LangFlow style
+
+[33mcommit 382d3c8e125b46e54607152e5c93d30edfbe6e68[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Mon Sep 21 00:34:48 2026 +0800
+
+    Fix bugs
+
+[33mcommit cc11f38b21546f35be1fd7db4f4145dc654e7eca[m
+Author: damon_ypc <damon_ypc@126.com>
+Date:   Sun Sep 20 16:52:24 2026 +0800
+
+    initialize
