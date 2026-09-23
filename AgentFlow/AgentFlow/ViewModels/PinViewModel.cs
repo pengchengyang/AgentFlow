@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="PinViewModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using AgentFlow.Models;
 using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -5,17 +12,19 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace AgentFlow.ViewModels;
 
 /// <summary>
-/// Pin ViewModel：纯外观层，负责在画布上显示一个 pin 圆点和它的名称。
-/// 不维护连接关系、不持有对端 pin 引用、不实现 Send/Receive——
-/// 所有连接/断开/数据传输都由 <see cref="AgentFlow.Core.EditorGraph"/> 管理。
-/// 非界面数据（名称/类型/方向）来自 <see cref="PinModel"/>（包装契约层 <see cref="AgentFlow.Contracts.BasePin"/>）。
+/// Pin ViewModel: a pure presentation layer responsible for drawing a pin dot
+/// and its name on the canvas. It does not maintain connections, hold references
+/// to the opposite pin, or implement Send/Receive — all connect / disconnect / data
+/// transfer is managed by <see cref="AgentFlow.Core.EditorGraph"/>. Non-visual data
+/// (name / type / direction) comes from <see cref="PinModel"/> (which wraps the
+/// contract-layer <see cref="AgentFlow.Contracts.BasePin"/>).
 /// </summary>
 public partial class PinViewModel : ViewModelBase
 {
-    /// <summary>所属节点（GUI 视图模型）。</summary>
+    /// <summary>The owning node (GUI ViewModel).</summary>
     public NodeViewModel Node { get; }
 
-    /// <summary>领域模型（包装契约层 BasePin）。</summary>
+    /// <summary>The domain model (wraps the contract-layer BasePin).</summary>
     public PinModel Pin { get; }
 
     public string Name => Pin.Name;
@@ -25,11 +34,11 @@ public partial class PinViewModel : ViewModelBase
     public bool IsInput => Pin.IsInput;
     public bool IsOutput => Pin.IsOutput;
 
-    /// <summary>画布锚点位置（由 CanvasView 布局时写入）。</summary>
+    /// <summary>Canvas anchor position (written by CanvasView during layout).</summary>
     [ObservableProperty]
     private Point _anchor;
 
-    /// <summary>是否已连接（由 Core 层 EditorGraph 连接/断开时通知更新）。</summary>
+    /// <summary>Whether the pin is connected (updated by the Core EditorGraph on connect / disconnect).</summary>
     [ObservableProperty]
     private bool _isConnected;
 

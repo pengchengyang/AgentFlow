@@ -1,11 +1,19 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="ConfirmDialogWindow.axaml.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using Avalonia.Controls;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
 
 /// <summary>
-/// 确认对话框窗口。仅负责展示与窗口生命周期：监听 ViewModel 的 <see cref="ConfirmDialogViewModel.RequestClose"/>
-/// 事件关闭窗口，并返回确认结果（bool），不含任何业务逻辑。
+/// Confirmation dialog window. Presentation and window lifecycle only: listens to the
+/// ViewModel's <see cref="ConfirmDialogViewModel.RequestClose"/> event to close the window
+/// and return the confirmation result (bool); no business logic.
 /// </summary>
 public partial class ConfirmDialogWindow : Window
 {

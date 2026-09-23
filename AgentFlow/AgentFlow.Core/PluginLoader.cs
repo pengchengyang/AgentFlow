@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="PluginLoader.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Reflection;
 using System.Runtime.Loader;
 using AgentFlow.Contracts;
@@ -123,14 +130,14 @@ public sealed class PluginLoader
     /// <summary>Assign the next available id (caller holds <see cref="_gate"/>).</summary>
     private int AllocateIdLocked()
     {
-        // 优先复用空闲池里最小的 ID。
+        // Prefer reusing the smallest id from the free pool.
         if (_freeIds.Count > 0)
         {
             int id = _freeIds.Min;
             _freeIds.Remove(id);
             return id;
         }
-        // 否则按顺序递增分配（默认 +1），上限 10000。
+        // Otherwise allocate sequentially (default +1), capped at 10000.
         if (_nextId <= MaxInstanceId)
             return _nextId++;
         throw new InvalidOperationException(

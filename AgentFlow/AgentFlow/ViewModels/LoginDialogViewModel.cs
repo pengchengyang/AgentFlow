@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="LoginDialogViewModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Collections.Generic;
 using AgentFlow.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -9,8 +16,9 @@ namespace AgentFlow.ViewModels;
 public enum Role { Admin, Engineer, Operator }
 
 /// <summary>
-/// 登录对话框 ViewModel。负责角色下拉、密码校验以及把角色口令保存到 .NET UserSettings。
-/// 口令与角色名一致（Admin/Engineer/Operator）。窗口展示与生命周期由 View 层处理。
+/// Login dialog ViewModel. Handles the role dropdown, password validation, and saving
+/// role passwords to .NET UserSettings. The password equals the role name (Admin /
+/// Engineer / Operator). Window presentation and lifecycle are handled by the View layer.
 /// </summary>
 public partial class LoginDialogViewModel : ViewModelBase
 {
@@ -39,7 +47,7 @@ public partial class LoginDialogViewModel : ViewModelBase
 
     public LoginDialogViewModel()
     {
-        // 把各角色口令保存到 .NET UserSettings；口令与角色名一致。
+        // Save each role's password to .NET UserSettings; the password equals the role name.
         _settings = UserSettings.Load();
         foreach (var role in Roles)
         {
@@ -53,7 +61,7 @@ public partial class LoginDialogViewModel : ViewModelBase
 
     partial void OnSelectedRoleChanged(string value) => ErrorMessage = null;
 
-    /// <summary>校验口令：与角色名一致则登录成功；Admin 拥有最高权限。</summary>
+    /// <summary>Validate the password: login succeeds when it matches the role name; Admin has the highest permission.</summary>
     [RelayCommand]
     private void Confirm()
     {

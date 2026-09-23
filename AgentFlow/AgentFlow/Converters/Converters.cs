@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="Converters.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Globalization;
 using Avalonia.Data.Converters;
 

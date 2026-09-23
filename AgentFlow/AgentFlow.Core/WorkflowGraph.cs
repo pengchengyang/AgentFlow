@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="WorkflowGraph.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Text.Json;
 using System.Text.Json.Serialization;
 

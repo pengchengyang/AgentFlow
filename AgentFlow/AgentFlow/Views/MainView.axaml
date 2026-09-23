@@ -8,6 +8,11 @@
              x:Class="AgentFlow.Views.MainView"
              x:DataType="vm:MainViewModel">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Command="{Binding SaveAsCommand}" Gesture="Ctrl+S"/>
+    <KeyBinding Command="{Binding OpenCommand}" Gesture="Ctrl+O"/>
+  </UserControl.KeyBindings>
+
   <Grid RowDefinitions="Auto,*" Background="#F5F5F5">
     <views:TopBarView Grid.Row="0" DataContext="{Binding TopBar}"/>
 
@@ -33,7 +38,7 @@
           </Style>
           <Style Selector="Button.toolbtn:disabled">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="Opacity" Value="0.35"/>
           </Style>
         </Border.Styles>
         <StackPanel Spacing="2" Margin="0,8">
@@ -44,11 +49,15 @@
           <Button Classes="toolbtn" Command="{Binding StopCommand}" IsEnabled="{Binding IsRunning}" ToolTip.Tip="Stop">
             <TextBlock Text="■" FontSize="13" Foreground="#EF4444"/>
           </Button>
-          <Button Classes="toolbtn" Content="✎" FontSize="15"/>
+          <Button Classes="toolbtn" Command="{Binding SaveAsCommand}" ToolTip.Tip="Save As...">
+            <TextBlock Text="💾" FontSize="15"/>
+          </Button>
+          <Button Classes="toolbtn" Command="{Binding OpenCommand}" ToolTip.Tip="Open Workflow...">
+            <TextBlock Text="📁" FontSize="15"/>
+          </Button>
           <Button Classes="toolbtn" Command="{Binding ClearGraphCommand}" ToolTip.Tip="Clear Canvas">
             <TextBlock Text="🧹" FontSize="14"/>
           </Button>
-          <Button Classes="toolbtn" Content="📁" FontSize="15"/>
         </StackPanel>
       </Border>
 

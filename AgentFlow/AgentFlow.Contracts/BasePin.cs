@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="BasePin.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 namespace AgentFlow.Contracts;
 
 /// <summary>Pin direction.</summary>
@@ -8,41 +15,45 @@ public enum PinDirection
 }
 
 /// <summary>
-/// Pin 定义：节点的输入/输出端口契约。
+/// Pin definition: the contract for a node's input / output port.
 /// <para>
-/// 两种用法：
-/// 1) 纯元数据（默认）：<c>new BasePin("Value", typeof(double), PinDirection.Output)</c>，
-///    此时 Send/Receive 只做透传。
-/// 2) 带自定义行为：子类化本类覆盖 <see cref="OnReceive"/> / <see cref="OnSend"/>，
-///    或用 <see cref="Input{T}(string, Action{object?}?, bool)"/> / <see cref="Output{T}(string, Action{object?}?, bool)"/>
-///    工厂传入 lambda，让具体节点在 pin 级别加入校验、清洗、序列化、日志等业务逻辑。
+/// Two usage modes:
+/// 1) Pure metadata (default): <c>new BasePin("Value", typeof(double), PinDirection.Output)</c>,
+///    in which case Send / Receive simply pass through.
+/// 2) Custom behaviour: subclass this and override <see cref="OnReceive" /> / <see cref="OnSend" />,
+///    or use the <see cref="Input{T}(string, Action{object?}?, bool)" /> /
+///    <see cref="Output{T}(string, Action{object?}?, bool)" /> factories to pass lambdas so a
+///    concrete node can add validation, sanitisation, serialisation, logging and other
+///    business logic at the pin level.
 /// </para>
-/// 节点之间的数据流：上游 OUTPUT pin 调 Send(value) → 对每个连接的 INPUT pin 调 Receive(value)，
-/// 中间会依次经过 OnSend / OnReceive 钩子。
+/// Data flow between nodes: an upstream OUTPUT pin calls Send(value) → for every connected
+/// INPUT pin Receive(value) is called, passing through OnSend / OnReceive hooks in turn.
 /// </summary>
 public class BasePin
 {
-    /// <summary>Pin 名称（节点内唯一）。</summary>
+    /// <summary>Pin name (unique within the node).</summary>
     public string Name { get; }
 
-    /// <summary>数据类型（连接校验用）。</summary>
+    /// <summary>Data type (used for connection validation).</summary>
     public Type DataType { get; }
 
-    /// <summary>方向：输入还是输出。</summary>
+    /// <summary>Direction: input or output.</summary>
     public PinDirection Direction { get; }
 
-    /// <summary>是否必填（未连接时报校验错误）。</summary>
+    /// <summary>Whether the pin is required (validation error if unconnected).</summary>
     public bool Required { get; }
 
     /// <summary>
-    /// Pin 固定标识符：创建实例时生成，对每个 pin 实例（含继承自本类的运行时 pin）保持不变，
-    /// 可用于在连接 / 序列化 / 匹配时稳定地标识同一个 pin。
+    /// A fixed pin identifier generated when the instance is created; it stays constant for
+    /// every pin instance (including runtime pins derived from this class), so it can be used
+    /// to reliably identify the same pin across connect / serialise / match operations.
     /// </summary>
     public string Uuid { get; }
 
     /// <summary>
-    /// 已连接的下游输入 pin 引用（仅输出 pin 有意义；输入 pin 恒为 null）。
-    /// 建立连接时由引擎赋值，初始化 / 断开连接时为 null。
+    /// Reference to a connected downstream input pin (only meaningful on output pins;
+    /// input pins are always null). Set by the engine when a connection is established,
+    /// and null on initialise / disconnect.
     /// </summary>
     public BasePin? ConnectedInput { get; set; }
 
@@ -56,30 +67,31 @@ public class BasePin
     }
 
     /// <summary>
-    /// INPUT pin：收到上游 OUTPUT pin 推来的数据时调用。
-    /// 默认空实现；子类可覆盖以做数据校验、类型转换、日志、事件驱动唤醒等。
+    /// Called on an INPUT pin when data pushed from an upstream OUTPUT pin arrives.
+    /// Default no-op; subclasses may override for validation, type conversion, logging,
+    /// event-driven wake-up, etc.
     /// </summary>
-    /// <param name="value">上游推来的值（运行时可能为 null）。</param>
+    /// <param name="value">The value pushed from upstream (may be null at runtime).</param>
     public virtual void OnReceive(object? value) { }
 
     /// <summary>
-    /// OUTPUT pin：数据发送到下游 INPUT pin 之前调用。
-    /// 默认空实现；子类可覆盖以做序列化、脱敏、采样、日志等。
+    /// Called on an OUTPUT pin before data is sent to downstream INPUT pins.
+    /// Default no-op; subclasses may override for serialisation, masking, sampling, logging, etc.
     /// </summary>
-    /// <param name="value">即将发送给下游的值。</param>
+    /// <param name="value">The value about to be sent downstream.</param>
     public virtual void OnSend(object? value) { }
 
-    // ---- 便捷工厂：用 lambda 注入 pin 行为，无需写子类 ----
+    // ---- Convenience factories: inject pin behaviour via lambdas without subclassing ----
 
-    /// <summary>声明一个输入 pin，可选传入收到数据时的回调。</summary>
+    /// <summary>Declare an input pin, optionally passing a callback invoked when data arrives.</summary>
     public static BasePin Input<T>(string name, Action<object?>? onReceive = null, bool required = true)
         => new DelegatePin(name, typeof(T), PinDirection.Input, required, onReceive, null);
 
-    /// <summary>声明一个输出 pin，可选传入发送数据前的回调。</summary>
+    /// <summary>Declare an output pin, optionally passing a callback invoked before data is sent.</summary>
     public static BasePin Output<T>(string name, Action<object?>? onSend = null, bool required = true)
         => new DelegatePin(name, typeof(T), PinDirection.Output, required, null, onSend);
 
-    /// <summary>内部实现：把 lambda 包成 BasePin。</summary>
+    /// <summary>Internal implementation: wraps lambdas into a BasePin.</summary>
     private sealed class DelegatePin : BasePin
     {
         private readonly Action<object?>? _onReceive;

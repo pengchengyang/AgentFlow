@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="CanvasView.axaml.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
@@ -18,14 +25,16 @@ public partial class CanvasView : UserControl
 }
 
 /// <summary>
-/// 纯 Avalonia Canvas：节点卡片、pin 圆点、贝塞尔曲线全部通过 <see cref="Render"/>
-/// 用 DrawingContext 自绘。这是一个无模板的 <see cref="Control"/>，因此自绘内容不会被模板覆盖。
-/// 本视图只负责：布局计算、自绘渲染、命中测试，以及把原始指针/键盘输入转发给
-/// <see cref="CanvasViewModel"/>。所有业务逻辑（选中、拖拽、连线、平移、缩放、删除）都在 ViewModel 中。
+/// A pure Avalonia Canvas: node cards, pin dots and Bezier curves are all drawn
+/// by <see cref="Render"/> through <see cref="DrawingContext"/>. This is a template-less
+/// <see cref="Control"/>, so the self-drawn content is never overridden by a template.
+/// This view only handles: layout calculation, self-drawn rendering, hit-testing,
+/// and forwarding raw pointer / keyboard input to the <see cref="CanvasViewModel"/>.
+/// All business logic (selection, drag, wiring, pan, zoom, delete) lives in the ViewModel.
 /// </summary>
 public sealed class GraphCanvas : Control
 {
-    // ---- 布局常量 ----
+    // ---- Layout constants ----
     private const double NodeWidth = 280;
     private const double PadX = 16;
     private const double HeaderHeight = 68;
@@ -67,7 +76,7 @@ public sealed class GraphCanvas : Control
 
     private CanvasViewModel? Vm => DataContext as CanvasViewModel;
 
-    // ================= 布局 =================
+    // ================= Layout =================
 
     private sealed class NodeLayout
     {
@@ -136,7 +145,7 @@ public sealed class GraphCanvas : Control
         foreach (var n in vm.Nodes) ComputeLayout(n);
     }
 
-    // ================= 渲染 =================
+    // ================= Render =================
 
     public override void Render(DrawingContext ctx)
     {
@@ -312,7 +321,7 @@ public sealed class GraphCanvas : Control
         return ft.Width;
     }
 
-    // ================= 层叠顺序 =================
+    // ================= Z-order =================
 
     /// <summary>Nodes in top-to-bottom order for hit testing (highest z / last-drawn first).</summary>
     private IEnumerable<NodeViewModel> TopFirstNodes(CanvasViewModel vm)
@@ -328,7 +337,7 @@ public sealed class GraphCanvas : Control
             .ThenBy(x => x.i)
             .Select(x => x.n);
 
-    // ================= 命中测试 =================
+    // ================= Hit testing =================
 
     private NodeViewModel? HitTestNode(Point pos)
     {
@@ -374,7 +383,7 @@ public sealed class GraphCanvas : Control
         return null;
     }
 
-    // ================= 交互（仅转发输入，业务在 CanvasViewModel） =================
+    // ================= Interaction (input only; business logic in CanvasViewModel) =================
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -429,12 +438,12 @@ public sealed class GraphCanvas : Control
         if (HitTestNode(pos) is { } node)
         {
             vm.BringToFront(node);
-            // Ctrl+左键：切换该节点选中状态并保留其它已选节点；普通左键：单选。
+            // Ctrl+Left-click: toggle this node's selection while keeping others; plain left-click: single-select.
             if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
                 vm.ToggleSelection(node);
             else
                 vm.SelectOnly(node);
-            // 双击节点：请求弹出参数配置对话框（业务在 ViewModel）。
+            // Double-click a node: request the parameter dialog (business logic in the ViewModel).
             if (e.ClickCount >= 2)
             {
                 vm.OpenNodeParameters(node);
@@ -530,7 +539,7 @@ public sealed class GraphCanvas : Control
         }
     }
 
-    /// <summary>在指定屏幕位置弹出所选节点的右键上下文菜单（Send / Delete）。纯展示，动作绑定到 ViewModel 命令。</summary>
+    /// <summary>Show the right-click context menu for the selected node at the given screen position (Send / Delete). Presentation only; actions are bound to ViewModel commands.</summary>
     private void ShowNodeContextMenu(NodeViewModel node)
     {
         var menu = new ContextMenu();
@@ -554,7 +563,7 @@ public sealed class GraphCanvas : Control
         menu.Open(this);
     }
 
-    // ================= 数据变化订阅 =================
+    // ================= Data change subscriptions =================
 
     private void OnNodesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {

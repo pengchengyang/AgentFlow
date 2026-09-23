@@ -1,27 +1,35 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="ConfirmDialogViewModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 namespace AgentFlow.ViewModels;
 
 /// <summary>
-/// 通用确认对话框 ViewModel。点击 Confirm / Cancel（或按 Enter / Esc）分别触发
-/// <see cref="RequestClose"/>（bool：true = 确认，false = 取消）。窗口展示与生命周期由 View 层处理。
+/// Generic confirmation dialog ViewModel. Clicking Confirm / Cancel (or pressing
+/// Enter / Esc) raises <see cref="RequestClose"/> (bool: true = confirm, false = cancel).
+/// Window presentation and lifecycle are handled by the View layer.
 /// </summary>
 public partial class ConfirmDialogViewModel : ViewModelBase
 {
-    /// <summary>窗口标题。</summary>
+    /// <summary>Window title.</summary>
     public string Title { get; }
 
-    /// <summary>提示正文。</summary>
+    /// <summary>Prompt message body.</summary>
     public string Message { get; }
 
-    /// <summary>确认按钮文案。</summary>
+    /// <summary>Confirm button label.</summary>
     public string ConfirmText { get; }
 
-    /// <summary>取消按钮文案。</summary>
+    /// <summary>Cancel button label.</summary>
     public string CancelText { get; }
 
-    /// <summary>关闭请求：true = 确认，false = 取消 / Esc。</summary>
+    /// <summary>Close request: true = confirm, false = cancel / Esc.</summary>
     public event EventHandler<bool>? RequestClose;
 
     public ConfirmDialogViewModel(string title, string message,

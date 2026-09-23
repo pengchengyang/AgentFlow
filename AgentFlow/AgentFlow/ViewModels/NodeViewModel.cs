@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="NodeViewModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Collections.ObjectModel;
 using AgentFlow.Contracts;
 using AgentFlow.Core;
@@ -29,7 +36,7 @@ public static class CategoryColors
 /// <summary>Node parameter (an auto-generated editor row in the property panel).</summary>
 public partial class ParameterViewModel : ViewModelBase
 {
-    /// <summary>契约层参数声明（非 UI 数据）。</summary>
+    /// <summary>The contract-layer parameter declaration (non-UI data).</summary>
     public ParameterDefinition basePin { get; }
 
     public string Key => basePin.Name;
@@ -72,20 +79,21 @@ public partial class ParameterViewModel : ViewModelBase
 }
 
 /// <summary>
-/// Node ViewModel：node body + pin 集合 + 参数编辑器。
-/// 非界面数据（类型/名称/分类/pin/参数）来自 <see cref="NodeModel"/>（包装契约层 <see cref="BaseNode"/>）；
-/// 纯 UI 相关元素（坐标、选中态、层叠顺序、颜色）保留在本层。
+/// Node ViewModel: node body + pin collection + parameter editor.
+/// Non-visual data (type / name / category / pins / parameters) comes from
+/// <see cref="NodeModel"/> (which wraps the contract-layer <see cref="BaseNode"/>);
+/// pure UI concerns (position, selection, z-order, color) stay in this layer.
 /// </summary>
 public partial class NodeViewModel : ViewModelBase
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
 
-    /// <summary>领域模型（包装契约层 BaseNode）。</summary>
+    /// <summary>The domain model (wraps the contract-layer BaseNode).</summary>
     public NodeModel Model { get; }
 
     public string TypeId => Model.TypeId;
 
-    /// <summary>Core 层编辑态节点（持有 BaseNode 实例和运行时 pin）。GUI 不直接操作它的 pin。</summary>
+    /// <summary>The Core-layer editor node (holds the BaseNode instance and runtime pins). The GUI does not operate its pins directly.</summary>
     public EditorNode? Runtime { get; set; }
 
     /// <summary>Canvas title: user-editable instance name falls back to the type display name.</summary>
@@ -173,4 +181,3 @@ public partial class NodeViewModel : ViewModelBase
         RefreshSectionFlags();
     }
 }
-

@@ -1,11 +1,18 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="ConnectionViewModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgentFlow.ViewModels;
 
 /// <summary>
-/// 连线 ViewModel：一条从输出 pin 到输入 pin 的贝塞尔曲线。
-/// 完全自绘，不依赖 Nodify。
+/// Connection ViewModel: a Bezier curve from an output pin to an input pin.
+/// Fully self-drawn; does not depend on Nodify.
 /// </summary>
 public partial class ConnectionViewModel : ViewModelBase
 {
@@ -15,7 +22,7 @@ public partial class ConnectionViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSelected;
 
-    // 贝塞尔曲线四个控制点（Canvas 坐标）
+    // The four Bezier control points (Canvas coordinates)
     [ObservableProperty] private Point _start;
     [ObservableProperty] private Point _p1;
     [ObservableProperty] private Point _p2;
@@ -27,7 +34,7 @@ public partial class ConnectionViewModel : ViewModelBase
         Target = target;
     }
 
-    /// <summary>根据起止点重算贝塞尔控制点（LangFlow 风格平滑曲线）。</summary>
+    /// <summary>Recompute the Bezier control points from the endpoints (LangFlow-style smooth curve).</summary>
     public void UpdateGeometry(Point start, Point end)
     {
         Start = start;

@@ -1,15 +1,23 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="NodeModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using AgentFlow.Contracts;
 
 namespace AgentFlow.Models;
 
 /// <summary>
-/// Node 领域模型：包装契约层 <see cref="BaseNode"/>，向 UI 只读暴露节点的非界面数据
-/// （类型 ID / 显示名 / 分类 / 实例 ID / 输入输出 pin / 参数）。
-/// 纯 UI 相关元素（如画布坐标、选中态、层叠顺序）保留在 View/ViewModel 层。
+/// Node domain model: wraps the contract-layer <see cref="BaseNode"/> and exposes
+/// non-visual node data (type ID / display name / category / instance ID / input-output
+/// pins / parameters) to the UI in a read-only fashion. Pure UI concerns (canvas
+/// position, selection state, z-order) stay in the View / ViewModel layer.
 /// </summary>
 public sealed class NodeModel
 {
-    /// <summary>底层契约节点实例。</summary>
+    /// <summary>The underlying contract node instance.</summary>
     public BaseNode Node { get; }
 
     public string TypeId => Node.TypeId;

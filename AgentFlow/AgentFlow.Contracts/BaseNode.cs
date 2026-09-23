@@ -1,4 +1,12 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="BaseNode.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Reflection;
+using System.Text.Json.Nodes;
 
 namespace AgentFlow.Contracts;
 
@@ -16,11 +24,22 @@ public abstract class BaseNode
     private readonly List<BasePin> _outputPins = new();
     private string? _category;
 
+    protected BaseNode()
+    {
+        Uuid = Guid.NewGuid().ToString("N");
+    }
+
     /// <summary>Node type id (must match NodeAttribute.TypeId).</summary>
     public abstract string TypeId { get; }
 
     /// <summary>Unique id of this node instance. Assigned/managed by AgentFlow.Core.</summary>
     public int InstanceId { get; set; }
+
+    /// <summary>
+    /// Stable unique identifier of this node instance across save / load cycles.
+    /// The base constructor generates it; <see cref="DeserializeParameters"/> restores it.
+    /// </summary>
+    public string Uuid { get; protected set; }
 
     /// <summary>Display name in the UI.</summary>
     public abstract string DisplayName { get; }
@@ -55,6 +74,52 @@ public abstract class BaseNode
 
     /// <summary>Apply parameters (from JSON deserialization / property panel).</summary>
     public abstract void Configure(IReadOnlyDictionary<string, object?> parameters);
+
+    /// <summary>
+    /// Serialize this node's logical parameters into the given JSON object.
+    /// The base implementation writes the mandatory instance identity
+    /// (<see cref="Uuid"/>, <see cref="TypeId"/>, <see cref="InstanceId"/>) first,
+    /// then invokes <see cref="OnSerializeParameters"/> so subclasses can append
+    /// node-specific data. Subclasses must not need to know about UI state.
+    /// </summary>
+    public void SerializeParameters(JsonObject json)
+    {
+        json["uuid"] = Uuid;
+        json["typeId"] = TypeId;
+        json["instanceId"] = InstanceId;
+        OnSerializeParameters(json);
+    }
+
+    /// <summary>
+    /// Restore this node's logical parameters from the given JSON object.
+    /// The base implementation restores the mandatory identity fields, then
+    /// invokes <see cref="OnDeserializeParameters"/> so subclasses can read
+    /// their own data. Subclass overrides run after the base identity is restored.
+    /// </summary>
+    public void DeserializeParameters(JsonObject json)
+    {
+        var uuid = json["uuid"]?.GetValue<string>();
+        if (!string.IsNullOrEmpty(uuid))
+            Uuid = uuid;
+        var instanceId = json["instanceId"]?.GetValue<int>();
+        if (instanceId.HasValue)
+            InstanceId = instanceId.Value;
+        OnDeserializeParameters(json);
+    }
+
+    /// <summary>
+    /// Hook for subclasses to append node-specific logical data to the
+    /// serialization JSON. Called by <see cref="SerializeParameters"/> after the
+    /// base identity fields are written. Default no-op.
+    /// </summary>
+    protected virtual void OnSerializeParameters(JsonObject json) { }
+
+    /// <summary>
+    /// Hook for subclasses to read node-specific logical data from the
+    /// deserialization JSON. Called by <see cref="DeserializeParameters"/> after
+    /// the base identity fields are restored. Default no-op.
+    /// </summary>
+    protected virtual void OnDeserializeParameters(JsonObject json) { }
 
     /// <summary>Execute the node logic.</summary>
     public abstract Task ExecuteAsync(INodeContext context, CancellationToken cancellationToken = default);

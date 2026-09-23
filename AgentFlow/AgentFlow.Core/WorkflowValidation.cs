@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="WorkflowValidation.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
 
 namespace AgentFlow.Core;
 

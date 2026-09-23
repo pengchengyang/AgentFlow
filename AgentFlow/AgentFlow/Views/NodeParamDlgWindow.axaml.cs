@@ -1,11 +1,18 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="NodeParamDlgWindow.axaml.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using Avalonia.Controls;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
 
 /// <summary>
-/// 参数配置对话框窗口。仅负责展示与窗口生命周期：
-/// 监听 ViewModel 的 RequestClose 事件来关闭窗口，不包含任何业务逻辑。
+/// Node parameter dialog window. Presentation and window lifecycle only:
+/// listens to the ViewModel's RequestClose event to close the window; no business logic.
 /// </summary>
 public partial class NodeParamDlgWindow : Window
 {

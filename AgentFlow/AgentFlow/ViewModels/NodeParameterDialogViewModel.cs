@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="NodeParameterDialogViewModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -5,25 +12,26 @@ using CommunityToolkit.Mvvm.Input;
 namespace AgentFlow.ViewModels;
 
 /// <summary>
-/// 双击节点弹出的“参数配置”对话框 ViewModel。
-/// 拥有参数集合、确认/取消命令，并在确认时把编辑后的值写回节点。
-/// 只负责业务/状态；窗口的展示与生命周期由 View 层处理。
+/// The "parameter configuration" dialog ViewModel shown when double-clicking a node.
+/// Owns the parameter collection, confirm / cancel commands, and writes edited values
+/// back to the node on confirm. Only handles business / state; window presentation and
+/// lifecycle are handled by the View layer.
 /// </summary>
 public partial class NodeParameterDialogViewModel : ViewModelBase
 {
-    /// <summary>被编辑的目标节点。</summary>
+    /// <summary>The target node being edited.</summary>
     public NodeViewModel Node { get; }
 
-    /// <summary>对话框标题。</summary>
+    /// <summary>Dialog title.</summary>
     public string Title => Node.Title;
 
-    /// <summary>可编辑的参数行集合（编辑的是副本，确认才写回）。</summary>
+    /// <summary>The editable parameter row collection (edits a copy; values are written back only on confirm).</summary>
     public ObservableCollection<ParameterEditRow> Parameters { get; } = new();
 
-    /// <summary>是否没有任何参数（用于显示空状态提示）。</summary>
+    /// <summary>Whether there are no parameters (used to show an empty-state hint).</summary>
     public bool HasNoParameters => Parameters.Count == 0;
 
-    /// <summary>请求关闭窗口：参数 true=确认，false=取消。由 View 层监听执行 Close。</summary>
+    /// <summary>Request close: parameter true = confirm, false = cancel. The View layer listens and calls Close.</summary>
     public event EventHandler<bool>? RequestClose;
 
     public NodeParameterDialogViewModel(NodeViewModel node)
@@ -33,7 +41,7 @@ public partial class NodeParameterDialogViewModel : ViewModelBase
             Parameters.Add(new ParameterEditRow(p.Key, p.Label, p.Value, p.TypeName));
     }
 
-    /// <summary>确认：把编辑后的值写回节点参数，然后请求关闭。</summary>
+    /// <summary>Confirm: write the edited values back to the node parameters, then request close.</summary>
     [RelayCommand]
     private void Confirm()
     {
@@ -46,12 +54,12 @@ public partial class NodeParameterDialogViewModel : ViewModelBase
         RequestClose?.Invoke(this, true);
     }
 
-    /// <summary>取消：不写回任何值，直接请求关闭。</summary>
+    /// <summary>Cancel: do not write back any values; request close directly.</summary>
     [RelayCommand]
     private void Cancel() => RequestClose?.Invoke(this, false);
 }
 
-/// <summary>对话框里的一行参数编辑项（Key/Label 只读，Value 可绑定编辑）。</summary>
+/// <summary>A single parameter edit row in the dialog (Key / Label read-only; Value bound for editing).</summary>
 public partial class ParameterEditRow : ViewModelBase
 {
     public string Key { get; }

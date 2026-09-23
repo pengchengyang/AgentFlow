@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="RuntimePins.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using AgentFlow.Contracts;
 
 namespace AgentFlow.Core;
@@ -57,13 +64,14 @@ public sealed class RuntimeInputPin : RuntimePin
     /// </summary>
     public void Receive(object? value)
     {
-        // 1. 先跑 pin 级自定义钩子（校验/清洗/日志/事件唤醒）
+        // 1. Run the pin-level custom hook (validation / sanitisation / logging / event wake-up)
         OnReceive(value);
-        // 2. 存值供节点读取
+        // 2. Store the value for the node to read
         Value = value;
-        // 3. 通知引擎层
+        // 3. Notify the engine layer
         ValueReceived?.Invoke(value);
-        // 4. 把数据连同输入 pin 定义交给拥有该 pin 的节点，实现节点间直接通信
+        // 4. Hand the data to the owning node together with the input pin definition,
+        //    enabling direct node-to-node communication
         if (Owner is not null && _context is not null)
             Owner.Receive(_context, this, value);
     }
@@ -116,10 +124,10 @@ public sealed class RuntimeOutputPin : RuntimePin
             throw new InvalidOperationException(
                 $"Output pin {Name} is {DataType.Name}, cannot send {value.GetType().Name}");
 
-        // 1. 先跑 pin 级自定义钩子（序列化/脱敏/日志）
+        // 1. Run the pin-level custom hook (serialisation / masking / logging)
         OnSend(value);
 
-        // 2. 推给每个下游输入 pin
+        // 2. Push to every downstream input pin
         foreach (var target in _targets)
             target.Receive(value);
     }

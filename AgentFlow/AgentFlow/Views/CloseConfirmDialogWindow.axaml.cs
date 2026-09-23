@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------
-// <copyright company="Rolling Wireless SARL" file="LoginDialogWindow.axaml.cs">
+// <copyright company="Rolling Wireless SARL" file="CloseConfirmDialogWindow.axaml.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
 // </copyright>
@@ -11,12 +11,13 @@ using AgentFlow.ViewModels;
 namespace AgentFlow.Views;
 
 /// <summary>
-/// Login dialog window. Presentation and window lifecycle only: listens to the
-/// ViewModel's RequestClose event to close the window; no business logic.
+/// Close-confirmation dialog window. Presentation and window lifecycle only:
+/// listens to the ViewModel's <see cref="CloseConfirmDialogViewModel.RequestClose"/>
+/// event to close the window and return the chosen result (0=Cancel, 1=Discard, 2=Save&Exit).
 /// </summary>
-public partial class LoginDialogWindow : Window
+public partial class CloseConfirmDialogWindow : Window
 {
-    public LoginDialogWindow()
+    public CloseConfirmDialogWindow()
     {
         InitializeComponent();
         Opened += OnOpened;
@@ -24,14 +25,14 @@ public partial class LoginDialogWindow : Window
 
     private void OnOpened(object? sender, System.EventArgs e)
     {
-        if (DataContext is LoginDialogViewModel vm)
+        if (DataContext is CloseConfirmDialogViewModel vm)
             vm.RequestClose += OnRequestClose;
     }
 
-    private void OnRequestClose(object? sender, bool isAdmin)
+    private void OnRequestClose(object? sender, int result)
     {
-        if (DataContext is LoginDialogViewModel vm)
+        if (DataContext is CloseConfirmDialogViewModel vm)
             vm.RequestClose -= OnRequestClose;
-        Close(isAdmin);
+        Close(result);
     }
 }

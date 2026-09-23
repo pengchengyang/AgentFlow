@@ -1,5 +1,13 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="AmplifierNode.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
+using System.Text.Json.Nodes;
 
 namespace Nodes.Amplifier;
 
@@ -34,6 +42,18 @@ public sealed class AmplifierNode : BaseNode
     {
         if (parameters.TryGetValue("Gain", out var v) && v is not null)
             _gain = Convert.ToDouble(v);
+    }
+
+    /// <summary>Append this node's own logical field to the serialization JSON.</summary>
+    protected override void OnSerializeParameters(JsonObject json)
+    {
+        json["gain"] = _gain;
+    }
+
+    /// <summary>Restore this node's own logical field from the deserialization JSON.</summary>
+    protected override void OnDeserializeParameters(JsonObject json)
+    {
+        _gain = json["gain"]?.GetValue<double>() ?? _gain;
     }
 
     public override Task ExecuteAsync(INodeContext context, CancellationToken ct = default)

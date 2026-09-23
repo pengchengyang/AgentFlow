@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="EditorGraph.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using AgentFlow.Contracts;
 using ContractPinDirection = AgentFlow.Contracts.PinDirection;
 using Microsoft.Extensions.Logging;
@@ -5,9 +12,10 @@ using Microsoft.Extensions.Logging;
 namespace AgentFlow.Core;
 
 /// <summary>
-/// 编辑态图节点：持有一个 BaseNode 实例 + 它的所有运行时 pin（输入/输出）。
-/// 连接关系由 <see cref="RuntimeOutputPin.Targets"/> 直接维护——
-/// 输出 pin 保存输入 pin 引用，数据直接 Send→Receive 穿透。
+/// An editor-time graph node: holds a <see cref="BaseNode"/> instance and all of
+/// its runtime pins (inputs / outputs). Wiring is maintained directly on
+/// <see cref="RuntimeOutputPin.Targets"/> — the output pin keeps references to the
+/// connected input pins, and data flows through Send → Receive.
 /// </summary>
 public sealed class EditorNode
 {
@@ -25,16 +33,16 @@ public sealed class EditorNode
     public double X { get; set; }
     public double Y { get; set; }
 
-    /// <summary>节点运行时实例（契约实现）。</summary>
+    /// <summary>The runtime node instance (a contract implementation).</summary>
     public BaseNode RuntimeNode { get; }
 
     /// <summary>Current parameter values owned by the editor graph (persisted to JSON).</summary>
     public Dictionary<string, object?> Parameters { get; set; } = new();
 
-    /// <summary>所有输入 pin（按名称索引）。</summary>
+    /// <summary>All input pins, indexed by name.</summary>
     public IReadOnlyDictionary<string, RuntimeInputPin> Inputs { get; }
 
-    /// <summary>所有输出 pin（按名称索引）。</summary>
+    /// <summary>All output pins, indexed by name.</summary>
     public IReadOnlyDictionary<string, RuntimeOutputPin> Outputs { get; }
 
     public EditorNode(
@@ -72,7 +80,7 @@ public sealed class EditorNode
     }
 }
 
-/// <summary>编辑态连接：一条从输出 pin 到输入 pin 的线。</summary>
+/// <summary>An editor-time connection: a wire from an output pin to an input pin.</summary>
 public sealed class EditorConnection
 {
     public EditorNode FromNode { get; }
@@ -93,9 +101,10 @@ public sealed class EditorConnection
 }
 
 /// <summary>
-/// 编辑态图管理器：GUI 层只调用这里的方法增删节点/连线/保存/加载，
-/// 不自己维护 pin 间引用。连接建立后，输出 pin 直接持有输入 pin 引用，
-/// 运行时 Send/Receive 沿引用直接穿透。
+/// Editor-time graph manager: the GUI layer only calls methods here to add/remove
+/// nodes, wires, save and load; it does not manage pin references itself. Once a
+/// connection is established, the output pin directly holds references to the input
+/// pins, and Send/Receive data flows through those references at runtime.
 /// </summary>
 public sealed class EditorGraph
 {
@@ -107,7 +116,7 @@ public sealed class EditorGraph
     public List<EditorNode> Nodes { get; } = new();
     public List<EditorConnection> Connections { get; } = new();
 
-    /// <summary>连接建立/断开/节点增删/节点属性变更时触发（GUI 层订阅以刷新 IsConnected 等外观）。</summary>
+    /// <summary>Raised on connect / disconnect / node add-remove / property change so the GUI can refresh visuals such as IsConnected.</summary>
     public event Action? GraphChanged;
 
     public EditorGraph(NodeRegistry registry, ILoggerFactory loggerFactory, PluginLoader pluginLoader, IGuiBridge gui)
@@ -118,7 +127,7 @@ public sealed class EditorGraph
         _gui = gui;
     }
 
-    /// <summary>从节点类型创建一个编辑态节点实例。保留 <paramref name="id"/> 以支持加载时 ID 稳定。</summary>
+    /// <summary>Create an editor node instance from a node type. <paramref name="id"/> is preserved so IDs stay stable on load.</summary>
     public EditorNode AddNode(
         BaseNode instance,
         double x,
@@ -147,7 +156,7 @@ public sealed class EditorGraph
         return node;
     }
 
-    /// <summary>建立一条连接：输出 pin 保存输入 pin 引用。</summary>
+    /// <summary>Establish a connection: the output pin saves a reference to the input pin.</summary>
     public void Connect(EditorNode fromNode, string fromPin, EditorNode toNode, string toPin)
     {
         if (!fromNode.Outputs.TryGetValue(fromPin, out var output))
@@ -159,7 +168,7 @@ public sealed class EditorGraph
                 ReferenceEquals(c.ToNode, toNode) && c.ToPin == toPin))
             throw new InvalidOperationException($"Input pin {toNode.TypeId}.{toPin} is already connected.");
 
-        // 类型检查 + 建立引用（RuntimeOutputPin.Connect 内部做类型校验并加入 _targets）
+        // Type check + reference (RuntimeOutputPin.Connect validates the type and adds to _targets)
         output.Connect(input);
 
         Connections.Add(new EditorConnection(fromNode, fromPin, toNode, toPin));
@@ -168,7 +177,7 @@ public sealed class EditorGraph
         GraphChanged?.Invoke();
     }
 
-    /// <summary>删除一条连接：输出 pin 移除对输入 pin 的引用。</summary>
+    /// <summary>Remove a connection: the output pin drops its reference to the input pin.</summary>
     public void Disconnect(EditorConnection conn)
     {
         var output = conn.SourcePin;
@@ -182,7 +191,7 @@ public sealed class EditorGraph
         GraphChanged?.Invoke();
     }
 
-    /// <summary>删除节点及其所有连线。</summary>
+    /// <summary>Remove a node and all of its wires.</summary>
     public void RemoveNode(EditorNode node)
     {
         var related = Connections
@@ -197,7 +206,7 @@ public sealed class EditorGraph
         GraphChanged?.Invoke();
     }
 
-    /// <summary>同步编辑态节点属性（名称/优先级/坐标/参数），供 UI 在保存前调用。</summary>
+    /// <summary>Sync editor-node properties (name / priority / position / parameters) so the UI can call this before save.</summary>
     public void UpdateNode(
         EditorNode node,
         string? name,
@@ -214,7 +223,7 @@ public sealed class EditorGraph
         GraphChanged?.Invoke();
     }
 
-    /// <summary>把编辑态图导出为可序列化/可执行的工作流图。</summary>
+    /// <summary>Export the editor graph to a serializable / executable workflow graph.</summary>
     public WorkflowGraph ToWorkflowGraph()
     {
         var graph = new WorkflowGraph();
@@ -246,7 +255,7 @@ public sealed class EditorGraph
         return graph;
     }
 
-    /// <summary>清空整个图（加载新工作流前调用）。</summary>
+    /// <summary>Clear the whole graph (call before loading a new workflow).</summary>
     public void Clear()
     {
         foreach (var conn in Connections.ToList())
@@ -254,14 +263,17 @@ public sealed class EditorGraph
 
         Connections.Clear();
         Nodes.Clear();
-        // 让 PluginLoader 容器成为实例唯一管理源：清图时一并清空其实例。
+        // Let the PluginLoader container be the single source of node instances: clear them here too.
         _pluginLoader.ClearInstances();
         GraphChanged?.Invoke();
     }
+
     /// <summary>
-    /// 让某个编辑态节点立即执行一次并沿已建立的连线向下游推送数据（上下文菜单的 Send）。
-    /// 使用该节点已接线的运行时 pin：<see cref="INodeContext.GetInput{T}"/> 读取输入 pin 的
-    /// 最新值，<see cref="INodeContext.SetOutput"/> 调用输出 pin 的 Send 推给下游输入 pin。
+    /// Execute an editor node once and push data downstream along the existing wires
+    /// (the context-menu "Send"). Uses the node's wired runtime pins:
+    /// <see cref="INodeContext.GetInput{T}"/> reads the latest value of an input pin,
+    /// and <see cref="INodeContext.SetOutput"/> calls the output pin's Send to push
+    /// data to downstream input pins.
     /// </summary>
     public async Task SendAsync(EditorNode node, CancellationToken ct = default)
     {
@@ -271,7 +283,7 @@ public sealed class EditorGraph
         _logger.LogInformation("EditorGraph: sent node {Id} ({TypeId})", node.Id, node.TypeId);
     }
 
-    /// <summary>编辑态 Send 用的节点上下文：绑定到该节点已接线的运行时 pin。</summary>
+    /// <summary>The node context used by editor-time Send: bound to this node's wired runtime pins.</summary>
     private sealed class EditorNodeContext : INodeContext
     {
         private readonly EditorNode _node;

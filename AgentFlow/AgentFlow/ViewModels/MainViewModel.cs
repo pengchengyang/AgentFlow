@@ -1,3 +1,10 @@
+// -----------------------------------------------------------------------
+// <copyright company="Rolling Wireless SARL" file="MainViewModel.cs">
+//     Copyright (c) Rolling Wireless SARL. All rights reserved.
+//     Author: Damon Yang (damon.yang@rollingwireless.com)
+// </copyright>
+// -----------------------------------------------------------------------
+
 using System.Collections.ObjectModel;
 using AgentFlow.Models;
 using AgentFlow.Broadcast;
@@ -38,7 +45,7 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
     public ObservableCollection<string> Logs { get; } = new();
 
-    // ---- Dedicated view-models (1 view &lt;-&gt; 1 view-model) ----
+    // ---- Dedicated view-models (1 view <-> 1 view-model) ----
     public TopBarViewModel TopBar { get; }
     public NodeLibraryViewModel NodeLibrary { get; }
     public LogPanelViewModel LogPanel { get; }
@@ -50,6 +57,10 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _isRunning;
+
+    /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
+    [ObservableProperty]
+    private bool _isDirty;
 
     [ObservableProperty]
     private string _statusText = Loc.Instance["Ready"];
@@ -98,8 +109,8 @@ public partial class MainViewModel : ViewModelBase
         LoadPlugins();
 
         // Auto-persist graph on every structural change (add/remove node, wire, or drag move).
-        Nodes.CollectionChanged += (_, _) => AutoSave();
-        Connections.CollectionChanged += (_, _) => AutoSave();
+        Nodes.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); };
+        Connections.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); };
 
         // Restore the previous graph on startup.
         AutoLoad();
@@ -158,10 +169,10 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Create a node from a palette item at a specific graph-space location (drag &amp; drop).</summary>
     public void AddNodeAt(PaletteItem item, Point graphLocation)
     {
-        // 创建契约层实例，并让 NodeModel / EditorGraph 共享同一个 BaseNode 实例。
+        // Create a contract-layer instance; NodeModel and EditorGraph share the same BaseNode instance.
         var instance = _pluginLoader.CreateNodeInstance(item.TypeId);
         var node = new NodeViewModel(new NodeModel(instance)) { Location = graphLocation };
-        // Core 层用同一个实例构建运行时节点（持有 BaseNode + 运行时 pin）
+        // The Core layer builds a runtime node from the same instance (holds BaseNode + runtime pins)
         node.Runtime = _graph.AddNode(instance, graphLocation.X, graphLocation.Y);
         node.Id = node.Runtime.Id;
         _nodeSpawnIndex++;
@@ -195,11 +206,14 @@ public partial class MainViewModel : ViewModelBase
                 SelectedNode = node;
             // Persist when the node is dragged to a new location.
             if (e.PropertyName == nameof(NodeViewModel.Location))
+            {
+                IsDirty = true;
                 AutoSave();
+            }
         };
     }
 
-    /// <summary>Core 层连接/断开后，刷新所有 pin 的 IsConnected 外观。</summary>
+    /// <summary>After the Core layer connects / disconnects, refresh every pin's IsConnected visual state.</summary>
     private void RefreshPinConnections()
     {
         foreach (var node in Nodes)
@@ -223,7 +237,11 @@ public partial class MainViewModel : ViewModelBase
     private void AutoSave()
     {
         if (_isLoading) return;
-        try { ToGraph().Save(WorkflowPath); }
+        try
+        {
+            SyncGraphState();
+            GraphSerializer.Save(_graph, WorkflowPath);
+        }
         catch { /* best-effort persistence */ }
     }
 
@@ -234,7 +252,8 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             _isLoading = true;
-            LoadGraph(WorkflowGraph.Load(WorkflowPath));
+            var doc = GraphDeserializer.Load(WorkflowPath);
+            LoadGraphFromDocument(doc);
             StatusText = $"{L["LoadedFrom"]}: {WorkflowPath}";
         }
         catch (Exception ex)
@@ -277,7 +296,7 @@ public partial class MainViewModel : ViewModelBase
         var conn = Connections.FirstOrDefault(c => ReferenceEquals(c.Target, input));
         if (conn is null) return;
 
-        // 断开 input 对应的上游输出 pin 的 ConnectedInput 引用
+        // Clear the upstream output pin's ConnectedInput reference for this input.
         if (conn.Source.Node.Runtime?.Outputs.TryGetValue(conn.Source.Name, out var op) == true)
             op.ConnectedInput = null;
 
@@ -285,19 +304,20 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 在 Core 层建立连接：输出 pin 保存输入 pin 引用。
-    /// GUI 只负责加一条视觉连线。
+    /// Establish the connection in the Core layer: the output pin saves a reference to the input pin.
+    /// The GUI only adds a visual wire.
     /// </summary>
     private void Establish(PinViewModel source, PinViewModel target)
     {
         _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
-        // 让 source 的真实输出 pin 记录下已连接的下游输入 pin 引用（target 中的真实 BasePin）。
+        // Let the source's real output pin record the connected downstream input pin reference
+        // (the real BasePin inside target).
         source.Node.Runtime!.Outputs[source.Name].ConnectedInput =
             target.Node.Runtime!.Inputs[target.Name];
         Connections.Add(new ConnectionViewModel(source, target));
     }
 
-    /// <summary>在 Core 层移除连接并删视觉线。</summary>
+    /// <summary>Remove the connection in the Core layer and delete the visual wire.</summary>
     private void Teardown(ConnectionViewModel connection)
     {
         var conn = _graph.Connections.FirstOrDefault(c =>
@@ -341,7 +361,7 @@ public partial class MainViewModel : ViewModelBase
             SelectedConnections.Remove(c);
             Teardown(c);
         }
-        // 删除所有被选中的节点（支持多选）。
+        // Delete all selected nodes (multi-select supported).
         var selected = Nodes.Where(n => n.IsSelected).ToList();
         foreach (var n in selected)
             RemoveNode(n);
@@ -351,22 +371,22 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void RemoveNode(NodeViewModel node)
     {
-        // 1. 同步从 PluginLoader 实例容器中移除本节点实例
+        // 1. Remove the node instance from the PluginLoader container.
         if (node.Runtime?.RuntimeNode is { } instance)
             _pluginLoader.DeleteNodeInstance(instance);
 
-        // 2. 所有上游输出 pin 连到本节点任一输入 pin 的，其 ConnectedInput 置 null
+        // 2. Clear ConnectedInput on every upstream output pin wired to one of this node's inputs.
         foreach (var c in Connections.Where(c => ReferenceEquals(c.Target.Node, node)))
         {
             if (c.Source.Node.Runtime?.Outputs.TryGetValue(c.Source.Name, out var op) == true)
                 op.ConnectedInput = null;
         }
 
-        // Core 层删除节点及其所有连线（输出 pin 自动断开对端引用）
+        // The Core layer removes the node and all its wires (output pins auto-disconnect their references).
         if (node.Runtime is not null)
             _graph.RemoveNode(node.Runtime);
 
-        // 同步删视觉连线
+        // Remove visual wires.
         var related = Connections
             .Where(c => ReferenceEquals(c.Source.Node, node) || ReferenceEquals(c.Target.Node, node))
             .ToList();
@@ -417,14 +437,14 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Raised when a node parameter dialog should be shown (View layer listens to open a window).</summary>
     public event EventHandler<NodeParameterDialogViewModel>? DialogRequested;
 
-    /// <summary>双击节点：创建参数配置对话框 ViewModel 并请求 View 层弹出窗口。</summary>
+    /// <summary>Double-click a node: create the parameter dialog ViewModel and ask the View layer to show it.</summary>
     [RelayCommand]
     private void OpenNodeParameters(NodeViewModel? node)
     {
         if (node is null) return;
         DialogRequested?.Invoke(this, new NodeParameterDialogViewModel(node));
     }
-    /// <summary>上下文菜单 Send：让指定节点立即执行一次并向下游推送数据。</summary>
+    /// <summary>Context-menu Send: execute the given node once and push data downstream.</summary>
     [RelayCommand]
     private async Task SendNode(NodeViewModel node)
     {
@@ -448,7 +468,7 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Raised when the clear-canvas confirmation dialog should be shown (View layer listens to open a window).</summary>
     public event EventHandler<ConfirmDialogViewModel>? ClearRequested;
 
-    /// <summary>清空整个画布：先弹出确认框，仅确认后删除所有节点与连线并清空 Core 层（含 PluginLoader 实例容器）的底层数据。</summary>
+    /// <summary>Clear the whole canvas: show a confirmation first; only on confirm delete all nodes and wires and clear the Core layer (including the PluginLoader instance container).</summary>
     [RelayCommand]
     private void ClearGraph()
     {
@@ -470,7 +490,11 @@ public partial class MainViewModel : ViewModelBase
 
     // ---------- Graph <-> ViewModel mapping ----------
 
-    public WorkflowGraph ToGraph()
+    /// <summary>
+    /// Push current UI state (position, name, priority, property-panel values) from the
+    /// NodeViewModels into the Core EditorGraph so the serializer / engine sees the latest state.
+    /// </summary>
+    private void SyncGraphState()
     {
         foreach (var n in Nodes)
         {
@@ -478,28 +502,55 @@ public partial class MainViewModel : ViewModelBase
                 _graph.UpdateNode(n.Runtime, n.Name, n.Priority, n.Location.X, n.Location.Y,
                     n.Parameters.ToDictionary(p => p.Key, p => p.ToValue()));
         }
+    }
+
+    public WorkflowGraph ToGraph()
+    {
+        SyncGraphState();
         return _graph.ToWorkflowGraph();
     }
 
-    public void LoadGraph(WorkflowGraph graph)
+    /// <summary>
+    /// Rebuild the canvas and Core graph from a layered <see cref="GraphDocument"/>.
+    /// For every node the contract-layer <see cref="Contracts.BaseNode.DeserializeParameters"/>
+    /// restores the logical / runtime state; UI state is applied around it.
+    /// </summary>
+    public void LoadGraphFromDocument(GraphDocument doc)
     {
         Nodes.Clear();
         Connections.Clear();
         _graph.Clear();
 
         var map = new Dictionary<string, NodeViewModel>();
-        foreach (var spec in graph.Nodes)
+        foreach (var spec in doc.Nodes)
         {
-            // 创建契约层实例，并让 NodeModel / EditorGraph 共享同一个 BaseNode 实例。
+            // Create a contract-layer instance; NodeModel and EditorGraph share the same instance.
             var instance = _pluginLoader.CreateNodeInstance(spec.TypeId);
+
+            // Restore logical / runtime parameters via the Contracts deserializer
+            // (base restores uuid / typeId / instanceId, then the subclass hook restores its fields).
+            if (spec.Parameters is not null)
+                instance.DeserializeParameters(spec.Parameters);
+
             var node = new NodeViewModel(new NodeModel(instance))
             {
                 Name = spec.Name ?? "",
                 Priority = spec.Priority,
                 Location = new Point(spec.X, spec.Y)
             };
-            node.ApplyParameterValues(spec.Parameters);
-            // Core 层用同一个实例构建运行时节点
+
+            // Reflect restored logical values into the property panel (best effort).
+            var restored = new Dictionary<string, object?>();
+            foreach (var p in instance.Parameters)
+            {
+                if (spec.Parameters is not null && spec.Parameters[p.Name] is { } jv)
+                    restored[p.Name] = jv.GetValueKind() == System.Text.Json.JsonValueKind.String
+                        ? jv.GetValue<string>()
+                        : (object?)jv;
+            }
+            node.ApplyParameterValues(restored);
+
+            // The Core layer builds a runtime node from the same instance.
             node.Runtime = _graph.AddNode(instance, spec.X, spec.Y,
                 node.Parameters.ToDictionary(p => p.Key, p => p.ToValue()),
                 spec.Id, spec.Name, spec.Priority);
@@ -509,7 +560,7 @@ public partial class MainViewModel : ViewModelBase
             map[spec.Id] = node;
         }
 
-        foreach (var spec in graph.Connections)
+        foreach (var spec in doc.Connections)
         {
             var source = map[spec.FromNode].Outputs.First(p => p.Name == spec.FromPin);
             var target = map[spec.ToNode].Inputs.First(p => p.Name == spec.ToPin);
@@ -565,8 +616,51 @@ public partial class MainViewModel : ViewModelBase
     private void Save()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "workflow.json");
-        ToGraph().Save(path);
+        SyncGraphState();
+        GraphSerializer.Save(_graph, path);
         StatusText = $"{L["SavedTo"]}: {path}";
+    }
+
+    /// <summary>Raised when the user clicks the Save-As button; the View layer opens a file picker.</summary>
+    public event EventHandler<string>? SaveAsRequested;
+
+    /// <summary>Save-As: raise an event so the View layer can show a native file-picker dialog.</summary>
+    [RelayCommand]
+    private void SaveAs()
+    {
+        var suggested = $"AgentFlow_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.json";
+        SaveAsRequested?.Invoke(this, suggested);
+    }
+
+    /// <summary>
+    /// Persist the current graph to an explicit path chosen by the user.
+    /// Called by the View layer after the file picker returns a valid path.
+    /// </summary>
+    public void SaveToPath(string path)
+    {
+        SyncGraphState();
+        GraphSerializer.Save(_graph, path);
+        IsDirty = false;
+        StatusText = $"{L["SavedTo"]}: {path}";
+    }
+
+    /// <summary>Raised when the user clicks the Open button; the View layer opens a file picker.</summary>
+    public event EventHandler? OpenRequested;
+
+    /// <summary>Open: raise an event so the View layer can show a native file-open picker.</summary>
+    [RelayCommand]
+    private void Open() => OpenRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// Load a workflow from an explicit path chosen by the user.
+    /// Called by the View layer after the file picker returns a valid path.
+    /// </summary>
+    public void LoadFromPath(string path)
+    {
+        var doc = GraphDeserializer.Load(path);
+        LoadGraphFromDocument(doc);
+        IsDirty = false;
+        StatusText = $"{L["LoadedFrom"]}: {path}";
     }
 
     [RelayCommand]
@@ -580,7 +674,7 @@ public partial class MainViewModel : ViewModelBase
         }
         try
         {
-            LoadGraph(WorkflowGraph.Load(path));
+            LoadGraphFromDocument(GraphDeserializer.Load(path));
             StatusText = $"{L["LoadedFrom"]}: {path}";
         }
         catch (Exception ex)
@@ -590,13 +684,3 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
