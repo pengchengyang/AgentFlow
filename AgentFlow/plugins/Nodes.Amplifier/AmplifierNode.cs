@@ -16,18 +16,14 @@ public sealed class AmplifierNode : BaseNode
     public override string TypeId => "nodes.amplifier";
     public override string DisplayName => "Amplifier";
 
-    public override IReadOnlyList<PinDefinition> InputPins { get; } =
-    [
-        new("In", typeof(double), PinDirection.Input)
-    ];
-
-    public override IReadOnlyList<PinDefinition> OutputPins { get; } =
-    [
-        new("Out1", typeof(double), PinDirection.Output),
-        new("Out2", typeof(double), PinDirection.Output),
-        new("Out3", typeof(double), PinDirection.Output),
-        new("Out4", typeof(double), PinDirection.Output)
-    ];
+    public AmplifierNode()
+    {
+        AddInputPin(new("In", typeof(double), PinDirection.Input));
+        AddOutputPin(new("Out1", typeof(double), PinDirection.Output));
+        AddOutputPin(new("Out2", typeof(double), PinDirection.Output));
+        AddOutputPin(new("Out3", typeof(double), PinDirection.Output));
+        AddOutputPin(new("Out4", typeof(double), PinDirection.Output));
+    }
 
     public override IReadOnlyList<ParameterDefinition> Parameters =>
     [

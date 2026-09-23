@@ -7,9 +7,9 @@ namespace AgentFlow.Views;
 /// 参数配置对话框窗口。仅负责展示与窗口生命周期：
 /// 监听 ViewModel 的 RequestClose 事件来关闭窗口，不包含任何业务逻辑。
 /// </summary>
-public partial class NodeParameterDialogWindow : Window
+public partial class NodeParamDlgWindow : Window
 {
-    public NodeParameterDialogWindow()
+    public NodeParamDlgWindow()
     {
         InitializeComponent();
         Opened += OnOpened;

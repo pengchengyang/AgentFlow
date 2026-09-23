@@ -41,7 +41,7 @@ public sealed class WorkflowEngine
         }
 
         // 1. Instantiate all nodes and runtime pins, build execution contexts.
-        var instances = new Dictionary<string, INode>();
+        var instances = new Dictionary<string, BaseNode>();
         var contexts = new Dictionary<string, NodeContext>();
         var lifecycle = new Dictionary<string, ILifecycleNode>();
 
@@ -172,7 +172,7 @@ public sealed class WorkflowEngine
         public ILogger Logger { get; }
         public IGuiBridge Gui { get; }
 
-        public NodeContext(string nodeId, INode node, ILogger logger, IGuiBridge gui)
+        public NodeContext(string nodeId, BaseNode node, ILogger logger, IGuiBridge gui)
         {
             _nodeId = nodeId;
             Logger = logger;

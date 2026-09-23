@@ -6,20 +6,20 @@ using Microsoft.Extensions.Logging;
 namespace AgentFlow.Core;
 
 /// <summary>
-/// Plugin loader: scans a directory for dlls via reflection, discovers [Node] + INode
+/// Plugin loader: scans a directory for dlls via reflection, discovers [Node] + BaseNode
 /// implementations and registers them. Uses isolated AssemblyLoadContexts so plugins
 /// stay decoupled from the UI process (unload support can be added later).
 /// Besides type discovery it is the <b>single source of truth for node instances</b>: every
 /// managed node instance created via <see cref="CreateNodeInstance"/> is tracked in
 /// <see cref="Instances"/>. Each instance gets a compact <see cref="int"/> id in the range 1000..10000
-/// (<see cref="INode.InstanceId"/>); the smallest unused id is allocated sequentially and freed ids are recycled so the set stays small while nodes
+/// (<see cref="BaseNode.InstanceId"/>); the smallest unused id is allocated sequentially and freed ids are recycled so the set stays small while nodes
 /// are added/removed dynamically. The editor graph routes its add/remove through this class.
 /// </summary>
 public sealed class PluginLoader
 {
     private readonly ILogger _logger;
     private readonly List<AssemblyLoadContext> _contexts = new();
-    private readonly List<INode> _instances = new();
+    private readonly List<BaseNode> _instances = new();
     private readonly SortedSet<int> _freeIds = new();
     private readonly object _gate = new();
     private NodeRegistry? _registry;
@@ -31,7 +31,7 @@ public sealed class PluginLoader
     public PluginLoader(ILogger logger) => _logger = logger;
 
     /// <summary>All managed node instances (live view, single source of truth).</summary>
-    public IReadOnlyList<INode> Instances
+    public IReadOnlyList<BaseNode> Instances
     {
         get { lock (_gate) return _instances.ToList(); }
     }
@@ -62,9 +62,9 @@ public sealed class PluginLoader
 
     /// <summary>
     /// Create a managed node instance, assign it a compact <see cref="int"/>
-    /// <see cref="INode.InstanceId"/> (reusing a freed id when available) and track it.
+    /// <see cref="BaseNode.InstanceId"/> (reusing a freed id when available) and track it.
     /// </summary>
-    public INode CreateNodeInstance(string typeId)
+    public BaseNode CreateNodeInstance(string typeId)
     {
         var registry = _registry ?? throw new InvalidOperationException(
             "PluginLoader is not initialized: call LoadFromDirectory first.");
@@ -80,7 +80,7 @@ public sealed class PluginLoader
         return instance;
     }
 
-    /// <summary>Delete a managed node instance by its <see cref="INode.InstanceId"/>.</summary>
+    /// <summary>Delete a managed node instance by its <see cref="BaseNode.InstanceId"/>.</summary>
     /// <returns>True if the instance was found and removed.</returns>
     public bool DeleteNodeInstance(int instanceId)
     {
@@ -97,7 +97,7 @@ public sealed class PluginLoader
 
     /// <summary>Delete a managed node instance by reference.</summary>
     /// <returns>True if the instance was found and removed.</returns>
-    public bool DeleteNodeInstance(INode instance)
+    public bool DeleteNodeInstance(BaseNode instance)
     {
         lock (_gate)
         {
@@ -161,11 +161,11 @@ public sealed class PluginLoader
         foreach (var type in asm.GetTypes())
         {
             var attr = type.GetCustomAttribute<NodeAttribute>();
-            if (attr is null || !typeof(INode).IsAssignableFrom(type) || type.IsAbstract)
+            if (attr is null || !typeof(BaseNode).IsAssignableFrom(type) || type.IsAbstract)
                 continue;
 
             // Instantiate once to probe the pin/parameter metadata (static per type).
-            if (Activator.CreateInstance(type) is not INode probe)
+            if (Activator.CreateInstance(type) is not BaseNode probe)
                 continue;
 
             registry.Register(new NodeDescriptor(

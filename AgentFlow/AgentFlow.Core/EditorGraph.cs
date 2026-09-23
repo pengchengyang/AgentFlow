@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace AgentFlow.Core;
 
 /// <summary>
-/// 编辑态图节点：持有一个 INode 实例 + 它的所有运行时 pin（输入/输出）。
+/// 编辑态图节点：持有一个 BaseNode 实例 + 它的所有运行时 pin（输入/输出）。
 /// 连接关系由 <see cref="RuntimeOutputPin.Targets"/> 直接维护——
 /// 输出 pin 保存输入 pin 引用，数据直接 Send→Receive 穿透。
 /// </summary>
@@ -26,7 +26,7 @@ public sealed class EditorNode
     public double Y { get; set; }
 
     /// <summary>节点运行时实例（契约实现）。</summary>
-    public INode RuntimeNode { get; }
+    public BaseNode RuntimeNode { get; }
 
     /// <summary>Current parameter values owned by the editor graph (persisted to JSON).</summary>
     public Dictionary<string, object?> Parameters { get; set; } = new();
@@ -40,7 +40,7 @@ public sealed class EditorNode
     public EditorNode(
         string id,
         NodeDescriptor descriptor,
-        INode runtimeNode,
+        BaseNode runtimeNode,
         double x,
         double y,
         string? name = null,
@@ -120,7 +120,7 @@ public sealed class EditorGraph
 
     /// <summary>从节点类型创建一个编辑态节点实例。保留 <paramref name="id"/> 以支持加载时 ID 稳定。</summary>
     public EditorNode AddNode(
-        string typeId,
+        BaseNode instance,
         double x,
         double y,
         IReadOnlyDictionary<string, object?>? parameters = null,
@@ -128,8 +128,7 @@ public sealed class EditorGraph
         string? name = null,
         int priority = 0)
     {
-        var descriptor = _registry.Get(typeId);
-        var instance = _pluginLoader.CreateNodeInstance(typeId);
+        var descriptor = _registry.Get(instance.TypeId);
         if (parameters is not null && parameters.Count > 0)
             instance.Configure(parameters);
 
@@ -143,7 +142,7 @@ public sealed class EditorGraph
             priority,
             parameters);
         Nodes.Add(node);
-        _logger.LogInformation("EditorGraph: added node {Id} ({TypeId})", node.Id, typeId);
+        _logger.LogInformation("EditorGraph: added node {Id} ({TypeId})", node.Id, node.TypeId);
         GraphChanged?.Invoke();
         return node;
     }

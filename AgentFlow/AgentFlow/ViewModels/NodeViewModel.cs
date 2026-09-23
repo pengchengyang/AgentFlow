@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using AgentFlow.Contracts;
 using AgentFlow.Core;
+using AgentFlow.Models;
 using Avalonia;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,29 +29,30 @@ public static class CategoryColors
 /// <summary>Node parameter (an auto-generated editor row in the property panel).</summary>
 public partial class ParameterViewModel : ViewModelBase
 {
-    public ParameterDescriptor Definition { get; }
+    /// <summary>契约层参数声明（非 UI 数据）。</summary>
+    public ParameterDefinition basePin { get; }
 
-    public string Key => Definition.Name;
-    public string Label => Definition.DisplayName;
-    public string? Hint => Definition.Description;
-    public string TypeName => Definition.DataType.Name;
+    public string Key => basePin.Name;
+    public string Label => basePin.DisplayName;
+    public string? Hint => basePin.Description;
+    public string TypeName => basePin.DataType.Name;
 
     [ObservableProperty]
     private string _value = "";
 
-    public ParameterViewModel(ParameterDescriptor definition)
+    public ParameterViewModel(ParameterDefinition definition)
     {
-        Definition = definition;
-        Value = definition.DefaultValue?.ToString() ?? "";
+        basePin = definition;
+        Value = basePin.DefaultValue?.ToString() ?? "";
     }
 
     /// <summary>Convert the text to the declared type.</summary>
     public object? ToValue()
     {
         if (string.IsNullOrWhiteSpace(Value))
-            return Definition.DefaultValue;
+            return basePin.DefaultValue;
 
-        var t = Definition.DataType;
+        var t = basePin.DataType;
         try
         {
             if (t == typeof(string)) return Value;
@@ -68,19 +71,26 @@ public partial class ParameterViewModel : ViewModelBase
     }
 }
 
-/// <summary>Node ViewModel: node body + pin collections + parameter editors.</summary>
+/// <summary>
+/// Node ViewModel：node body + pin 集合 + 参数编辑器。
+/// 非界面数据（类型/名称/分类/pin/参数）来自 <see cref="NodeModel"/>（包装契约层 <see cref="BaseNode"/>）；
+/// 纯 UI 相关元素（坐标、选中态、层叠顺序、颜色）保留在本层。
+/// </summary>
 public partial class NodeViewModel : ViewModelBase
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
-    public NodeDescriptor Descriptor { get; }
-    public string TypeId => Descriptor.TypeId;
 
-    /// <summary>Core 层编辑态节点（持有 INode 实例和运行时 pin）。GUI 不直接操作它的 pin。</summary>
+    /// <summary>领域模型（包装契约层 BaseNode）。</summary>
+    public NodeModel Model { get; }
+
+    public string TypeId => Model.TypeId;
+
+    /// <summary>Core 层编辑态节点（持有 BaseNode 实例和运行时 pin）。GUI 不直接操作它的 pin。</summary>
     public EditorNode? Runtime { get; set; }
 
     /// <summary>Canvas title: user-editable instance name falls back to the type display name.</summary>
-    public string Title => string.IsNullOrWhiteSpace(Name) ? Descriptor.DisplayName : Name;
-    public string Category => Descriptor.Category;
+    public string Title => string.IsNullOrWhiteSpace(Name) ? Model.DisplayName : Name;
+    public string Category => Model.Category;
 
     /// <summary>Category accent color (header icon dot / header tint).</summary>
     public SolidColorBrush Accent { get; }
@@ -118,18 +128,18 @@ public partial class NodeViewModel : ViewModelBase
     public ObservableCollection<PinViewModel> Outputs { get; } = new();
     public ObservableCollection<ParameterViewModel> Parameters { get; } = new();
 
-    public NodeViewModel(NodeDescriptor descriptor)
+    public NodeViewModel(NodeModel model)
     {
-        Descriptor = descriptor;
-        Accent = CategoryColors.Accent(descriptor.Category);
-        AccentTint = CategoryColors.AccentTint(descriptor.Category);
+        Model = model;
+        Accent = CategoryColors.Accent(model.Category);
+        AccentTint = CategoryColors.AccentTint(model.Category);
 
-        foreach (var pin in descriptor.InputPins)
+        foreach (var pin in model.Inputs)
             Inputs.Add(new PinViewModel(this, pin));
-        foreach (var pin in descriptor.OutputPins)
+        foreach (var pin in model.Outputs)
             Outputs.Add(new PinViewModel(this, pin));
         // Auto-generate property panel editors from parameter declarations (with defaults).
-        foreach (var param in descriptor.Parameters)
+        foreach (var param in model.Parameters)
             Parameters.Add(new ParameterViewModel(param));
 
         RefreshSectionFlags();
@@ -154,7 +164,7 @@ public partial class NodeViewModel : ViewModelBase
             {
                 // Backward compatibility: undeclared parameters are kept as strings.
                 var legacy = new ParameterViewModel(
-                    new ParameterDescriptor(kv.Key, typeof(string), kv.Key));
+                    new ParameterDefinition(kv.Key, typeof(string), kv.Key));
                 legacy.Value = kv.Value?.ToString() ?? "";
                 Parameters.Add(legacy);
             }

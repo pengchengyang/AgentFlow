@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        x:Class="AgentFlow.Views.NodeParameterDialogWindow"
+        x:Class="AgentFlow.Views.NodeParamDlgWindow"
         x:DataType="vm:NodeParameterDialogViewModel"
         Title="{Binding Title} - 参数配置"
         Width="440" Height="520"

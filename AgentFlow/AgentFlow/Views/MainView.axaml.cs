@@ -23,7 +23,7 @@ public partial class MainView : UserControl
     /// <summary>在顶层窗口之上打开参数配置对话框。仅做展示与窗口生命周期，不含业务逻辑。</summary>
     private async void OnDialogRequested(object? sender, NodeParameterDialogViewModel dialog)
     {
-        var win = new NodeParameterDialogWindow { DataContext = dialog };
+        var win = new NodeParamDlgWindow { DataContext = dialog };
         if (TopLevel.GetTopLevel(this) is Window owner)
             await win.ShowDialog(owner);
         else

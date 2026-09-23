@@ -45,15 +45,15 @@ public sealed class NodeDescriptor
     public IReadOnlyList<ParameterDescriptor> Parameters { get; }
 
     /// <summary>Original contract pin definitions used to build runtime pins with their hooks.</summary>
-    internal IReadOnlyList<PinDefinition> RuntimePins { get; }
+    internal IReadOnlyList<BasePin> RuntimePins { get; }
 
     public NodeDescriptor(
         string typeId,
         string displayName,
         string category,
         Type nodeType,
-        IReadOnlyList<PinDefinition> inputPins,
-        IReadOnlyList<PinDefinition> outputPins,
+        IReadOnlyList<BasePin> inputPins,
+        IReadOnlyList<BasePin> outputPins,
         IReadOnlyList<ParameterDefinition> parameters)
     {
         TypeId = typeId;
@@ -95,7 +95,7 @@ public sealed class NodeRegistry
     public bool Contains(string typeId) => _nodes.ContainsKey(typeId);
 
     /// <summary>Create a node instance.</summary>
-    public INode CreateInstance(string typeId) =>
-        (INode)(Activator.CreateInstance(Get(typeId).NodeType)
+    public BaseNode CreateInstance(string typeId) =>
+        (BaseNode)(Activator.CreateInstance(Get(typeId).NodeType)
             ?? throw new InvalidOperationException($"Cannot instantiate node: {typeId}"));
 }

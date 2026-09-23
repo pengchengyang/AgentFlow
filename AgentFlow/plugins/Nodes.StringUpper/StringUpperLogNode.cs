@@ -13,11 +13,10 @@ public sealed class StringUpperLogNode : BaseNode
     public override string TypeId => "nodes.string-upper";
     public override string DisplayName => "String To Upper / Log";
 
-    public override IReadOnlyList<PinDefinition> InputPins { get; } =
-    [
-        new("Input", typeof(string), PinDirection.Input)
-    ];
-    public override IReadOnlyList<PinDefinition> OutputPins { get; } = [];
+    public StringUpperLogNode()
+    {
+        AddInputPin(new("Input", typeof(string), PinDirection.Input));
+    }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters) { }
 

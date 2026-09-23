@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using AgentFlow.Models;
 using AgentFlow.Broadcast;
 using AgentFlow.Core;
 using AgentFlow.Services;
@@ -157,15 +158,16 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Create a node from a palette item at a specific graph-space location (drag &amp; drop).</summary>
     public void AddNodeAt(PaletteItem item, Point graphLocation)
     {
-        var node = new NodeViewModel(_registry.Get(item.TypeId)) { Location = graphLocation };
-        // Core 层创建运行时节点实例（持有 INode + 运行时 pin）
-        node.Runtime = _graph.AddNode(item.TypeId, graphLocation.X, graphLocation.Y);
+        // 创建契约层实例，并让 NodeModel / EditorGraph 共享同一个 BaseNode 实例。
+        var instance = _pluginLoader.CreateNodeInstance(item.TypeId);
+        var node = new NodeViewModel(new NodeModel(instance)) { Location = graphLocation };
+        // Core 层用同一个实例构建运行时节点（持有 BaseNode + 运行时 pin）
+        node.Runtime = _graph.AddNode(instance, graphLocation.X, graphLocation.Y);
         node.Id = node.Runtime.Id;
         _nodeSpawnIndex++;
         HookSelection(node);
         Nodes.Add(node);
     }
-    /// <summary>Toggle the given node's selection, preserving other selected nodes (Ctrl+click).</summary>
     public void ToggleSelection(NodeViewModel node)
     {
         node.IsSelected = !node.IsSelected;
@@ -249,10 +251,10 @@ public partial class MainViewModel : ViewModelBase
     public bool TryCreateConnection(PinViewModel source, PinViewModel target)
     {
         // Normalize direction: source must be the output, target the input.
-        if (source.Direction == PinDirection.Input && target.Direction == PinDirection.Output)
+        if (source.IsInput && target.IsOutput)
             (source, target) = (target, source);
 
-        if (source.Direction != PinDirection.Output || target.Direction != PinDirection.Input)
+        if (!source.IsOutput || !target.IsInput)
         {
             Logs.Add(L["ErrMustOutToIn"]);
             return false;
@@ -273,7 +275,13 @@ public partial class MainViewModel : ViewModelBase
     public void DisconnectInputPin(PinViewModel input)
     {
         var conn = Connections.FirstOrDefault(c => ReferenceEquals(c.Target, input));
-        if (conn is not null) Teardown(conn);
+        if (conn is null) return;
+
+        // 断开 input 对应的上游输出 pin 的 ConnectedInput 引用
+        if (conn.Source.Node.Runtime?.Outputs.TryGetValue(conn.Source.Name, out var op) == true)
+            op.ConnectedInput = null;
+
+        Teardown(conn);
     }
 
     /// <summary>
@@ -283,6 +291,9 @@ public partial class MainViewModel : ViewModelBase
     private void Establish(PinViewModel source, PinViewModel target)
     {
         _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
+        // 让 source 的真实输出 pin 记录下已连接的下游输入 pin 引用（target 中的真实 BasePin）。
+        source.Node.Runtime!.Outputs[source.Name].ConnectedInput =
+            target.Node.Runtime!.Inputs[target.Name];
         Connections.Add(new ConnectionViewModel(source, target));
     }
 
@@ -299,11 +310,11 @@ public partial class MainViewModel : ViewModelBase
 
     private string? ValidateConnection(PinViewModel source, PinViewModel target)
     {
-        if (source.Direction != PinDirection.Output || target.Direction != PinDirection.Input)
+        if (!source.IsOutput || !target.IsInput)
             return L["ErrMustOutToIn"];
         if (ReferenceEquals(source.Node, target.Node))
             return L["ErrSelfConnect"];
-        if (!target.Definition.DataType.IsAssignableFrom(source.Definition.DataType))
+        if (!target.DataType.IsAssignableFrom(source.DataType))
             return $"{L["ErrTypeMismatch"]}: {source.TypeName} -> {target.TypeName}";
         if (Connections.Any(c => ReferenceEquals(c.Target, target)))
             return $"{L["ErrPinOccupied"]}: {target.Name}";
@@ -340,6 +351,17 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void RemoveNode(NodeViewModel node)
     {
+        // 1. 同步从 PluginLoader 实例容器中移除本节点实例
+        if (node.Runtime?.RuntimeNode is { } instance)
+            _pluginLoader.DeleteNodeInstance(instance);
+
+        // 2. 所有上游输出 pin 连到本节点任一输入 pin 的，其 ConnectedInput 置 null
+        foreach (var c in Connections.Where(c => ReferenceEquals(c.Target.Node, node)))
+        {
+            if (c.Source.Node.Runtime?.Outputs.TryGetValue(c.Source.Name, out var op) == true)
+                op.ConnectedInput = null;
+        }
+
         // Core 层删除节点及其所有连线（输出 pin 自动断开对端引用）
         if (node.Runtime is not null)
             _graph.RemoveNode(node.Runtime);
@@ -441,15 +463,17 @@ public partial class MainViewModel : ViewModelBase
         var map = new Dictionary<string, NodeViewModel>();
         foreach (var spec in graph.Nodes)
         {
-            var node = new NodeViewModel(_registry.Get(spec.TypeId))
+            // 创建契约层实例，并让 NodeModel / EditorGraph 共享同一个 BaseNode 实例。
+            var instance = _pluginLoader.CreateNodeInstance(spec.TypeId);
+            var node = new NodeViewModel(new NodeModel(instance))
             {
                 Name = spec.Name ?? "",
                 Priority = spec.Priority,
                 Location = new Point(spec.X, spec.Y)
             };
             node.ApplyParameterValues(spec.Parameters);
-            // Core 层创建运行时节点
-            node.Runtime = _graph.AddNode(spec.TypeId, spec.X, spec.Y,
+            // Core 层用同一个实例构建运行时节点
+            node.Runtime = _graph.AddNode(instance, spec.X, spec.Y,
                 node.Parameters.ToDictionary(p => p.Key, p => p.ToValue()),
                 spec.Id, spec.Name, spec.Priority);
             node.Id = node.Runtime.Id;
@@ -539,6 +563,9 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
+
+
+
 
 
 

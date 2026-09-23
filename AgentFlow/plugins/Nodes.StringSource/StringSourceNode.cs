@@ -14,11 +14,10 @@ public sealed class StringSourceNode : BaseNode
     public override string TypeId => "nodes.string-source";
     public override string DisplayName => "String Source";
 
-    public override IReadOnlyList<PinDefinition> InputPins { get; } = [];
-    public override IReadOnlyList<PinDefinition> OutputPins { get; } =
-    [
-        new("Output", typeof(string), PinDirection.Output)
-    ];
+    public StringSourceNode()
+    {
+        AddOutputPin(new("Output", typeof(string), PinDirection.Output));
+    }
 
     public override IReadOnlyList<ParameterDefinition> Parameters =>
     [
