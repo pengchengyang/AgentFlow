@@ -1,0 +1,66 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgentFlow.Views.LoginDialogWindow"
+        x:DataType="vm:LoginDialogViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Login"
+        Width="360" Height="360"
+        MinWidth="320" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Manual"
+        CanResize="False"
+        Background="#F9FAFB">
+
+    <Border Margin="1" Background="#F9FAFB">
+        <DockPanel LastChildFill="True">
+
+            <!-- 标题栏 -->
+            <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="20,18">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="🔐" FontSize="16" Foreground="#7C3AED"/>
+                    <TextBlock Text="Login" FontSize="17" FontWeight="SemiBold" Foreground="#111827"/>
+                    <TextBlock Text="Select a role and enter its password." FontSize="12" Foreground="#6B7280"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 底部按钮 -->
+            <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="20,14">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                    <Button Classes="secondary" Content="Cancel" Command="{Binding CancelCommand}" MinWidth="84"/>
+                    <Button Classes="primary" Content="Login" Command="{Binding ConfirmCommand}" IsDefault="True" MinWidth="84"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 表单 -->
+            <StackPanel Margin="20,20" Spacing="14" VerticalAlignment="Top">
+                <!-- 角色下拉 -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Role" FontSize="13" FontWeight="Medium" Foreground="#374151"/>
+                    <ComboBox ItemsSource="{Binding Roles}"
+                              SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
+                              HorizontalAlignment="Stretch"/>
+                </StackPanel>
+
+                <!-- 密码输入 -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Password" FontSize="13" FontWeight="Medium" Foreground="#374151"/>
+                    <TextBox Text="{Binding Password, Mode=TwoWay}"
+                             PasswordChar="●"
+                             PlaceholderText="Enter password"
+                             Padding="10,8"/>
+                </StackPanel>
+
+                <!-- 错误提示 -->
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="#DC2626" FontSize="12"
+                           IsVisible="{Binding HasError}"/>
+            </StackPanel>
+
+        </DockPanel>
+    </Border>
+</Window>
+

@@ -1,0 +1,72 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build AgentFlow (net10)",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "AgentFlow.sln",
+        "-c",
+        "Debug"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Run AgentFlow Desktop (Hot Reload)",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "watch",
+        "run",
+        "--project",
+        "AgentFlow.Desktop/AgentFlow.Desktop.csproj"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "isBackground": true,
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Run AgentFlow Desktop (plain)",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "AgentFlow.Desktop/AgentFlow.Desktop.csproj"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Run AgentFlow Web (WASM)",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "AgentFlow.Web/AgentFlow.Web.csproj"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Preview .axaml (Hot Reload)",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "watch",
+        "run",
+        "--project",
+        "PreviewHost/PreviewHost.csproj"
+      ],
+      "isBackground": true,
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

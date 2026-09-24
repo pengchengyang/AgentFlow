@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+             xmlns:s="clr-namespace:AgentFlow.Services"
+             x:Class="AgentFlow.Views.InspectorView"
+             x:DataType="vm:InspectorViewModel">
+
+  <!-- LangFlow 右侧属性面板 -->
+  <Border Background="{DynamicResource BrushCard}"
+          BorderBrush="{DynamicResource BrushBorder}"
+          BorderThickness="1,0,0,0">
+    <DockPanel Margin="16,14">
+      <TextBlock DockPanel.Dock="Top"
+                 Text="{Binding [Properties], Source={x:Static s:Loc.Instance}}"
+                 FontWeight="SemiBold" FontSize="14"
+                 Foreground="{DynamicResource TextPrimary}" Margin="2,2,2,10"/>
+      <ScrollViewer>
+        <StackPanel DataContext="{Binding SelectedNode}" Spacing="8">
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Width="24" Height="24" CornerRadius="7" Background="{Binding Accent}" VerticalAlignment="Center">
+              <TextBlock Text="◆" Foreground="White" FontSize="10"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TextBlock Text="{Binding TypeId}" FontSize="11"
+                     Foreground="{DynamicResource TextTertiary}"/>
+          <Border Height="1" Background="{DynamicResource BrushBorder}" Margin="0,6"/>
+
+          <!-- 实例名 + 启动优先级 -->
+          <StackPanel Spacing="10">
+            <StackPanel>
+              <TextBlock Text="{Binding [DisplayName], Source={x:Static s:Loc.Instance}}"
+                         FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
+              <TextBox Text="{Binding Name}" Margin="0,4,0,0"/>
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Text="{Binding [Priority], Source={x:Static s:Loc.Instance}}"
+                         FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
+              <NumericUpDown Value="{Binding Priority}" Minimum="0" Maximum="999"
+                             Increment="1" HorizontalAlignment="Left" MinWidth="140" Margin="0,4,0,0"/>
+            </StackPanel>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource BrushBorder}" Margin="0,6"/>
+          <TextBlock Text="{Binding [Parameters], Source={x:Static s:Loc.Instance}}"
+                     FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" FontSize="12"/>
+          <ItemsControl ItemsSource="{Binding Parameters}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:ParameterViewModel">
+                <StackPanel Margin="0,4">
+                  <TextBlock Text="{Binding Label}" FontSize="11"
+                             Foreground="{DynamicResource TextSecondary}"
+                             ToolTip.Tip="{Binding Hint}"/>
+                  <TextBox Text="{Binding Value}" Margin="0,4,0,0"/>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</UserControl>

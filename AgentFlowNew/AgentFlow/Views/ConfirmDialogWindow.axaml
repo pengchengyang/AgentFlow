@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgentFlow.Views.ConfirmDialogWindow"
+        x:DataType="vm:ConfirmDialogViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="{Binding Title}"
+        Width="380" Height="200"
+        MinWidth="340" MinHeight="180"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Manual"
+        CanResize="False"
+        Background="#F9FAFB">
+
+    <Border Margin="1" Background="#F9FAFB">
+        <DockPanel LastChildFill="True">
+
+            <!-- 底部按钮：Confirm 默认（Enter 确认），Cancel 取消（Esc 取消） -->
+            <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="20,14">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                    <Button Classes="secondary" Content="{Binding CancelText}"
+                            Command="{Binding CancelCommand}" IsCancel="True" MinWidth="84"/>
+                    <Button Classes="primary" Content="{Binding ConfirmText}"
+                            Command="{Binding ConfirmCommand}" IsDefault="True" MinWidth="84"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 提示正文 -->
+            <StackPanel Margin="20,20" Spacing="10" VerticalAlignment="Top">
+                <TextBlock Text="🧹" FontSize="18" Foreground="#DC2626"/>
+                <TextBlock Text="{Binding Message}" FontSize="13" Foreground="#374151" TextWrapping="Wrap"/>
+            </StackPanel>
+
+        </DockPanel>
+    </Border>
+</Window>
+

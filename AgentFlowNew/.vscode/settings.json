@@ -1,0 +1,13 @@
+{
+  "terminal.integrated.env.windows": {
+    "PATH": "C:\\Users\\admin\\.dotnet;${env:PATH}"
+  },
+  "omnisharp.useGlobalSDK": true,
+  "omnisharp.useModernNet": true,
+  "dotnetAcquisitionExtension.existingDotnetPath": [
+    {
+      "extensionId": "ms-dotnettools.csharp",
+      "path": "C:\\Users\\admin\\.dotnet\\dotnet.exe"
+    }
+  ]
+}

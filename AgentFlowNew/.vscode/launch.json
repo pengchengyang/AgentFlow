@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug AgentFlow Desktop (net10)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build AgentFlow (net10)",
+      "program": "${workspaceFolder}/AgentFlow.Desktop/bin/Debug/net10.0/AgentFlow.Desktop.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "stopAtEntry": false
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "Nodes": [
+    { "Id": "n1", "TypeId": "nodes.string-source", "Parameters": { "Text": "hello agentflow" }, "X": 0, "Y": 0 },
+    { "Id": "n2", "TypeId": "nodes.string-upper", "Parameters": {}, "X": 300, "Y": 0 }
+  ],
+  "Connections": [
+    { "FromNode": "n1", "FromPin": "Output", "ToNode": "n2", "ToPin": "Input" }
+  ]
+}

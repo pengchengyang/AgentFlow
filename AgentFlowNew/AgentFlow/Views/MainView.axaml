@@ -1,0 +1,96 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+             xmlns:views="clr-namespace:AgentFlow.Views"
+             mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="810"
+             x:Class="AgentFlow.Views.MainView"
+             x:DataType="vm:MainViewModel">
+
+  <UserControl.KeyBindings>
+    <KeyBinding Command="{Binding SaveAsCommand}" Gesture="Ctrl+S"/>
+    <KeyBinding Command="{Binding OpenCommand}" Gesture="Ctrl+O"/>
+  </UserControl.KeyBindings>
+
+  <Grid RowDefinitions="Auto,*" Background="#F5F5F5">
+    <views:TopBarView Grid.Row="0" DataContext="{Binding TopBar}"/>
+
+    <Grid Grid.Row="1" ColumnDefinitions="44,*,Auto">
+      <!-- 最左侧图标工具栏 -->
+      <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,1,0">
+        <Border.Styles>
+          <Style Selector="Button.toolbtn">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+          </Style>
+          <Style Selector="Button.toolbtn:pointerover">
+            <Setter Property="Background" Value="#F3F4F6"/>
+          </Style>
+          <Style Selector="Button.toolbtn:pressed">
+            <Setter Property="Background" Value="#E5E7EB"/>
+          </Style>
+          <Style Selector="Button.toolbtn:disabled">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Opacity" Value="0.35"/>
+          </Style>
+        </Border.Styles>
+        <StackPanel Spacing="2" Margin="0,8">
+          <TextBlock Text="≡" FontSize="18" Foreground="#111827" HorizontalAlignment="Center" Margin="0,6,0,10"/>
+          <Button Classes="toolbtn" Command="{Binding RunStopCommand}" ToolTip.Tip="{Binding RunStopToolTip}">
+            <Grid>
+              <Image Source="avares://AgentFlow/Assets/icons8-start-94.png"  Width="22" Height="22" IsVisible="{Binding IsIdle}"/>
+              <Image Source="avares://AgentFlow/Assets/icons8-cancel-94.png" Width="22" Height="22" IsVisible="{Binding IsRunning}"/>
+            </Grid>
+          </Button>
+          <Button Classes="toolbtn" Command="{Binding SaveAsCommand}" ToolTip.Tip="Save As...">
+            <TextBlock Text="💾" FontSize="15"/>
+          </Button>
+          <Button Classes="toolbtn" Command="{Binding OpenCommand}" ToolTip.Tip="Open Workflow...">
+            <TextBlock Text="📁" FontSize="15"/>
+          </Button>
+          <Button Classes="toolbtn" Command="{Binding ClearGraphCommand}" ToolTip.Tip="Clear Canvas">
+            <TextBlock Text="🧹" FontSize="14"/>
+          </Button>
+        </StackPanel>
+      </Border>
+
+      <!-- 中间：画布 + 可折叠日志面板 + 底部条 -->
+      <Grid Grid.Column="1" RowDefinitions="*,Auto,40">
+        <views:CanvasView Grid.Row="0" DataContext="{Binding Canvas}"/>
+
+        <!-- 日志面板（Logs 按钮展开/收起） -->
+        <views:LogPanelView Grid.Row="1" DataContext="{Binding LogPanel}" IsVisible="{Binding IsLogPanelOpen}"/>
+
+        <!-- 底部条 -->
+        <Border Grid.Row="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" Classes="secondary" Content="›_  Logs"
+                    Command="{Binding ToggleLogPanelCommand}"
+                    FontSize="13" Padding="12,4" Margin="12,0,0,0"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="🔒" FontSize="12" Foreground="#9CA3AF"
+                         VerticalAlignment="Center" IsVisible="{Binding !IsAdmin}"/>
+              <TextBlock Text="{Binding Canvas.ZoomText}" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
+              <Button Classes="ghost" Command="{Binding ToggleSidebarCommand}"
+                      IsVisible="{Binding IsAdmin}" ToolTip.Tip="Toggle Sidebar" Padding="4,0">
+                <TextBlock Text="{Binding SidebarToggleArrow}" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- 右侧节点库 -->
+      <views:NodeLibraryView Grid.Column="2" Width="264" DataContext="{Binding NodeLibrary}" IsVisible="{Binding IsSidebarVisible}"/>
+    </Grid>
+  </Grid>
+</UserControl>
+
+

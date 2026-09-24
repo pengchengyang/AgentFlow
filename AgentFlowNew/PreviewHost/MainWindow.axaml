@@ -1,0 +1,13 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PreviewHost.MainWindow"
+        Title="AgentFlow 预览（改这里→保存→实时刷新）"
+        Width="420" Height="320">
+    <StackPanel Margin="20" Spacing="14">
+        <TextBlock Text="这是预览窗口。把下面按钮的颜色改掉，然后 Ctrl+S 保存：" FontSize="14"/>
+        <Button x:Name="DemoButton" Content="示例按钮"
+                Background="SteelBlue" Foreground="White"
+                HorizontalAlignment="Left" Padding="24,10" FontSize="16"/>
+        <TextBlock Text="试试把 Background=SteelBlue 改成 Red / Green / #FF8800 看看实时效果" Foreground="Gray" FontSize="12"/>
+    </StackPanel>
+</Window>
