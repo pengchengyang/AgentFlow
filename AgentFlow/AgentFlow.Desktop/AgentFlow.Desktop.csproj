@@ -24,3 +24,5 @@
     <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
   </Target>
 </Project>
+
+

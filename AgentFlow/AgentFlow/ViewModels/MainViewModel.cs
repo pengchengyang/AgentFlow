@@ -11,6 +11,7 @@ using AgentFlow.Models;
 using AgentFlow.Broadcast;
 using AgentFlow.Core;
 using AgentFlow.Services;
+using AgentFlow.Serialization;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -33,8 +34,11 @@ public partial class MainViewModel : ViewModelBase
     private CancellationTokenSource? _runCts;
     private int _nodeSpawnIndex;
     private bool _isLoading;
+    private readonly IWorkflowStore _store;
 
-    private string WorkflowPath => Path.Combine(AppContext.BaseDirectory, "workflow.json");
+
+    /// <summary>Optional override store; the Web (WASM) host sets this before the app starts.</summary>
+    public static IWorkflowStore? DefaultWorkflowStore { get; set; }
 
     /// <summary>Localization (XAML can also use Loc.Instance directly).</summary>
     public Loc L => Loc.Instance;
@@ -120,6 +124,8 @@ public partial class MainViewModel : ViewModelBase
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
 
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader, _guiBridge);
+
+        _store = DefaultWorkflowStore ?? new LocalWorkflowStore();
         _graph.GraphChanged += RefreshPinConnections;
 
         LoadPlugins();
@@ -250,27 +256,28 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>Write the current graph to disk (no-op while we are itself loading).</summary>
-    private void AutoSave()
+    private async void AutoSave()
     {
         if (_isLoading) return;
         try
         {
             SyncGraphState();
-            GraphSerializer.Save(_graph, WorkflowPath);
+            await _store.SaveAsync(GraphSerializer.Serialize(_graph));
         }
         catch { /* best-effort persistence */ }
     }
 
     /// <summary>Reload the graph from disk if it exists.</summary>
-    private void AutoLoad()
+    private async void AutoLoad()
     {
-        if (!File.Exists(WorkflowPath)) return;
         try
         {
+            var json = await _store.LoadAsync();
+            if (string.IsNullOrEmpty(json)) return;
             _isLoading = true;
-            var doc = GraphDeserializer.Load(WorkflowPath);
+            var doc = GraphDeserializer.Deserialize(json);
             LoadGraphFromDocument(doc);
-            StatusText = $"{L["LoadedFrom"]}: {WorkflowPath}";
+            StatusText = $"{L["LoadedFrom"]}: {_store.Description}";
         }
         catch (Exception ex)
         {
@@ -546,7 +553,7 @@ public partial class MainViewModel : ViewModelBase
             // Restore logical / runtime parameters via the Contracts deserializer
             // (base restores uuid / typeId / instanceId, then the subclass hook restores its fields).
             if (spec.Parameters is not null)
-                instance.DeserializeParameters(spec.Parameters);
+                LogicDeserializer.Deserialize(instance, spec.Parameters);
 
             var node = new NodeViewModel(new NodeModel(instance))
             {
@@ -637,12 +644,12 @@ public partial class MainViewModel : ViewModelBase
     private void Stop() => _runCts?.Cancel();
 
     [RelayCommand]
-    private void Save()
+    private async void Save()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "workflow.json");
         SyncGraphState();
-        GraphSerializer.Save(_graph, path);
-        StatusText = $"{L["SavedTo"]}: {path}";
+        await _store.SaveAsync(GraphSerializer.Serialize(_graph));
+        IsDirty = false;
+        StatusText = $"{L["SavedTo"]}: {_store.Description}";
     }
 
     /// <summary>Raised when the user clicks the Save-As button; the View layer opens a file picker.</summary>
@@ -708,6 +715,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
+
 
 
 

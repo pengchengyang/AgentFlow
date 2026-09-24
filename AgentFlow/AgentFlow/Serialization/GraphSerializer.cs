@@ -8,13 +8,14 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using AgentFlow.Core;
 
-namespace AgentFlow.Core;
+namespace AgentFlow.Serialization;
 
 /// <summary>
 /// Layered document produced when persisting an editor graph. The <see cref="Nodes"/>
 /// and <see cref="Connections"/> lists carry the structure; per-node <see cref="SerializedNode.Parameters"/>
-/// is the logical-parameter blob produced by <see cref="Contracts.BaseNode.SerializeParameters"/>.
+/// is the logical-parameter blob produced by <see cref="AgentFlow.Core.LogicSerializer"/>.
 /// </summary>
 public sealed class GraphDocument
 {
@@ -23,7 +24,7 @@ public sealed class GraphDocument
     public List<SerializedConnection> Connections { get; set; } = new();
 }
 
-/// <summary>A persisted node instance: UI state + the logical parameter blob from Contracts.</summary>
+/// <summary>A persisted node instance: UI state + the logical parameter blob from Core.</summary>
 public sealed class SerializedNode
 {
     public string Id { get; set; } = "";
@@ -34,9 +35,9 @@ public sealed class SerializedNode
     public double Y { get; set; }
 
     /// <summary>
-    /// Logical parameters produced by <see cref="Contracts.BaseNode.SerializeParameters"/>
+    /// Logical parameters produced by <see cref="AgentFlow.Core.LogicSerializer"/>
     /// (uuid, typeId, instanceId + subclass data). Restored on load via
-    /// <see cref="Contracts.BaseNode.DeserializeParameters"/>.
+    /// <see cref="AgentFlow.Core.LogicDeserializer"/>.
     /// </summary>
     public JsonObject? Parameters { get; set; }
 }
@@ -53,8 +54,9 @@ public sealed class SerializedConnection
 /// <summary>
 /// Serializes an <see cref="EditorGraph"/> into a layered JSON document.
 /// UI-related state (node id, position, name, priority, connections) is handled here;
-/// logical / runtime node parameters are delegated to
-/// <see cref="Contracts.BaseNode.SerializeParameters"/> on each node instance.
+/// logical / runtime node parameters are delegated to the Core-layer
+/// <see cref="AgentFlow.Core.LogicSerializer"/> on each node instance. This class
+/// therefore lives in the UI layer and is not part of Core.
 /// </summary>
 public static class GraphSerializer
 {
@@ -85,9 +87,8 @@ public static class GraphSerializer
 
         foreach (var node in graph.Nodes)
         {
-            // Logical parameters: ask the contract node to write its own blob.
-            var parameters = new JsonObject();
-            node.RuntimeNode.SerializeParameters(parameters);
+            // Logical parameters come from the Core layer; GUI state is merged here.
+            var parameters = LogicSerializer.Serialize(node.RuntimeNode);
 
             doc.Nodes.Add(new SerializedNode
             {

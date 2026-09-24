@@ -8,14 +8,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AgentFlow.Core;
+namespace AgentFlow.Serialization;
 
 /// <summary>
 /// Deserializes a layered JSON document back into a <see cref="GraphDocument"/>
 /// (UI state + per-node logical parameter blobs). The caller (AgentFlow) then
 /// materializes node instances and invokes
-/// <see cref="Contracts.BaseNode.DeserializeParameters"/> on each one so the
-/// contract layer restores its own logical / runtime state.
+/// <see cref="AgentFlow.Core.LogicDeserializer"/> on each one so the contract
+/// layer restores its own logical / runtime state.
 /// </summary>
 public static class GraphDeserializer
 {
