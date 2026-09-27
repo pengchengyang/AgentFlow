@@ -68,13 +68,14 @@ public sealed class EditorNode
 
         var inputs = new Dictionary<string, RuntimeInputPin>(StringComparer.Ordinal);
         var outputs = new Dictionary<string, RuntimeOutputPin>(StringComparer.Ordinal);
-        foreach (var pin in descriptor.RuntimePins)
-        {
-            if (pin.Direction == ContractPinDirection.Input)
-                inputs[pin.Name] = new RuntimeInputPin(pin, runtimeNode);
-            else
-                outputs[pin.Name] = new RuntimeOutputPin(pin, runtimeNode);
-        }
+
+        // Use the node instance's own pins (created by its constructor) rather than the
+        // shared probe pins, so every node instance keeps unique pin ids/values.
+        foreach (var pin in runtimeNode.InputPins)
+            inputs[pin.Name] = new RuntimeInputPin(pin, runtimeNode);
+        foreach (var pin in runtimeNode.OutputPins)
+            outputs[pin.Name] = new RuntimeOutputPin(pin, runtimeNode);
+
         Inputs = inputs;
         Outputs = outputs;
     }
@@ -191,6 +192,37 @@ public sealed class EditorGraph
         GraphChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Look up a runtime pin by its instance id (used when restoring connections from a
+    /// saved pin-id based connection section).
+    /// </summary>
+    public (EditorNode Node, string PinName, bool IsOutput)? FindPinById(int pinId)
+    {
+        foreach (var node in Nodes)
+        {
+            foreach (var kv in node.Outputs)
+                if (kv.Value.Id == pinId) return (node, kv.Key, true);
+            foreach (var kv in node.Inputs)
+                if (kv.Value.Id == pinId) return (node, kv.Key, false);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Establish a connection from saved pin instance ids. The output pin's ConnectedPin
+    /// and the input pin's ConnectedPin are both set by <see cref="RuntimeOutputPin.Connect"/>.
+    /// </summary>
+    public bool TryConnectByPinId(int fromPinId, int toPinId)
+    {
+        var from = FindPinById(fromPinId);
+        var to = FindPinById(toPinId);
+        if (from is null || to is null) return false;
+        if (!from.Value.IsOutput || to.Value.IsOutput) return false;
+
+        Connect(from.Value.Node, from.Value.PinName, to.Value.Node, to.Value.PinName);
+        return true;
+    }
+
     /// <summary>Remove a node and all of its wires.</summary>
     public void RemoveNode(EditorNode node)
     {
@@ -201,6 +233,7 @@ public sealed class EditorGraph
             Disconnect(c);
 
         Nodes.Remove(node);
+        ReleaseNodePinIds(node);
         _pluginLoader.DeleteNodeInstance(node.RuntimeNode);
         _logger.LogInformation("EditorGraph: removed node {Id}", node.Id);
         GraphChanged?.Invoke();
@@ -261,6 +294,8 @@ public sealed class EditorGraph
         foreach (var conn in Connections.ToList())
             conn.SourcePin.Disconnect(conn.TargetPin);
 
+        foreach (var node in Nodes)
+            ReleaseNodePinIds(node);
         Connections.Clear();
         Nodes.Clear();
         // Let the PluginLoader container be the single source of node instances: clear them here too.
@@ -275,12 +310,48 @@ public sealed class EditorGraph
     /// and <see cref="INodeContext.SetOutput"/> calls the output pin's Send to push
     /// data to downstream input pins.
     /// </summary>
+
+    private static void ReleaseNodePinIds(EditorNode node)
+    {
+        foreach (var pin in node.Inputs.Values)
+            pin.ReleaseId();
+        foreach (var pin in node.Outputs.Values)
+            pin.ReleaseId();
+
+        if (node.RuntimeNode is not null)
+        {
+            foreach (var pin in node.RuntimeNode.InputPins)
+                pin.ReleaseId();
+            foreach (var pin in node.RuntimeNode.OutputPins)
+                pin.ReleaseId();
+        }
+    }
+
     public async Task SendAsync(EditorNode node, CancellationToken ct = default)
     {
         if (node is null) throw new ArgumentNullException(nameof(node));
         var ctx = new EditorNodeContext(node, _logger, _gui);
-        await node.RuntimeNode.ExecuteAsync(ctx, ct);
+        foreach (var pin in node.Inputs.Values)
+            pin.Context = ctx;
+        await node.RuntimeNode.Run(ctx, ct);
         _logger.LogInformation("EditorGraph: sent node {Id} ({TypeId})", node.Id, node.TypeId);
+    }
+
+    /// <summary>
+    /// Build an <see cref="INodeContext"/> bound to the editor node that owns the given
+    /// runtime instance. Used by <see cref="NodeInstanceManager"/> so UI commands run the
+    /// actual on-canvas node instances through the same wired runtime pins.
+    /// </summary>
+    public INodeContext CreateContext(BaseNode runtimeNode)
+    {
+        var node = Nodes.FirstOrDefault(n => ReferenceEquals(n.RuntimeNode, runtimeNode))
+            ?? throw new InvalidOperationException($"No editor node for instance #{runtimeNode.InstanceId}.");
+        var ctx = new EditorNodeContext(node, _logger, _gui);
+        foreach (var pin in node.Inputs.Values)
+            pin.Context = ctx;
+        foreach (var pin in node.Outputs.Values)
+            pin.Context = ctx;
+        return ctx;
     }
 
     /// <summary>The node context used by editor-time Send: bound to this node's wired runtime pins.</summary>

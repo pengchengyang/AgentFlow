@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using System.Text.Json;
 
 namespace AgentFlow.Contracts;
 
@@ -13,9 +14,8 @@ namespace AgentFlow.Contracts;
 /// Base class for every AgentFlow node. A node declares its pins by calling
 /// <see cref="AddInputPin"/> / <see cref="AddOutputPin"/> (the pin sets are stored in
 /// mutable lists, so a node can append pins as needed), and provides <see cref="TypeId"/>,
-/// <see cref="DisplayName"/>, <see cref="Configure"/> and <see cref="ExecuteAsync"/>.
-/// Optional lifecycle hooks <see cref="Initialize"/>, <see cref="Run"/> and
-/// <see cref="Stop"/> default to no-ops.
+/// <see cref="DisplayName"/>, <see cref="Configure"/> and <see cref="Run"/>.
+/// <see cref="Initialize"/> and <see cref="Stop"/> default to no-ops; <see cref="Run"/> must be implemented.
 /// </summary>
 public abstract class BaseNode
 {
@@ -34,6 +34,18 @@ public abstract class BaseNode
 
     /// <summary>Unique id of this node instance. Assigned/managed by AgentFlow.Core.</summary>
     public int InstanceId { get; set; }
+
+    /// <summary>
+    /// Instance id of another node this node depends on before it may run (optional).
+    /// Serialized into the node's <c>logic</c> blob so dependencies persist across saves.
+    /// </summary>
+    public int DependsOn { get; set; }
+
+    /// <summary>
+    /// Runtime-only state: true while this node is currently executing.
+    /// This value is intentionally NOT serialized into JSON.
+    /// </summary>
+    public bool Running { get; set; }
 
     /// <summary>
     /// Unique type identifier of this subclass. It is left empty in <see cref="BaseNode"/>
@@ -78,7 +90,7 @@ public abstract class BaseNode
     /// <summary>
     /// Called by an input pin when data arrives from an upstream output pin.
     /// The default implementation is a no-op for nodes that only read inputs
-    /// inside <see cref="ExecuteAsync"/>.
+    /// inside <see cref="Run"/>.
     /// </summary>
     public virtual void Receive(INodeContext context, BasePin pin, object? value) { }
 
@@ -98,6 +110,7 @@ public abstract class BaseNode
         json["typeId"] = TypeId;
         json["instanceId"] = InstanceId;
         OnSerializeParameters(json);
+        SerializeGroupedParameters(json);
     }
 
     /// <summary>
@@ -115,6 +128,7 @@ public abstract class BaseNode
         if (instanceId.HasValue)
             InstanceId = instanceId.Value;
         OnDeserializeParameters(json);
+        DeserializeGroupedParameters(json);
     }
 
     /// <summary>
@@ -122,6 +136,7 @@ public abstract class BaseNode
     /// serialization JSON. Called by <see cref="SerializeParameters"/> after the
     /// base identity fields are written. Default no-op.
     /// </summary>
+
     protected virtual void OnSerializeParameters(JsonObject json) { }
 
     /// <summary>
@@ -131,20 +146,162 @@ public abstract class BaseNode
     /// </summary>
     protected virtual void OnDeserializeParameters(JsonObject json) { }
 
-    /// <summary>Execute the node logic.</summary>
-    public abstract Task ExecuteAsync(INodeContext context, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Write parameters that were added via <see cref="AddParameter"/> as JSON object fields,
+    /// keyed by their <see cref="NodeParameter.Group"/>. All groups are placed under the
+    /// <c>parameters</c> root inside the logic blob; each group field contains an array of
+    /// complete <see cref="NodeParameter"/> objects so the group/name/type/value/editable state
+    /// survives serialization.
+    /// </summary>
+    private void SerializeGroupedParameters(JsonObject json)
+    {
+        var parameters = json["parameters"] as JsonObject;
+        if (parameters is null)
+        {
+            parameters = new JsonObject();
+            json["parameters"] = parameters;
+        }
 
-    /// <summary>Optional one-time setup before a run starts. Default no-op.</summary>
-    public virtual Task Initialize(INodeContext context, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+        foreach (var group in _nodeParameters
+                     .Where(p => !string.IsNullOrEmpty(p.Name))
+                     .GroupBy(p => p.Group ?? string.Empty))
+        {
+            var arr = new JsonArray();
+            foreach (var p in group)
+            {
+                var obj = new JsonObject
+                {
+                    ["name"] = p.Name,
+                    ["type"] = p.Type.AssemblyQualifiedName ?? p.Type.FullName ?? p.Type.Name,
+                    ["isEditable"] = p.IsEditable,
+                    ["group"] = p.Group ?? string.Empty,
+                    ["value"] = p.Value is null ? null : JsonSerializer.SerializeToNode(p.Value, p.Type)
+                };
+                arr.Add(obj);
+            }
+            parameters[group.Key] = arr;
+        }
+    }
 
-    /// <summary>Optional run body; runs after <see cref="Initialize"/>. Default no-op.</summary>
-    public virtual Task Run(INodeContext context, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+    /// <summary>
+    /// Restore parameters that were serialized by <see cref="SerializeGroupedParameters"/>.
+    /// The groups are expected under the <c>parameters</c> root inside the logic blob; for
+    /// compatibility, the previous flat group object/array form is also accepted.
+    /// </summary>
+    private void DeserializeGroupedParameters(JsonObject json)
+    {
+        // New format: groups live under the "parameters" root inside the logic blob.
+        if (json["parameters"] is JsonObject parameters)
+        {
+            DeserializeParameterGroups(parameters);
+            return;
+        }
 
-    /// <summary>Optional teardown after a run ends (or is cancelled). Default no-op.</summary>
-    public virtual Task Stop(INodeContext context, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+        // Legacy compatibility: some older files wrote groups directly at the logic root.
+        DeserializeParameterGroups(json);
+    }
+
+    private void DeserializeParameterGroups(JsonObject container)
+    {
+        foreach (var group in container)
+        {
+            switch (group.Value)
+            {
+                case JsonArray arr:
+                    foreach (var item in arr)
+                    {
+                        if (item is not JsonObject obj)
+                            continue;
+
+                        var name = ReadString(obj, "name", "Name");
+                        if (string.IsNullOrEmpty(name))
+                            continue;
+
+                        var np = _nodeParameters.FirstOrDefault(p =>
+                            p.Name == name && (p.Group ?? string.Empty) == group.Key);
+                        if (np is null)
+                        {
+                            np = CreateNodeParameterFromJson(obj, group.Key);
+                            if (np is null)
+                                continue;
+                            _nodeParameters.Add(np);
+                        }
+                        else
+                        {
+                            np.Group = group.Key;
+                        }
+
+                        if (ReadString(obj, "type", "Type") is string typeName &&
+                            Type.GetType(typeName) is { } restoredType)
+                        {
+                            np.Type = restoredType;
+                        }
+
+                        var valueNode = obj["value"] ?? obj["Value"];
+                        np.Value = valueNode is null
+                            ? null
+                            : JsonSerializer.Deserialize(valueNode.ToJsonString(), np.Type);
+
+                        if ((obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() is bool editable)
+                            np.IsEditable = editable;
+                    }
+                    break;
+
+                case JsonObject groupObj:
+                    foreach (var param in groupObj)
+                    {
+                        // Skip reserved keys in the legacy fallback path.
+                        if (param.Key is "uuid" or "typeId" or "instanceId" or "dependsOn" or "parameters")
+                            continue;
+
+                        var np = _nodeParameters.FirstOrDefault(p =>
+                            p.Name == param.Key && (p.Group ?? string.Empty) == group.Key);
+                        if (np is null)
+                            continue;
+
+                        np.Value = param.Value is null
+                            ? null
+                            : JsonSerializer.Deserialize(param.Value.ToJsonString(), np.Type);
+                    }
+                    break;
+            }
+        }
+    }
+
+    private NodeParameter? CreateNodeParameterFromJson(JsonObject obj, string groupName)
+    {
+        var name = ReadString(obj, "name", "Name");
+        if (string.IsNullOrEmpty(name))
+            return null;
+
+        var typeName = ReadString(obj, "type", "Type");
+        var type = string.IsNullOrEmpty(typeName) ? typeof(string) : Type.GetType(typeName) ?? typeof(string);
+        var valueNode = obj["value"] ?? obj["Value"];
+        var value = valueNode is null ? null : JsonSerializer.Deserialize(valueNode.ToJsonString(), type);
+        var isEditable = (obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() ?? true;
+
+        return new NodeParameter(name, type, value, isEditable, groupName);
+    }
+
+    private static string? ReadString(JsonObject obj, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (obj[key]?.GetValue<string>() is { } value)
+                return value;
+        }
+        return null;
+    }
+
+
+    /// <summary>One-time setup before a run starts. Nodes must implement this.</summary>
+    public abstract Task Initialize(INodeContext context, CancellationToken cancellationToken = default);
+
+    /// <summary>Run body; must set <see cref="Running"/> true/false around node-specific work.</summary>
+    public abstract Task Run(INodeContext context, CancellationToken cancellationToken = default);
+
+    /// <summary>Stop body; must set <see cref="Running"/> to false.</summary>
+    public abstract Task Stop(INodeContext context, CancellationToken cancellationToken = default);
 }
 
 

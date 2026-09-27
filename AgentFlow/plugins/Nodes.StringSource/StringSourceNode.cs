@@ -51,11 +51,27 @@ public sealed class StringSourceNode : BaseNode
         _text = json["text"]?.GetValue<string>() ?? _text;
     }
 
-    public override Task ExecuteAsync(INodeContext context, CancellationToken ct = default)
+    public override Task Initialize(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public override Task Run(INodeContext context, CancellationToken ct = default)
     {
-        context.Logger.LogInformation("String Source emitted: {Text}", _text);
-        // SetOutput -> output pin Send -> every connected input pin Receive.
-        context.SetOutput("Output", _text);
+        Running = true;
+        try
+        {
+            context.Logger.LogInformation("String Source emitted: {Text}", _text);
+            // SetOutput -> output pin Send -> every connected input pin Receive.
+            context.SetOutput("Output", _text);
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            Running = false;
+        }
+    }
+    public override Task Stop(INodeContext context, CancellationToken ct = default)
+    {
+        Running = false;
         return Task.CompletedTask;
     }
 }

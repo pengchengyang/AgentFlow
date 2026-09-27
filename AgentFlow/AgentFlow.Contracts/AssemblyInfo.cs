@@ -1,18 +1,10 @@
 // -----------------------------------------------------------------------
-// <copyright company="Rolling Wireless SARL" file="TopBarView.axaml.cs">
+// <copyright company="Rolling Wireless SARL" file="AssemblyInfo.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
 // </copyright>
 // -----------------------------------------------------------------------
 
-using Avalonia.Controls;
+using System.Runtime.CompilerServices;
 
-namespace AgentFlow.Views;
-
-public partial class TopBarView : UserControl
-{
-    public TopBarView()
-    {
-        InitializeComponent();
-    }
-}
+[assembly: InternalsVisibleTo("AgentFlow.Core")]

@@ -8,15 +8,17 @@
 namespace AgentFlow.Contracts;
 
 /// <summary>
-/// A parameter attached to a node: its data type, current value, whether the
+/// A parameter attached to a node: its name, data type, current value, whether the
 /// user may edit it in the UI, and an optional <see cref="Group"/> that groups
 /// related parameters together. The default (parameterless) constructor marks the
-/// parameter as editable; the full constructor lets you supply type / value and an
-/// explicit editable flag (e.g. <c>new NodeParameter(typeof(int), 56, false)</c>
-/// records a non-editable <c>int</c> value of <c>56</c>).
+/// parameter as editable; the full constructor lets you supply name / type / value
+/// and an explicit editable flag (e.g. <c>new NodeParameter("Gain", typeof(double), 4.0)</c>).
 /// </summary>
 public sealed class NodeParameter
 {
+    /// <summary>Parameter name (used as the JSON key inside its group).</summary>
+    public string Name { get; set; } = "";
+
     /// <summary>Parameter data type.</summary>
     public Type Type { get; set; }
 
@@ -38,6 +40,15 @@ public sealed class NodeParameter
     {
         Type = typeof(object);
         IsEditable = true;
+    }
+
+    public NodeParameter(string name, Type type, object? value, bool isEditable = true, string? group = null)
+    {
+        Name = name;
+        Type = type;
+        Value = value;
+        IsEditable = isEditable;
+        Group = group;
     }
 
     public NodeParameter(Type type, object? value, bool isEditable = true, string? group = null)

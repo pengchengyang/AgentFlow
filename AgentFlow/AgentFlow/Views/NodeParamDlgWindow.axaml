@@ -33,26 +33,33 @@
                 </StackPanel>
             </Border>
 
-            <!-- 参数列表 -->
+            <!-- 参数列表（按 logic/parameters 分组，树形展示） -->
             <ScrollViewer Padding="20,16">
                 <StackPanel Spacing="14">
-                    <TextBlock Text="参数配置" IsVisible="{Binding HasNoParameters}"
+                    <TextBlock Text="暂无参数" IsVisible="{Binding HasNoParameters}"
                                Foreground="#9CA3AF" HorizontalAlignment="Center" Margin="0,40,0,0"/>
-                    <ItemsControl ItemsSource="{Binding Parameters}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ParameterEditRow">
-                                <StackPanel Spacing="6">
-                                    <DockPanel>
-                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Label}"
+                    <TreeView ItemsSource="{Binding Groups}">
+                        <TreeView.DataTemplates>
+                            <TreeDataTemplate DataType="{x:Type vm:ParameterGroupNode}" ItemsSource="{Binding Children}">
+                                <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="#111827" Margin="0,4,0,6"/>
+                            </TreeDataTemplate>
+                            <DataTemplate DataType="{x:Type vm:ParameterEditRow}">
+                                <Grid ColumnDefinitions="Auto,*" Margin="0,6,0,6">
+                                    <StackPanel Grid.Column="0" Margin="0,0,12,0" VerticalAlignment="Center"
+                                                Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
                                                    FontSize="13" FontWeight="Medium" Foreground="#374151"/>
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding TypeName}"
-                                                   FontSize="11" Foreground="#9CA3AF" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                    <TextBox Text="{Binding Value, Mode=TwoWay}" Padding="10,7"/>
-                                </StackPanel>
+                                        <TextBlock Text="{Binding TypeName}" VerticalAlignment="Center"
+                                                   FontSize="11" Foreground="#9CA3AF"/>
+                                    </StackPanel>
+                                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}"
+                                             Padding="8,6" HorizontalAlignment="Stretch"
+                                             IsEnabled="{Binding IsEditable}"/>
+                                </Grid>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </TreeView.DataTemplates>
+                    </TreeView>
                 </StackPanel>
             </ScrollViewer>
 

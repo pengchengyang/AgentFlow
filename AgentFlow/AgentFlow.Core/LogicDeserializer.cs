@@ -25,11 +25,21 @@ public static class LogicDeserializer
     /// GUI fields in the JSON are ignored.
     /// </summary>
     /// <param name="node">The contract-layer node instance to restore into.</param>
-    /// <param name="json">The logical-parameter JSON blob (may be null).</param>
+    /// <param name="json">
+    /// The logical-parameter JSON blob (may be null). New blobs are the logic object itself;
+    /// a legacy wrapper containing a <c>"logic"</c> key is also accepted.
+    /// </param>
     public static void Deserialize(BaseNode node, JsonObject? json)
     {
         ArgumentNullException.ThrowIfNull(node);
         if (json is null) return;
-        node.DeserializeParameters(json);
+
+        // New format is the logic object itself. A legacy wrapper containing a "logic" key
+        // is also accepted for files saved before the top-level rename.
+        var logic = json["logic"] as JsonObject ?? json;
+        node.DependsOn = logic.TryGetPropertyValue("dependsOn", out var deps) && deps is not null
+            ? deps.GetValue<int>()
+            : 0;
+        node.DeserializeParameters(logic);
     }
 }

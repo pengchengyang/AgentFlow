@@ -28,11 +28,27 @@ public sealed class StringUpperLogNode : BaseNode
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters) { }
 
-    public override Task ExecuteAsync(INodeContext context, CancellationToken ct = default)
+    public override Task Initialize(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public override Task Run(INodeContext context, CancellationToken ct = default)
     {
-        var value = context.GetInput<string>("Input") ?? string.Empty;
-        var upper = value.ToUpperInvariant();
-        context.Logger.LogInformation("String To Upper (log): {Value}", upper);
+        Running = true;
+        try
+        {
+            var value = context.GetInput<string>("Input") ?? string.Empty;
+            var upper = value.ToUpperInvariant();
+            context.Logger.LogInformation("String To Upper (log): {Value}", upper);
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            Running = false;
+        }
+    }
+    public override Task Stop(INodeContext context, CancellationToken ct = default)
+    {
+        Running = false;
         return Task.CompletedTask;
     }
 }

@@ -115,7 +115,7 @@ public sealed class WorkflowEngine
                 _logger.LogInformation("--- Executing node {Id} ---", nodeId);
                 try
                 {
-                    await node.ExecuteAsync(ctx, ct);
+                    await node.Run(ctx, ct);
                 }
                 catch (Exception ex)
                 {

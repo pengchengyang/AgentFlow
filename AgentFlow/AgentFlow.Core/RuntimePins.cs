@@ -19,14 +19,12 @@ public abstract class RuntimePin : BasePin
 {
     private readonly BasePin _definition;
 
-    /// <summary>The node that owns this runtime pin.</summary>
-    public BaseNode? Owner { get; }
-
     protected RuntimePin(BasePin definition, BaseNode? owner)
-        : base(definition.Name, definition.DataType, definition.Direction, definition.Required)
+        : base(definition.Name, definition.DataType, definition.Direction, definition.Required, definition.Id)
     {
         _definition = definition;
         Owner = owner;
+        Context = definition.Context;
     }
 
     /// <inheritdoc/>
@@ -43,8 +41,6 @@ public abstract class RuntimePin : BasePin
 /// </summary>
 public sealed class RuntimeInputPin : RuntimePin
 {
-    private readonly INodeContext? _context;
-
     /// <summary>Latest value received via <see cref="Receive"/>.</summary>
     public object? Value { get; private set; }
 
@@ -54,26 +50,19 @@ public sealed class RuntimeInputPin : RuntimePin
     public RuntimeInputPin(BasePin definition, BaseNode? owner = null, INodeContext? context = null)
         : base(definition, owner)
     {
-        _context = context;
+        Context = context;
     }
 
     /// <summary>
     /// Receive data (called by the upstream output pin's Send).
-    /// Runs the pin-level hook, stores the value, then hands the data to the owning node
-    /// via <see cref="BaseNode.Receive"/> for immediate reaction.
+    /// Stores the latest value, notifies listeners, then lets <see cref="BasePin.Receive"/>
+    /// run <see cref="OnReceive"/> and hand the value to the owning node.
     /// </summary>
-    public void Receive(object? value)
+    public override void Receive(object? value)
     {
-        // 1. Run the pin-level custom hook (validation / sanitisation / logging / event wake-up)
-        OnReceive(value);
-        // 2. Store the value for the node to read
         Value = value;
-        // 3. Notify the engine layer
         ValueReceived?.Invoke(value);
-        // 4. Hand the data to the owning node together with the input pin definition,
-        //    enabling direct node-to-node communication
-        if (Owner is not null && _context is not null)
-            Owner.Receive(_context, this, value);
+        base.Receive(value);
     }
 }
 
@@ -105,31 +94,34 @@ public sealed class RuntimeOutputPin : RuntimePin
                 $"Output pin {Name} is already connected to input pin {input.Name}.");
 
         _targets.Add(input);
-        ConnectedInput = input;
+        ConnectedPin = input;
+        input.ConnectedPin = this;
     }
 
     /// <summary>Remove a previously connected downstream input pin.</summary>
     public void Disconnect(RuntimeInputPin input)
     {
         _targets.Remove(input);
-        ConnectedInput = null;
+        if (ReferenceEquals(ConnectedPin, input))
+            ConnectedPin = null;
+        if (ReferenceEquals(input.ConnectedPin, this))
+            input.ConnectedPin = null;
     }
 
     /// <summary>
     /// Send data: runs the pin-level OnSend hook, then calls Receive on every connected input pin.
+    /// The default <see cref="BasePin.Send"/> covers the single-connection case; this override
+    /// keeps the existing fan-out behaviour.
     /// </summary>
-    public void Send(object? value)
+    public override void Send(object? value)
     {
         if (value is not null && !DataType.IsInstanceOfType(value))
             throw new InvalidOperationException(
                 $"Output pin {Name} is {DataType.Name}, cannot send {value.GetType().Name}");
 
-        // 1. Run the pin-level custom hook (serialisation / masking / logging)
         OnSend(value);
 
-        // 2. Push to every downstream input pin
         foreach (var target in _targets)
             target.Receive(value);
     }
 }
-

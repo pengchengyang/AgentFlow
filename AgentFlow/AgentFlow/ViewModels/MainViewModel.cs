@@ -10,6 +10,8 @@ using System.Windows.Input;
 using AgentFlow.Models;
 using AgentFlow.Broadcast;
 using AgentFlow.Core;
+using BaseNode = AgentFlow.Contracts.BaseNode;
+using INodeContext = AgentFlow.Contracts.INodeContext;
 using AgentFlow.Services;
 using AgentFlow.Serialization;
 using Avalonia;
@@ -29,6 +31,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly NodeRegistry _registry = new();
     private readonly PluginLoader _pluginLoader;
     private readonly EditorGraph _graph;
+    private readonly NodeInstanceManager _nodeManager;
     private readonly ILoggerFactory _loggerFactory;
     private readonly InProcessGuiBridge _guiBridge = new();
     private CancellationTokenSource? _runCts;
@@ -63,19 +66,11 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isRunning;
 
-    /// <summary>Single Run/Stop toggle command: Start when idle, Stop while running.</summary>
-    public ICommand RunStopCommand => IsRunning ? StopCommand : RunCommand;
-
-    /// <summary>Tooltip for the Run/Stop toggle button.</summary>
-    public string RunStopToolTip => IsRunning ? "Stop" : "Run";
-
-    /// <summary>True while the workflow is idle (not running). Drives the Start icon visibility.</summary>
+    /// <summary>True while the workflow is idle (not running). Drives the Start button enabled state.</summary>
     public bool IsIdle => !IsRunning;
 
     partial void OnIsRunningChanged(bool value)
     {
-        OnPropertyChanged(nameof(RunStopCommand));
-        OnPropertyChanged(nameof(RunStopToolTip));
         OnPropertyChanged(nameof(IsIdle));
     }
     /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
@@ -122,6 +117,7 @@ public partial class MainViewModel : ViewModelBase
         });
 
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
+        _nodeManager = new NodeInstanceManager(_pluginLoader);
 
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader, _guiBridge);
 
@@ -319,27 +315,19 @@ public partial class MainViewModel : ViewModelBase
         var conn = Connections.FirstOrDefault(c => ReferenceEquals(c.Target, input));
         if (conn is null) return;
 
-        // Clear the upstream output pin's ConnectedInput reference for this input.
-        if (conn.Source.Node.Runtime?.Outputs.TryGetValue(conn.Source.Name, out var op) == true)
-            op.ConnectedInput = null;
-
         Teardown(conn);
     }
 
     /// <summary>
-    /// Establish the connection in the Core layer: the output pin saves a reference to the input pin.
+    /// Establish the connection in the Core layer: the output pin saves a reference to the input pin
+    /// and the input pin saves a reference back to the output pin (bidirectional ConnectedPin).
     /// The GUI only adds a visual wire.
     /// </summary>
     private void Establish(PinViewModel source, PinViewModel target)
     {
         _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
-        // Let the source's real output pin record the connected downstream input pin reference
-        // (the real BasePin inside target).
-        source.Node.Runtime!.Outputs[source.Name].ConnectedInput =
-            target.Node.Runtime!.Inputs[target.Name];
         Connections.Add(new ConnectionViewModel(source, target));
     }
-
     /// <summary>Remove the connection in the Core layer and delete the visual wire.</summary>
     private void Teardown(ConnectionViewModel connection)
     {
@@ -394,18 +382,11 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void RemoveNode(NodeViewModel node)
     {
-        // 1. Remove the node instance from the PluginLoader container.
+        // 1. Remove the node instance from the PluginLoader container (PluginLoader also releases its pins).
         if (node.Runtime?.RuntimeNode is { } instance)
             _pluginLoader.DeleteNodeInstance(instance);
 
-        // 2. Clear ConnectedInput on every upstream output pin wired to one of this node's inputs.
-        foreach (var c in Connections.Where(c => ReferenceEquals(c.Target.Node, node)))
-        {
-            if (c.Source.Node.Runtime?.Outputs.TryGetValue(c.Source.Name, out var op) == true)
-                op.ConnectedInput = null;
-        }
-
-        // The Core layer removes the node and all its wires (output pins auto-disconnect their references).
+        // 2. The Core layer removes the node and all its wires (output pins auto-disconnect their references).
         if (node.Runtime is not null)
             _graph.RemoveNode(node.Runtime);
 
@@ -522,8 +503,11 @@ public partial class MainViewModel : ViewModelBase
         foreach (var n in Nodes)
         {
             if (n.Runtime is not null)
-                _graph.UpdateNode(n.Runtime, n.Name, n.Priority, n.Location.X, n.Location.Y,
-                    n.Parameters.ToDictionary(p => p.Key, p => p.ToValue()));
+            {
+                var values = n.Parameters.ToDictionary(p => p.Key, p => p.ToValue());
+                n.Runtime.RuntimeNode.Configure(values);
+                _graph.UpdateNode(n.Runtime, n.Name, n.Priority, n.Location.X, n.Location.Y, values);
+            }
         }
     }
 
@@ -548,46 +532,61 @@ public partial class MainViewModel : ViewModelBase
         foreach (var spec in doc.Nodes)
         {
             // Create a contract-layer instance; NodeModel and EditorGraph share the same instance.
-            var instance = _pluginLoader.CreateNodeInstance(spec.TypeId);
+            // typeId now lives inside the logic blob (no longer duplicated on the outer node object).
+            var typeId = spec.Logic?["typeId"]?.GetValue<string>()
+                ?? throw new InvalidOperationException($"Node '{spec.Id}' is missing typeId in logic.");
+            var nodeName = spec.Logic?["name"]?.GetValue<string>() ?? "";
+            var instanceId = spec.Logic?["instanceId"]?.GetValue<int>() ?? 0;
+            var dependsOn = spec.Logic?["dependsOn"]?.GetValue<int>() ?? 0;
 
-            // Restore logical / runtime parameters via the Contracts deserializer
-            // (base restores uuid / typeId / instanceId, then the subclass hook restores its fields).
-            if (spec.Parameters is not null)
-                LogicDeserializer.Deserialize(instance, spec.Parameters);
+            // PluginLoader now owns restore: create node/pin instances, reserve the saved
+            // instance id, set dependsOn and deserialize the logic blob.
+            var instance = _pluginLoader.CreateNodeInstance(typeId, instanceId, dependsOn, spec.Logic);
 
             var node = new NodeViewModel(new NodeModel(instance))
             {
-                Name = spec.Name ?? "",
-                Priority = spec.Priority,
+                Name = nodeName,
                 Location = new Point(spec.X, spec.Y)
             };
 
             // Reflect restored logical values into the property panel (best effort).
             var restored = new Dictionary<string, object?>();
-            foreach (var p in instance.Parameters)
+            foreach (var p in instance.NodeParameters)
             {
-                if (spec.Parameters is not null && spec.Parameters[p.Name] is { } jv)
-                    restored[p.Name] = jv.GetValueKind() == System.Text.Json.JsonValueKind.String
-                        ? jv.GetValue<string>()
-                        : (object?)jv;
+                if (!string.IsNullOrEmpty(p.Name))
+                    restored[p.Name] = p.Value;
             }
             node.ApplyParameterValues(restored);
 
             // The Core layer builds a runtime node from the same instance.
             node.Runtime = _graph.AddNode(instance, spec.X, spec.Y,
                 node.Parameters.ToDictionary(p => p.Key, p => p.ToValue()),
-                spec.Id, spec.Name, spec.Priority);
+                spec.Id, nodeName);
             node.Id = node.Runtime.Id;
             HookSelection(node);
             Nodes.Add(node);
             map[spec.Id] = node;
         }
 
+        // Restore connections by pin instance id. Core locates the runtime pins; the UI only
+        // maps them back to the visual PinViewModels so a wire can be drawn.
         foreach (var spec in doc.Connections)
         {
-            var source = map[spec.FromNode].Outputs.First(p => p.Name == spec.FromPin);
-            var target = map[spec.ToNode].Inputs.First(p => p.Name == spec.ToPin);
-            Establish(source, target);
+            var from = _graph.FindPinById(spec.FromPinId);
+            var to = _graph.FindPinById(spec.ToPinId);
+            if (from is null || to is null) continue;
+            if (!from.Value.IsOutput || to.Value.IsOutput) continue;
+
+            var sourceNode = Nodes.FirstOrDefault(n => n.Id == from.Value.Node.Id);
+            var targetNode = Nodes.FirstOrDefault(n => n.Id == to.Value.Node.Id);
+            if (sourceNode is null || targetNode is null) continue;
+
+            var source = sourceNode.Outputs.FirstOrDefault(p => p.Name == from.Value.PinName);
+            var target = targetNode.Inputs.FirstOrDefault(p => p.Name == to.Value.PinName);
+            if (source is null || target is null) continue;
+
+            if (_graph.TryConnectByPinId(spec.FromPinId, spec.ToPinId))
+                Connections.Add(new ConnectionViewModel(source, target));
         }
     }
 
@@ -619,8 +618,8 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            var engine = new WorkflowEngine(_registry, _loggerFactory, _guiBridge);
-            await Task.Run(() => engine.RunAsync(graph, _runCts.Token));
+            var contexts = BuildNodeContexts();
+            await Task.Run(() => _nodeManager.RunAsync(node => contexts[node], _runCts.Token));
             StatusText = L["RunCompleted"];
         }
         catch (OperationCanceledException)
@@ -641,7 +640,34 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void Stop() => _runCts?.Cancel();
+    private async Task Stop()
+    {
+        _runCts?.Cancel();
+        try
+        {
+            await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
+        }
+        catch (Exception ex)
+        {
+            Logs.Add($"[{L["ErrorPrefix"]}] {ex.Message}");
+        }
+    }
+
+    /// <summary>Build a node context for the given runtime instance so NodeInstanceManager can run it.</summary>
+    private INodeContext GetNodeContext(BaseNode node) => _graph.CreateContext(node);
+
+    /// <summary>
+    /// Pre-create contexts for every managed instance and bind them to the runtime pins before a
+    /// run. This ensures downstream input pins already have a context when an upstream node pushes
+    /// data, even if the downstream node has not been reached in the dependency-ordered loop yet.
+    /// </summary>
+    private Dictionary<BaseNode, INodeContext> BuildNodeContexts()
+    {
+        var contexts = new Dictionary<BaseNode, INodeContext>();
+        foreach (var node in _pluginLoader.Instances)
+            contexts[node] = _graph.CreateContext(node);
+        return contexts;
+    }
 
     [RelayCommand]
     private async void Save()

@@ -5,6 +5,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgentFlow.Contracts;
 
@@ -26,12 +27,34 @@ public static class LogicSerializer
     /// Ignores all GUI state.
     /// </summary>
     /// <param name="node">The contract-layer node instance to serialize.</param>
-    /// <returns>A JSON object containing only the node's logical parameters.</returns>
+    /// <returns>
+    /// A JSON object containing only the node's logical parameters. The caller stores
+    /// this object directly as the node's top-level <c>logic</c> property.
+    /// </returns>
     public static JsonObject Serialize(BaseNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        var json = new JsonObject();
-        node.SerializeParameters(json);
-        return json;
+        var logic = new JsonObject();
+        node.SerializeParameters(logic);
+        logic["pins"] = SerializePins(node);
+        logic["dependsOn"] = node.DependsOn;
+        return logic;
+    }
+
+    private static JsonArray SerializePins(BaseNode node)
+    {
+        var arr = new JsonArray();
+        foreach (var pin in node.InputPins.Concat(node.OutputPins))
+        {
+            var obj = new JsonObject
+            {
+                ["name"] = pin.Name,
+                ["direction"] = pin.Direction.ToString(),
+                ["type"] = pin.DataType.AssemblyQualifiedName ?? pin.DataType.FullName ?? pin.DataType.Name,
+                ["id"] = pin.Id
+            };
+            arr.Add(obj);
+        }
+        return arr;
     }
 }

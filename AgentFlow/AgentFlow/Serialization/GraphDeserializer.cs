@@ -22,6 +22,7 @@ public static class GraphDeserializer
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter() }
     };
 

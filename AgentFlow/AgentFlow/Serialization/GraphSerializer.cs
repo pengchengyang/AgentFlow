@@ -14,8 +14,9 @@ namespace AgentFlow.Serialization;
 
 /// <summary>
 /// Layered document produced when persisting an editor graph. The <see cref="Nodes"/>
-/// and <see cref="Connections"/> lists carry the structure; per-node <see cref="SerializedNode.Parameters"/>
+/// and <see cref="Connections"/> lists carry the structure; per-node <see cref="SerializedNode.Logic"/>
 /// is the logical-parameter blob produced by <see cref="AgentFlow.Core.LogicSerializer"/>.
+/// All JSON keys use lowerCamelCase (parameter values are the only exception).
 /// </summary>
 public sealed class GraphDocument
 {
@@ -28,32 +29,31 @@ public sealed class GraphDocument
 public sealed class SerializedNode
 {
     public string Id { get; set; } = "";
-    public string TypeId { get; set; } = "";
-    public string? Name { get; set; }
-    public int Priority { get; set; }
     public double X { get; set; }
     public double Y { get; set; }
 
     /// <summary>
     /// Logical parameters produced by <see cref="AgentFlow.Core.LogicSerializer"/>
-    /// (uuid, typeId, instanceId + subclass data). Restored on load via
-    /// <see cref="AgentFlow.Core.LogicDeserializer"/>.
+    /// (uuid, typeId, instanceId + subclass data), plus the node's display <c>name</c> as
+    /// the first key. Serialized as the node's top-level <c>logic</c> field and restored
+    /// on load via <see cref="AgentFlow.Core.LogicDeserializer"/>.
     /// </summary>
-    public JsonObject? Parameters { get; set; }
+    public JsonObject? Logic { get; set; }
 }
 
 /// <summary>A persisted pin-to-pin connection.</summary>
 public sealed class SerializedConnection
 {
-    public string FromNode { get; set; } = "";
-    public string FromPin { get; set; } = "";
-    public string ToNode { get; set; } = "";
-    public string ToPin { get; set; } = "";
+    /// <summary>Instance id of the source (output) pin.</summary>
+    public int FromPinId { get; set; }
+
+    /// <summary>Instance id of the target (input) pin.</summary>
+    public int ToPinId { get; set; }
 }
 
 /// <summary>
 /// Serializes an <see cref="EditorGraph"/> into a layered JSON document.
-/// UI-related state (node id, position, name, priority, connections) is handled here;
+/// UI-related state (node id, position, name, connections) is handled here;
 /// logical / runtime node parameters are delegated to the Core-layer
 /// <see cref="AgentFlow.Core.LogicSerializer"/> on each node instance. This class
 /// therefore lives in the UI layer and is not part of Core.
@@ -63,6 +63,7 @@ public static class GraphSerializer
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter() }
     };
 
@@ -87,18 +88,19 @@ public static class GraphSerializer
 
         foreach (var node in graph.Nodes)
         {
-            // Logical parameters come from the Core layer; GUI state is merged here.
+            // Logical parameters come from the Core layer; the editable display name is
+            // placed as the first key inside the logic blob.
             var parameters = LogicSerializer.Serialize(node.RuntimeNode);
+            var logic = new JsonObject { ["name"] = node.Name ?? "" };
+            foreach (var kv in parameters)
+                logic[kv.Key] = kv.Value;
 
             doc.Nodes.Add(new SerializedNode
             {
                 Id = node.Id,
-                TypeId = node.TypeId,
-                Name = node.Name,
-                Priority = node.Priority,
                 X = node.X,
                 Y = node.Y,
-                Parameters = parameters
+                Logic = logic
             });
         }
 
@@ -106,10 +108,8 @@ public static class GraphSerializer
         {
             doc.Connections.Add(new SerializedConnection
             {
-                FromNode = c.FromNode.Id,
-                FromPin = c.FromPin,
-                ToNode = c.ToNode.Id,
-                ToPin = c.ToPin
+                FromPinId = c.SourcePin.Id,
+                ToPinId = c.TargetPin.Id
             });
         }
 

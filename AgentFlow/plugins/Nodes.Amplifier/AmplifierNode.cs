@@ -57,13 +57,29 @@ public sealed class AmplifierNode : BaseNode
         _gain = json["gain"]?.GetValue<double>() ?? _gain;
     }
 
-    public override Task ExecuteAsync(INodeContext context, CancellationToken ct = default)
+    public override Task Initialize(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public override Task Run(INodeContext context, CancellationToken ct = default)
     {
-        var input = context.GetInput<double>("In");
-        var amplified = input * _gain;
-        for (var i = 1; i <= 4; i++)
-            context.SetOutput($"Out{i}", amplified);
-        context.Logger.LogInformation("Amplifier: {Input} * {Gain} = {Amplified}", input, _gain, amplified);
+        Running = true;
+        try
+        {
+            var input = context.GetInput<double>("In");
+            var amplified = input * _gain;
+            for (var i = 1; i <= 4; i++)
+                context.SetOutput($"Out{i}", amplified);
+            context.Logger.LogInformation("Amplifier: {Input} * {Gain} = {Amplified}", input, _gain, amplified);
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            Running = false;
+        }
+    }
+    public override Task Stop(INodeContext context, CancellationToken ct = default)
+    {
+        Running = false;
         return Task.CompletedTask;
     }
 }
