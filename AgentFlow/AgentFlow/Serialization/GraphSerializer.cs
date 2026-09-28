@@ -92,8 +92,10 @@ public static class GraphSerializer
             // placed as the first key inside the logic blob.
             var parameters = LogicSerializer.Serialize(node.RuntimeNode);
             var logic = new JsonObject { ["name"] = node.Name ?? "" };
+            // Deep-clone each value: they still belong to the `parameters` object returned by
+            // LogicSerializer, and a JsonNode can only have one parent.
             foreach (var kv in parameters)
-                logic[kv.Key] = kv.Value;
+                logic[kv.Key] = kv.Value?.DeepClone();
 
             doc.Nodes.Add(new SerializedNode
             {

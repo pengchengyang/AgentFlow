@@ -35,4 +35,22 @@ guiBridge.Subscribe("result", msg =>
     Console.WriteLine($">>> [GuiBridge] topic={msg.Topic}, payload={msg.Payload}"));
 
 var engine = new WorkflowEngine(registry, loggerFactory, guiBridge);
-await engine.RunAsync(graph);
+
+// Ctrl+C / SIGINT lets the user stop a running workflow. The cancellation token flows into
+// NodeInstanceManager.RunWorkflowAsync, which always runs the stop phase before exiting.
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
+{
+    logger.LogWarning("Stop requested (Ctrl+C). Stopping workflow...");
+    e.Cancel = true; // let the app finish cleanup instead of being killed immediately
+    cts.Cancel();
+};
+
+try
+{
+    await engine.RunWorkflowAsync(graph, cts.Token);
+}
+catch (OperationCanceledException)
+{
+    logger.LogInformation("Workflow stopped by user.");
+}

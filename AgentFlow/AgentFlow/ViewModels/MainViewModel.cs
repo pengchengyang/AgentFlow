@@ -619,7 +619,7 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var contexts = BuildNodeContexts();
-            await Task.Run(() => _nodeManager.RunAsync(node => contexts[node], _runCts.Token));
+            await Task.Run(() => _nodeManager.RunWorkflowAsync(node => contexts[node], _runCts.Token));
             StatusText = L["RunCompleted"];
         }
         catch (OperationCanceledException)

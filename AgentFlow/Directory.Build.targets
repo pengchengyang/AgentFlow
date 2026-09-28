@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!--
+    For every plugin project (IsPlugin=true), after it builds, copy its output dll
+    into each app's run-directory plugins folder, overwriting any stale dll.
+  -->
+  <Target Name="CopyPluginToRunDirs" AfterTargets="Build" Condition="'$(IsPlugin)' == 'true'">
+    <ItemGroup>
+      <_PluginDestDirs Include="$(MSBuildThisFileDirectory)AgentFlow\bin\$(Configuration)\$(TargetFramework)\plugins" />
+      <_PluginDestDirs Include="$(MSBuildThisFileDirectory)AgentFlow.Desktop\bin\$(Configuration)\$(TargetFramework)\plugins" />
+      <_PluginDestDirs Include="$(MSBuildThisFileDirectory)AgentFlow.Cli\bin\$(Configuration)\$(TargetFramework)\plugins" />
+    </ItemGroup>
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="%(_PluginDestDirs.Identity)"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

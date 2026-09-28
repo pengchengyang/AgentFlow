@@ -7,7 +7,6 @@
 
 using System.Text.Json;
 using AgentFlow.Contracts;
-using ContractPinDirection = AgentFlow.Contracts.PinDirection;
 using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Core;
@@ -17,9 +16,8 @@ namespace AgentFlow.Core;
 /// 1. Validate the graph (types, pins, required inputs, cycles, priority tie-breaks).
 /// 2. Instantiate nodes and their runtime pins.
 /// 3. Wire the graph: each output pin holds references to its connected input pins (Connect).
-/// 4. Run the optional node lifecycle (Initialize / Start / Execute / Stop) borrowed from
-///    ALC's filter-manager start-priority pattern.
-/// 5. Execute in topological order; SetOutput -> output pin.Send -> each input pin.Receive.
+/// 4. Execute in topological order through <see cref="NodeInstanceManager"/> — the same
+///    unified lifecycle mechanism used by the AgentFlow GUI (initialize, run, always stop).
 /// Has no UI dependency and can run headless in the CLI.
 /// </summary>
 public sealed class WorkflowEngine
@@ -28,6 +26,8 @@ public sealed class WorkflowEngine
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly IGuiBridge _guiBridge;
+    private WorkflowRun? _prepared;
+    private WorkflowGraph? _preparedGraph;
 
     public WorkflowEngine(NodeRegistry registry, ILoggerFactory loggerFactory, IGuiBridge guiBridge)
     {
@@ -37,7 +37,51 @@ public sealed class WorkflowEngine
         _logger = loggerFactory.CreateLogger(nameof(WorkflowEngine));
     }
 
+    /// <summary>Initialize every node in the workflow (uses <see cref="NodeInstanceManager"/>).</summary>
+    public async Task InitializeAsync(WorkflowGraph graph, CancellationToken ct = default)
+    {
+        var run = Prepare(graph);
+        await run.Manager.InitializeAsync(run.GetContext, ct);
+    }
+
+    /// <summary>Run every node in the workflow once, in execution order (uses <see cref="NodeInstanceManager"/>).</summary>
     public async Task RunAsync(WorkflowGraph graph, CancellationToken ct = default)
+    {
+        var run = Prepare(graph);
+        await run.Manager.RunAsync(run.GetContext, ct);
+    }
+
+    /// <summary>
+    /// Run the full workflow lifecycle (initialize, run, always stop) through
+    /// <see cref="NodeInstanceManager"/>. This is the normal one-shot entry point for
+    /// CLI / headless execution.
+    /// </summary>
+    public async Task RunWorkflowAsync(WorkflowGraph graph, CancellationToken ct = default)
+    {
+        var run = Prepare(graph);
+        await run.Manager.RunWorkflowAsync(run.GetContext, ct);
+        _logger.LogInformation("Workflow completed");
+    }
+
+    /// <summary>Stop every node in the workflow, reverse order (uses <see cref="NodeInstanceManager"/>).</summary>
+    public async Task StopAsync(WorkflowGraph graph, CancellationToken ct = default)
+    {
+        var run = Prepare(graph);
+        await run.Manager.StopAsync(run.GetContext, ct);
+    }
+
+    /// <summary>Returns the prepared run for the given graph, preparing it once per graph instance.</summary>
+    private WorkflowRun Prepare(WorkflowGraph graph)
+    {
+        if (_prepared is not null && ReferenceEquals(_preparedGraph, graph))
+            return _prepared;
+
+        _prepared = BuildRun(graph);
+        _preparedGraph = graph;
+        return _prepared;
+    }
+
+    private WorkflowRun BuildRun(WorkflowGraph graph)
     {
         var errors = WorkflowValidation.Validate(_registry, graph);
         if (errors.Count > 0)
@@ -50,7 +94,6 @@ public sealed class WorkflowEngine
         // 1. Instantiate all nodes and runtime pins, build execution contexts.
         var instances = new Dictionary<string, BaseNode>();
         var contexts = new Dictionary<string, NodeContext>();
-        var lifecycle = new Dictionary<string, ILifecycleNode>();
 
         foreach (var spec in graph.Nodes)
         {
@@ -60,8 +103,6 @@ public sealed class WorkflowEngine
             contexts[spec.Id] = new NodeContext(
                 spec.Id, node,
                 _loggerFactory.CreateLogger($"Node:{spec.Id}"), _guiBridge);
-            if (node is ILifecycleNode lc)
-                lifecycle[spec.Id] = lc;
             _logger.LogInformation("Instantiated node {Id} ({TypeId})", spec.Id, spec.TypeId);
         }
 
@@ -79,72 +120,11 @@ public sealed class WorkflowEngine
         var order = WorkflowValidation.TopologicalSort(graph);
         _logger.LogInformation("Execution order: {Order}", string.Join(" -> ", order));
 
-        // 4. Execute lifecycle + graph body in one try/finally so StopAsync always runs
-        //    (reverse priority order, ALC stop pattern) even when Start/Execute throws.
-        try
-        {
-            // 4a. Initialize lifecycle nodes before the first execute (e.g. open devices).
-            foreach (var nodeId in order)
-            {
-                if (lifecycle.TryGetValue(nodeId, out var lc))
-                {
-                    ct.ThrowIfCancellationRequested();
-                    _logger.LogInformation("Initializing node {Id}", nodeId);
-                    await lc.InitializeAsync(contexts[nodeId], ct);
-                }
-            }
-
-            // 4b. Start lifecycle nodes in the same priority order (ALC start priority).
-            foreach (var nodeId in order)
-            {
-                if (lifecycle.TryGetValue(nodeId, out var lc))
-                {
-                    ct.ThrowIfCancellationRequested();
-                    _logger.LogInformation("Starting node {Id}", nodeId);
-                    await lc.StartAsync(contexts[nodeId], ct);
-                }
-            }
-
-            // 4c+5. Execute in order; SetOutput pushes data directly along pin references.
-            foreach (var nodeId in order)
-            {
-                ct.ThrowIfCancellationRequested();
-                var node = instances[nodeId];
-                var ctx = contexts[nodeId];
-
-                _logger.LogInformation("--- Executing node {Id} ---", nodeId);
-                try
-                {
-                    await node.Run(ctx, ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Node {Id} failed", nodeId);
-                    throw;
-                }
-            }
-
-            _logger.LogInformation("Workflow completed");
-        }
-        finally
-        {
-            // Stop lifecycle nodes in reverse priority order (ALC stop pattern).
-            foreach (var nodeId in Enumerable.Reverse(order))
-            {
-                if (lifecycle.TryGetValue(nodeId, out var lc))
-                {
-                    try
-                    {
-                        _logger.LogInformation("Stopping node {Id}", nodeId);
-                        await lc.StopAsync(contexts[nodeId], ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Node {Id} failed to stop", nodeId);
-                    }
-                }
-            }
-        }
+        // 4. Build the same unified NodeInstanceManager used by the AgentFlow GUI.
+        var orderedInstances = order.Select(id => instances[id]).ToList();
+        var manager = new NodeInstanceManager(orderedInstances);
+        var nodeIds = instances.ToDictionary(kv => kv.Value, kv => kv.Key);
+        return new WorkflowRun(manager, node => contexts[nodeIds[node]]);
     }
 
     /// <summary>JSON-deserialized parameter values are JsonElements; convert to native types.</summary>
@@ -164,6 +144,20 @@ public sealed class WorkflowEngine
                 _ => je.ToString()
             }
             : value;
+
+    /// <summary>Prepared graph state: the manager plus the context factory bound to its instances.</summary>
+    private sealed class WorkflowRun
+    {
+        public WorkflowRun(NodeInstanceManager manager, Func<BaseNode, INodeContext> contextFactory)
+        {
+            Manager = manager;
+            GetContext = contextFactory;
+        }
+
+        public NodeInstanceManager Manager { get; }
+
+        public Func<BaseNode, INodeContext> GetContext { get; }
+    }
 
     /// <summary>
     /// Node execution context: owns all runtime pins of one node.
