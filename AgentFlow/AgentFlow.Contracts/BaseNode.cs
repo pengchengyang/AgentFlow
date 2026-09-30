@@ -23,10 +23,17 @@ public abstract class BaseNode
     private readonly List<BasePin> _outputPins = new();
     private readonly List<NodeParameter> _nodeParameters = new();
 
+    /// <summary>Names of the built-in General parameters that every node owns (not shown in the property-panel <see cref="Parameters"/> list).</summary>
+    private static readonly HashSet<string> BuiltInParamNames = new(StringComparer.Ordinal)
+    {
+        "DisplayName", "DependsOn", "Uuid", "TypeId", "InstanceId"
+    };
+
     protected BaseNode()
     {
         // Uuid is intentionally left empty here. Each derived class assigns its own
         // value as the unique type identifier of that subclass.
+        AddParam();
     }
 
     /// <summary>Node type id (globally unique, e.g. "basic.add"). Serialized into JSON.</summary>
@@ -56,6 +63,12 @@ public abstract class BaseNode
     /// <summary>Display name in the UI.</summary>
     public abstract string DisplayName { get; }
 
+    /// <summary>
+    /// User-editable instance display name (shown on canvas). Persisted as the editable
+    /// DisplayName General parameter and to <c>logic.name</c>.
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+
     /// <summary>Node category (used by the palette grouping and accent color).</summary>
     public abstract string Category { get; }
 
@@ -71,53 +84,102 @@ public abstract class BaseNode
     /// <summary>Append an output pin to the output list.</summary>
     public void AddOutputPin(BasePin pin) => _outputPins.Add(pin);
 
-    /// <summary>Parameter declarations (used to auto-generate the property panel).</summary>
-    public virtual IReadOnlyList<ParameterDefinition> Parameters => Array.Empty<ParameterDefinition>();
+    /// <summary>
+    /// Parameter declarations (used to auto-generate the property panel). Derived automatically
+    /// from the parameters declared via <see cref="AddParam"/> / <see cref="AddParameter"/>, so a
+    /// node declares its parameters only once and the base class surfaces them for both the
+    /// property panel and JSON serialization. The built-in General parameters
+    /// (<see cref="BuiltInParamNames"/>) are excluded from this list.
+    /// </summary>
+    public IReadOnlyList<ParameterDefinition> Parameters =>
+        _nodeParameters
+            .Where(p => !string.IsNullOrEmpty(p.Name) && !BuiltInParamNames.Contains(p.Name))
+            .Select(p => new ParameterDefinition(p.Name, p.Type, p.Name, p.Value))
+            .ToList();
 
     /// <summary>Parameters attached to this node (type + value + editable flag).</summary>
     public IReadOnlyList<NodeParameter> NodeParameters => _nodeParameters;
 
     /// <summary>
-    /// Append a parameter (type + value + editable flag) to this node, tagged with a
-    /// <paramref name="group"/> identifier so related parameters are grouped together.
+    /// Append a parameter (type + value + editable flag) to this node. The parameter's
+    /// <see cref="NodeParameter.Group"/> is taken from the <see cref="NodeParameter"/> itself.
     /// </summary>
-    public void AddParameter(NodeParameter parameter, string group)
+    public void AddParameter(NodeParameter parameter)
     {
-        parameter.Group = group;
         _nodeParameters.Add(parameter);
     }
 
     /// <summary>
-    /// Called by an input pin when data arrives from an upstream output pin.
-    /// The default implementation is a no-op for nodes that only read inputs
-    /// inside <see cref="Run"/>.
+    /// Hook for subclasses to declare their parameters via <see cref="AddParameter"/>.
+    /// Invoked once when the node is constructed, so the base class can automatically
+    /// serialize / deserialize every declared parameter to JSON (grouped under the
+    /// <c>parameters</c> root of the logic blob). The base implementation registers the
+    /// mandatory per-node fields as a <c>General</c> group: DisplayName and DependsOn are
+    /// editable; Uuid, TypeId and InstanceId are read-only.
     /// </summary>
-    public virtual void Receive(INodeContext context, BasePin pin, object? value) { }
+    protected virtual void AddParam()
+    {
+        AddParameter(new NodeParameter("DisplayName", typeof(string), Name, isEditable: true, group: "General"));
+        AddParameter(new NodeParameter("DependsOn", typeof(int), DependsOn, isEditable: true, group: "General"));
+        AddParameter(new NodeParameter("Uuid", typeof(string), Uuid, isEditable: false, group: "General"));
+        AddParameter(new NodeParameter("TypeId", typeof(string), TypeId, isEditable: false, group: "General"));
+        AddParameter(new NodeParameter("InstanceId", typeof(int), InstanceId, isEditable: false, group: "General"));
+    }
 
     /// <summary>Apply parameters (from JSON deserialization / property panel).</summary>
     public abstract void Configure(IReadOnlyDictionary<string, object?> parameters);
 
+    /// <summary>Refresh the built-in General parameter values from the live property values.</summary>
+    public void RefreshBuiltInParameters()
+    {
+        SetBuiltInValue("DisplayName", Name);
+        SetBuiltInValue("DependsOn", DependsOn);
+        SetBuiltInValue("Uuid", Uuid);
+        SetBuiltInValue("TypeId", TypeId);
+        SetBuiltInValue("InstanceId", InstanceId);
+    }
+
+    /// <summary>Push edited built-in General parameter values back onto the node properties.</summary>
+    public void ApplyBuiltInParameters()
+    {
+        var display = BuiltInParam("DisplayName")?.Value?.ToString();
+        if (display is not null) Name = display;
+        if (BuiltInParam("DependsOn")?.Value is { } dep && int.TryParse(dep.ToString(), out var d))
+            DependsOn = d;
+    }
+
+    private NodeParameter? BuiltInParam(string name) =>
+        _nodeParameters.FirstOrDefault(p => p.Name == name);
+
+    private void SetBuiltInValue(string name, object? value)
+    {
+        var npp = _nodeParameters.FirstOrDefault(x => x.Name == name);
+        if (npp is not null) npp.Value = value;
+    }
+
     /// <summary>
     /// Serialize this node's logical parameters into the given JSON object.
     /// The base implementation writes the mandatory instance identity
-    /// (<see cref="Uuid"/>, <see cref="TypeId"/>, <see cref="InstanceId"/>) first,
-    /// then invokes <see cref="OnSerializeParameters"/> so subclasses can append
-    /// node-specific data. Subclasses must not need to know about UI state.
+    /// (<see cref="Name"/>, <see cref="Uuid"/>, <see cref="TypeId"/>, <see cref="InstanceId"/>)
+    /// first, then serializes every parameter declared via <see cref="AddParam"/> /
+    /// <see cref="AddParameter"/> (grouped under the <c>parameters</c> root of the logic blob).
+    /// Subclasses must not need to know about UI state.
     /// </summary>
     public void SerializeParameters(JsonObject json)
     {
+        json["name"] = Name;
         json["uuid"] = Uuid;
         json["typeId"] = TypeId;
         json["instanceId"] = InstanceId;
-        OnSerializeParameters(json);
+        RefreshBuiltInParameters();
         SerializeGroupedParameters(json);
     }
 
     /// <summary>
     /// Restore this node's logical parameters from the given JSON object.
     /// The base implementation restores the mandatory identity fields, then
-    /// invokes <see cref="OnDeserializeParameters"/> so subclasses can read
-    /// their own data. Subclass overrides run after the base identity is restored.
+    /// deserializes every parameter declared via <see cref="AddParam"/> /
+    /// <see cref="AddParameter"/> (grouped under the <c>parameters</c> root of the logic blob).
     /// </summary>
     public void DeserializeParameters(JsonObject json)
     {
@@ -127,24 +189,12 @@ public abstract class BaseNode
         var instanceId = json["instanceId"]?.GetValue<int>();
         if (instanceId.HasValue)
             InstanceId = instanceId.Value;
-        OnDeserializeParameters(json);
+        var name = json["name"]?.GetValue<string>();
+        if (!string.IsNullOrEmpty(name))
+            Name = name;
         DeserializeGroupedParameters(json);
+        RefreshBuiltInParameters();
     }
-
-    /// <summary>
-    /// Hook for subclasses to append node-specific logical data to the
-    /// serialization JSON. Called by <see cref="SerializeParameters"/> after the
-    /// base identity fields are written. Default no-op.
-    /// </summary>
-
-    protected virtual void OnSerializeParameters(JsonObject json) { }
-
-    /// <summary>
-    /// Hook for subclasses to read node-specific logical data from the
-    /// deserialization JSON. Called by <see cref="DeserializeParameters"/> after
-    /// the base identity fields are restored. Default no-op.
-    /// </summary>
-    protected virtual void OnDeserializeParameters(JsonObject json) { }
 
     /// <summary>
     /// Write parameters that were added via <see cref="AddParameter"/> as JSON object fields,
@@ -293,7 +343,6 @@ public abstract class BaseNode
         return null;
     }
 
-
     /// <summary>One-time setup before a run starts. Nodes must implement this.</summary>
     public abstract Task Initialize(INodeContext context, CancellationToken cancellationToken = default);
 
@@ -302,6 +351,11 @@ public abstract class BaseNode
 
     /// <summary>Stop body; must set <see cref="Running"/> to false.</summary>
     public abstract Task Stop(INodeContext context, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Called by an input pin when data arrives from an upstream output pin.
+    /// The default implementation is a no-op for nodes that only read inputs
+    /// inside <see cref="Run"/>.
+    /// </summary>
+    public virtual void Receive(INodeContext context, BasePin pin, object? value) { }
 }
-
-

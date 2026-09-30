@@ -4,7 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:AgentFlow.ViewModels"
              xmlns:views="clr-namespace:AgentFlow.Views"
-             mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="810"
+             xmlns:conv="clr-namespace:AgentFlow.Converters"
              x:Class="AgentFlow.Views.MainView"
              x:DataType="vm:MainViewModel">
 
@@ -12,6 +12,10 @@
     <KeyBinding Command="{Binding SaveAsCommand}" Gesture="Ctrl+S"/>
     <KeyBinding Command="{Binding OpenCommand}" Gesture="Ctrl+O"/>
   </UserControl.KeyBindings>
+  <UserControl.Resources>
+    <conv:InverseBoolConverter x:Key="InverseBool"/>
+  </UserControl.Resources>
+
 
   <Grid RowDefinitions="Auto,*" Background="#F5F5F5">
     <views:TopBarView Grid.Row="0" DataContext="{Binding TopBar}"/>
@@ -43,7 +47,7 @@
         </Border.Styles>
         <StackPanel Spacing="2" Margin="0,8">
           <TextBlock Text="≡" FontSize="18" Foreground="#111827" HorizontalAlignment="Center" Margin="0,6,0,10"/>
-          <Button Classes="toolbtn" Command="{Binding RunCommand}" ToolTip.Tip="Run" IsEnabled="{Binding IsIdle}">
+          <Button Classes="toolbtn" Command="{Binding RunCommand}" ToolTip.Tip="Run" IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBool}}">
             <Image Source="avares://AgentFlow/Assets/icons8-start-94.png"  Width="22" Height="22"/>
           </Button>
           <Button Classes="toolbtn" Command="{Binding StopCommand}" ToolTip.Tip="Stop" IsEnabled="{Binding IsRunning}">

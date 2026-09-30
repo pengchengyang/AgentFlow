@@ -4,11 +4,8 @@
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
 // </copyright>
 // -----------------------------------------------------------------------
-
 using CommunityToolkit.Mvvm.ComponentModel;
-
 namespace AgentFlow.Services;
-
 /// <summary>
 /// Lightweight localization service with Chinese/English switching.
 /// English is the default display language.
@@ -17,7 +14,6 @@ namespace AgentFlow.Services;
 public sealed class Loc : ObservableObject
 {
     public static Loc Instance { get; } = new();
-
     private static readonly Dictionary<string, (string En, string Zh)> Texts = new()
     {
         ["Run"] = ("Run", "运行"),
@@ -45,27 +41,21 @@ public sealed class Loc : ObservableObject
         ["ErrMustOutToIn"] = ("Must connect an output pin to an input pin", "必须从输出 Pin 连到输入 Pin"),
         ["ErrSelfConnect"] = ("Cannot connect a node to itself", "不能连接到自身"),
         ["ErrTypeMismatch"] = ("Type mismatch", "类型不匹配"),
-        ["ErrPinOccupied"] = ("Input pin already connected", "输入 Pin 已有连接"),
+        ["ErrPinOccupied"] = ("Pin already connected", "Pin 已有连接"),
         ["ErrorPrefix"] = ("Error", "错误"),
         ["DisplayName"] = ("Display Name", "显示名称"),
         ["Priority"] = ("Priority", "优先级"),
         ["ValidationFailed"] = ("Validation failed", "校验失败"),
     };
-
     private string _lang = "en";
-
     public string CurrentLanguage => _lang;
-
     public string this[string key] => Get(key);
-
     public string Get(string key)
     {
         if (!Texts.TryGetValue(key, out var t)) return key;
         return _lang == "zh" ? t.Zh : t.En;
     }
-
     public string Fmt(string key, params object[] args) => string.Format(Get(key), args);
-
     public void Switch(string lang)
     {
         if (_lang == lang) return;

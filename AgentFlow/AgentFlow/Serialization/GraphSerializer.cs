@@ -88,10 +88,10 @@ public static class GraphSerializer
 
         foreach (var node in graph.Nodes)
         {
-            // Logical parameters come from the Core layer; the editable display name is
-            // placed as the first key inside the logic blob.
+            // Logical parameters come from the Core layer; the node's editable display name
+            // is written by BaseNode as the first key inside the logic blob.
             var parameters = LogicSerializer.Serialize(node.RuntimeNode);
-            var logic = new JsonObject { ["name"] = node.Name ?? "" };
+            var logic = new JsonObject();
             // Deep-clone each value: they still belong to the `parameters` object returned by
             // LogicSerializer, and a JsonNode can only have one parent.
             foreach (var kv in parameters)

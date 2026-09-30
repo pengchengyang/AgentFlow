@@ -89,9 +89,10 @@ public sealed class RuntimeOutputPin : RuntimePin
         if (!input.DataType.IsAssignableFrom(DataType))
             throw new InvalidOperationException(
                 $"Pin type mismatch: {DataType.Name} -> {input.DataType.Name} ({Name} -> {input.Name})");
-        if (_targets.Contains(input))
-            throw new InvalidOperationException(
-                $"Output pin {Name} is already connected to input pin {input.Name}.");
+        // One-to-one rule: an output pin connects to exactly one input pin.
+        // If it is already connected, simply don't connect (no exception).
+        if (_targets.Contains(input) || _targets.Count > 0)
+            return;
 
         _targets.Add(input);
         ConnectedPin = input;
@@ -109,9 +110,8 @@ public sealed class RuntimeOutputPin : RuntimePin
     }
 
     /// <summary>
-    /// Send data: runs the pin-level OnSend hook, then calls Receive on every connected input pin.
-    /// The default <see cref="BasePin.Send"/> covers the single-connection case; this override
-    /// keeps the existing fan-out behaviour.
+    /// Send data: runs the pin-level OnSend hook, then calls Receive on the single connected
+    /// input pin. Connections are one-to-one, so at most one target exists.
     /// </summary>
     public override void Send(object? value)
     {

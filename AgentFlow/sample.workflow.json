@@ -1,9 +1,32 @@
 {
-  "Nodes": [
-    { "Id": "n1", "TypeId": "nodes.string-source", "Parameters": { "Text": "hello agentflow" }, "X": 0, "Y": 0 },
-    { "Id": "n2", "TypeId": "nodes.string-upper", "Parameters": {}, "X": 300, "Y": 0 }
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "n1",
+      "x": 0,
+      "y": 0,
+      "logic": {
+        "name": "source",
+        "typeId": "nodes.string-source",
+        "instanceId": 1000,
+        "dependsOn": 0,
+        "pins": [ { "name": "Output", "type": "System.String", "id": 6001 } ],
+        "parameters": {}
+      }
+    },
+    {
+      "id": "n2",
+      "x": 300,
+      "y": 0,
+      "logic": {
+        "name": "upper",
+        "typeId": "nodes.string-upper",
+        "instanceId": 1001,
+        "dependsOn": 0,
+        "pins": [ { "name": "Input", "type": "System.String", "id": 6002 } ],
+        "parameters": {}
+      }
+    }
   ],
-  "Connections": [
-    { "FromNode": "n1", "FromPin": "Output", "ToNode": "n2", "ToPin": "Input" }
-  ]
+  "connections": [ { "fromPinId": 6001, "toPinId": 6002 } ]
 }

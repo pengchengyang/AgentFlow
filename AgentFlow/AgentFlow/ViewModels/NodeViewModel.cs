@@ -139,6 +139,7 @@ public partial class NodeViewModel : ViewModelBase
     public NodeViewModel(NodeModel model)
     {
         Model = model;
+        Name = model.Node.Name;
         Accent = CategoryColors.Accent(model.Category);
         AccentTint = CategoryColors.AccentTint(model.Category);
 

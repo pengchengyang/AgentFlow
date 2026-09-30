@@ -156,7 +156,7 @@ public sealed class GraphCanvas : Control
 
         using (ctx.PushTransform(ViewTransform()))
         {
-            DrawDots(ctx);
+            // Dot grid removed; keep everything else unchanged.
             RefreshLayouts();
 
             foreach (var conn in vm.Connections)

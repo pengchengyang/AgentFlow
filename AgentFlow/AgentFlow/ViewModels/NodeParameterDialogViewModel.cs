@@ -89,6 +89,10 @@ public partial class NodeParameterDialogViewModel : ViewModelBase
             if (row.Source is not null)
                 row.Source.Value = ConvertValue(row.Value, row.Source.Type);
         }
+        // Push the edited built-in General parameters (DisplayName, DependsOn) back onto
+        // the node instance and refresh the canvas title.
+        Node.Model.Node.ApplyBuiltInParameters();
+        Node.Name = Node.Model.Node.Name;
         RequestClose?.Invoke(this, true);
     }
 

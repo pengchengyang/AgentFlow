@@ -116,7 +116,7 @@ public sealed class PluginLoader
         if (logic is not null)
         {
             LogicDeserializer.Deserialize(instance, logic);
-            RestorePinsFromJson(instance, logic);
+            LogicDeserializer.RestorePinIds(instance, logic);
         }
         _logger.LogInformation("PluginLoader: restored node instance #{InstanceId} ({TypeId}, dependsOn={DependsOn})",
             instanceId, typeId, dependsOn);
@@ -153,30 +153,6 @@ public sealed class PluginLoader
         _logger.LogInformation("PluginLoader: deleted node instance #{InstanceId} ({TypeId})",
             instance.InstanceId, instance.TypeId);
         return true;
-    }
-
-    /// <summary>
-    /// Restore pin ids from the saved <c>logic.pins</c> array. The node constructor
-    /// still creates the pin instances; this only restores their persisted identity.
-    /// </summary>
-    private static void RestorePinsFromJson(BaseNode node, JsonObject logic)
-    {
-        if (logic["pins"] is not JsonArray pins) return;
-
-        foreach (var item in pins)
-        {
-            if (item is not JsonObject obj) continue;
-            var name = obj["name"]?.GetValue<string>();
-            if (string.IsNullOrEmpty(name)) continue;
-
-            var pin = node.InputPins.FirstOrDefault(p => p.Name == name)
-                      ?? node.OutputPins.FirstOrDefault(p => p.Name == name);
-            if (pin is null) continue;
-
-            if (obj["id"]?.GetValue<int>() is int savedId && savedId > 0)
-                pin.RestoreId(savedId);
-
-        }
     }
 
     /// <summary>

@@ -6,98 +6,187 @@
 
 using System.Net.Sockets;
 using System.Text;
-using System.Text.Json.Nodes;
+using System.Threading.Channels;
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.SocketClient;
 
 /// <summary>
-/// TCP socket client node. One-shot request/response flow:
-/// connect to <c>Host:Port</c>, send one line (the <c>Send</c> input value or the
-/// <c>Payload</c> parameter), read one line and emit it on the <c>Received</c> output
-/// pin, then close the connection.
+/// TCP socket client node. Persistent, continuous two-way communication (the C# analogue of
+/// the C++ WSAEventSelect client): connect to <c>Host:Port</c>, then a single background
+/// thread runs one <c>while</c> loop that keeps talking to the server — it reads lines coming
+/// back (emitting each on the <c>Received</c> output pin) and writes outbound lines queued on
+/// the <c>Send</c> input pin. The connection stays open until the node is stopped.
 /// </summary>
 public sealed class SocketClientNode : BaseNode
 {
-    private string _host = "127.0.0.1";
-    private int _port = 9000;
-    private string _payload = "ping";
     private TcpClient? _client;
+    private CancellationTokenSource? _cts;
+    private Task? _commTask;
+
+    // Outbound messages, written by Receive() (input pin) or the initial payload and drained
+    // by the communication loop. Thread-safe for any producer thread.
+    private readonly Channel<string> _sendChannel = Channel.CreateUnbounded<string>();
+    private string _sendValue = "";
 
     public override string TypeId => "node.socket-client";
     public override string DisplayName => "Socket Client";
     public override string Category => "Network";
 
+    /// <summary>Send input pin, kept as a property so its parameter value can be saved.</summary>
+    public BasePin _inPin { get; } = new("Send", typeof(string), PinDirection.Input, required: false);
+
+    /// <summary>Received output pin, kept as a property so its parameter value can be saved.</summary>
+    public BasePin _outPin { get; } = new("Received", typeof(string), PinDirection.Output);
+
     public SocketClientNode()
     {
-        Uuid = "node.socket-client";
-        AddInputPin(new("Send", typeof(string), PinDirection.Input, required: false));
-        AddOutputPin(new("Received", typeof(string), PinDirection.Output));
+        Uuid = "DCB15DED-9BDF-4C44-858F-560261B685D7";
+        AddInputPin(_inPin);
+        AddOutputPin(_outPin);
     }
 
-    public override IReadOnlyList<ParameterDefinition> Parameters =>
-    [
-        new("Host", typeof(string), "Host", "127.0.0.1", "Server host to connect to"),
-        new("Port", typeof(int), "Port", 9000, "Server TCP port"),
-        new("Payload", typeof(string), "Payload", "ping", "Message sent to the server when no Send input is provided")
-    ];
+    /// <summary>
+    /// Declare the node's parameters. Called by the base constructor; each declared
+    /// parameter is automatically surfaced in the property panel and serialized /
+    /// deserialized to JSON by <see cref="BaseNode"/>.
+    /// </summary>
+    protected override void AddParam()
+    {
+        AddParameter(new NodeParameter("Host", typeof(string), "127.0.0.1", isEditable: true, group: "General"));
+        AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "General"));
+        AddParameter(new NodeParameter("Payload", typeof(string), "ping", isEditable: true, group: "General"));
+    }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
-        if (parameters.TryGetValue("Host", out var h) && h is not null) _host = h.ToString() ?? _host;
-        if (parameters.TryGetValue("Port", out var p) && p is not null) _port = Convert.ToInt32(p);
-        if (parameters.TryGetValue("Payload", out var pl) && pl is not null) _payload = pl.ToString() ?? _payload;
+        if (parameters.TryGetValue("Host", out var h) && h is not null) Param("Host").Value = h.ToString() ?? "";
+        if (parameters.TryGetValue("Port", out var p) && p is not null) Param("Port").Value = Convert.ToInt32(p);
+        if (parameters.TryGetValue("Payload", out var pl) && pl is not null) Param("Payload").Value = pl.ToString() ?? "";
     }
 
-    protected override void OnSerializeParameters(JsonObject json)
-    {
-        json["host"] = _host;
-        json["port"] = _port;
-        json["payload"] = _payload;
-    }
+    /// <summary>Look up a declared parameter by name.</summary>
+    private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
 
-    protected override void OnDeserializeParameters(JsonObject json)
+    /// <summary>
+    /// Called when the Send input pin receives a value from an upstream node: enqueue it so the
+    /// communication loop writes it to the server (the C# analogue of <c>sendData</c>).
+    /// </summary>
+    public override void Receive(INodeContext context, BasePin pin, object? value)
     {
-        _host = json["host"]?.GetValue<string>() ?? _host;
-        _port = json["port"]?.GetValue<int>() ?? _port;
-        _payload = json["payload"]?.GetValue<string>() ?? _payload;
+        if (pin.Id == _inPin.Id && value is string s)
+        {
+            _sendValue = s;
+        }
+        _outPin.Send(_sendValue);
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
-        => Task.CompletedTask;
+    {
+        return Task.CompletedTask;
+    }
 
+    /// <summary>
+    /// Connect to the server, then start a single background thread whose <c>while</c> loop
+    /// continuously communicates with the server. Returns once connected (the loop keeps
+    /// running until <see cref="Stop"/>).
+    /// </summary>
     public override async Task Run(INodeContext context, CancellationToken ct = default)
     {
         Running = true;
         try
         {
-            using var client = new TcpClient();
+            var client = new TcpClient();
             _client = client;
-            await client.ConnectAsync(_host, _port, ct);
+            await client.ConnectAsync(
+                Param("Host").Value?.ToString() ?? "127.0.0.1",
+                Convert.ToInt32(Param("Port").Value), ct);
+            context.Logger.LogInformation("SocketClient connected to {Host}:{Port}",
+                Param("Host").Value?.ToString(), Param("Port").Value);
 
-            using var stream = client.GetStream();
-            using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true, NewLine = "\n" };
-            var payload = context.GetInput<string>("Send") ?? _payload;
-            await writer.WriteLineAsync(payload.AsMemory(), ct);
-            context.Logger.LogInformation("SocketClient sent: {Payload}", payload);
+            _cts = new CancellationTokenSource();
+            _commTask = Task.Run(() => CommLoopAsync(context, _cts.Token));
 
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            var line = await reader.ReadLineAsync(ct) ?? "";
-            context.SetOutput("Received", line);
-            context.Logger.LogInformation("SocketClient received: {Line}", line);
+            // Queue the initial payload; the communication loop sends it (and keeps talking).
+            var payload = !string.IsNullOrEmpty(_sendValue)
+                ? _sendValue
+                : Param("Payload").Value?.ToString() ?? "ping";
+            _sendChannel.Writer.TryWrite(payload);
+            context.Logger.LogInformation("SocketClient queued payload: {Payload}", payload);
         }
-        finally
+        catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException)
         {
-            Running = false;
+            context.Logger.LogError("SocketClient error: {Message}", ex.Message);
+            throw;
         }
     }
 
-    public override Task Stop(INodeContext context, CancellationToken ct = default)
+    /// <summary>
+    /// One thread, one <c>while</c> loop: keep one pending read from the server, and whenever
+    /// either a server line arrives or an outbound message is queued, handle it — so receive
+    /// and send happen continuously on the same loop without blocking each other.
+    /// </summary>
+    private async Task CommLoopAsync(INodeContext context, CancellationToken ct)
     {
-        Running = false;
+        var client = _client;
+        if (client is null) return;
+
+        try
+        {
+            using var stream = client.GetStream();
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true, NewLine = "\n" };
+
+            Task<string?> readTask = reader.ReadLineAsync(ct).AsTask();
+
+            while (!ct.IsCancellationRequested)
+            {
+                // Wait for either the next server line or a queued outbound message.
+                var pendingSend = _sendChannel.Reader.WaitToReadAsync(ct).AsTask();
+                var completed = await Task.WhenAny(readTask, pendingSend);
+
+                if (completed == readTask)
+                {
+                    var line = await readTask;
+                    if (line is null)
+                        break; // server closed the connection
+
+                    context.SetOutput("Received", line);
+                    context.Logger.LogInformation("SocketClient received: {Line}", line);
+                    readTask = reader.ReadLineAsync(ct).AsTask(); // re-arm the pending read
+                }
+                else
+                {
+                    // Drain everything queued for sending.
+                    while (_sendChannel.Reader.TryRead(out var msg))
+                    {
+                        await writer.WriteLineAsync(msg.AsMemory(), ct);
+                        context.Logger.LogInformation("SocketClient sent: {Msg}", msg);
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or IOException or SocketException or OperationCanceledException)
+        {
+            // Connection closed, or the node was stopped / cancelled.
+            context.Logger.LogInformation("SocketClient connection ended: {Message}", ex.Message);
+        }
+    }
+
+    public override async Task Stop(INodeContext context, CancellationToken ct = default)
+    {
+        _cts?.Cancel();
+        _sendChannel.Writer.TryComplete();
         _client?.Dispose();
         _client = null;
-        return Task.CompletedTask;
+        if (_commTask is not null)
+        {
+            try { await _commTask; } catch { /* already terminated */ }
+            _commTask = null;
+        }
+        _cts?.Dispose();
+        _cts = null;
+        Running = false;
     }
 }

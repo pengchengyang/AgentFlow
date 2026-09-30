@@ -57,31 +57,30 @@ public sealed class NodeInstanceManager
         }
     }
 
+    /// <summary>
+    /// Start a persistent workflow: initialize every instance, then run them. This does NOT stop
+    /// automatically; the caller (GUI Stop button or CLI Ctrl+C) is responsible for calling
+    /// <see cref="StopAsync"/> so long-running nodes can keep executing in the background.
+    /// </summary>
+    public async Task StartAsync(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
+    {
+        await InitializeAsync(contextFactory, ct);
+        await RunAsync(contextFactory, ct);
+    }
+
     /// <summary>Stop every node instance, in reverse load order.</summary>
     public async Task StopAsync(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
     {
         foreach (var node in Instances.Reverse())
             await node.Stop(contextFactory(node), ct);
     }
+    /// <summary>Whether a node is currently executing.</summary>
+    public bool IsNodeRunning(BaseNode node) => node.Running;
 
     /// <summary>
-    /// Run a complete workflow pass: initialize all instances, run them, then always stop
-    /// them (reverse order) even when a node throws or the run is cancelled. This is the
-    /// unified lifecycle used by both the AgentFlow GUI and the CLI engine.
+    /// Whether the whole workflow is running: true only while every managed node instance
+    /// reports <see cref="BaseNode.Running"/> == true, and false once all of them have stopped.
+    /// Derived from instance state — no separate workflow-level flag is stored.
     /// </summary>
-    public async Task RunWorkflowAsync(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
-    {
-        try
-        {
-            await InitializeAsync(contextFactory, ct);
-            await RunAsync(contextFactory, ct);
-        }
-        finally
-        {
-            await StopAsync(contextFactory, CancellationToken.None);
-        }
-    }
-
-    /// <summary>Whether a node is currently executing.</summary>
-    public bool IsRunning(BaseNode node) => node.Running;
+    public bool IsRunning => Instances.Count > 0 && Instances.All(n => n.Running);
 }

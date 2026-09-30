@@ -141,6 +141,8 @@ public sealed class EditorGraph
         var descriptor = _registry.Get(instance.TypeId);
         if (parameters is not null && parameters.Count > 0)
             instance.Configure(parameters);
+        if (!string.IsNullOrEmpty(name))
+            instance.Name = name;
 
         var node = new EditorNode(
             id ?? Guid.NewGuid().ToString("N")[..8],
@@ -165,9 +167,13 @@ public sealed class EditorGraph
         if (!toNode.Inputs.TryGetValue(toPin, out var input))
             throw new InvalidOperationException($"Node {toNode.TypeId} has no input pin: {toPin}");
 
+        // One-to-one rule: if either pin is already connected, simply don't connect (no exception).
         if (Connections.Any(c =>
                 ReferenceEquals(c.ToNode, toNode) && c.ToPin == toPin))
-            throw new InvalidOperationException($"Input pin {toNode.TypeId}.{toPin} is already connected.");
+            return;
+        if (Connections.Any(c =>
+                ReferenceEquals(c.FromNode, fromNode) && c.FromPin == fromPin))
+            return;
 
         // Type check + reference (RuntimeOutputPin.Connect validates the type and adds to _targets)
         output.Connect(input);
@@ -249,6 +255,8 @@ public sealed class EditorGraph
         IReadOnlyDictionary<string, object?>? parameters = null)
     {
         node.Name = name;
+        if (node.RuntimeNode is not null)
+            node.RuntimeNode.Name = name ?? string.Empty;
         node.Priority = priority;
         node.X = x;
         node.Y = y;
@@ -266,7 +274,7 @@ public sealed class EditorGraph
             {
                 Id = node.Id,
                 TypeId = node.TypeId,
-                Name = node.Name,
+                Name = node.RuntimeNode?.Name ?? node.Name,
                 Priority = node.Priority,
                 X = node.X,
                 Y = node.Y,

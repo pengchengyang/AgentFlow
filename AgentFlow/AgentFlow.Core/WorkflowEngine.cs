@@ -52,16 +52,16 @@ public sealed class WorkflowEngine
     }
 
     /// <summary>
-    /// Run the full workflow lifecycle (initialize, run, always stop) through
-    /// <see cref="NodeInstanceManager"/>. This is the normal one-shot entry point for
-    /// CLI / headless execution.
+    /// Start a persistent workflow: initialize every node, then run them (uses
+    /// <see cref="NodeInstanceManager"/>). Does NOT stop automatically; the caller (GUI Stop
+    /// button or CLI Ctrl+C) is responsible for calling <see cref="StopAsync"/>.
     /// </summary>
-    public async Task RunWorkflowAsync(WorkflowGraph graph, CancellationToken ct = default)
+    public async Task StartAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
         var run = Prepare(graph);
-        await run.Manager.RunWorkflowAsync(run.GetContext, ct);
-        _logger.LogInformation("Workflow completed");
+        await run.Manager.StartAsync(run.GetContext, ct);
     }
+
 
     /// <summary>Stop every node in the workflow, reverse order (uses <see cref="NodeInstanceManager"/>).</summary>
     public async Task StopAsync(WorkflowGraph graph, CancellationToken ct = default)

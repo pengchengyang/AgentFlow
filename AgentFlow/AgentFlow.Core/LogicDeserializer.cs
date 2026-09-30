@@ -42,4 +42,35 @@ public static class LogicDeserializer
             : 0;
         node.DeserializeParameters(logic);
     }
+
+    /// <summary>
+    /// Restore a node instance's pin identities from the saved <c>logic.pins</c> array.
+    /// The node constructor still creates the pin instances; this only restores their
+    /// persisted <see cref="BasePin.Id"/> so saved pin-id based connections can be resolved
+    /// (by <see cref="AgentFlow.Core.EditorJsonLoader"/>) without any GUI dependency.
+    /// </summary>
+    /// <param name="node">The node instance whose pins should be restored.</param>
+    /// <param name="json">The logical-parameter JSON blob (may be null).</param>
+    public static void RestorePinIds(BaseNode node, JsonObject? json)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (json is null) return;
+
+        var logic = json["logic"] as JsonObject ?? json;
+        if (logic["pins"] is not JsonArray pins) return;
+
+        foreach (var item in pins)
+        {
+            if (item is not JsonObject obj) continue;
+            var name = obj["name"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(name)) continue;
+
+            var pin = node.InputPins.FirstOrDefault(p => p.Name == name)
+                      ?? node.OutputPins.FirstOrDefault(p => p.Name == name);
+            if (pin is null) continue;
+
+            if (obj["id"]?.GetValue<int>() is int savedId && savedId > 0)
+                pin.RestoreId(savedId);
+        }
+    }
 }
