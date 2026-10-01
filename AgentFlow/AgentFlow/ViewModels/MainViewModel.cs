@@ -45,7 +45,6 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
     public ObservableCollection<string> Logs { get; } = new();
     // ---- Dedicated view-models (1 view <-> 1 view-model) ----
-    public TopBarViewModel TopBar { get; }
     public NodeLibraryViewModel NodeLibrary { get; }
     public LogPanelViewModel LogPanel { get; }
     public InspectorViewModel Inspector { get; }
@@ -102,7 +101,6 @@ public partial class MainViewModel : ViewModelBase
         // Show messages that nodes publish to the external GUI through the reusable broadcast DLL.
         BroadcastHub.Instance.Register(this);
         // Dedicated view-models (composed per view).
-        TopBar = new TopBarViewModel(this);
         NodeLibrary = new NodeLibraryViewModel(this);
         LogPanel = new LogPanelViewModel(this);
         Inspector = new InspectorViewModel(this);
@@ -345,12 +343,9 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Whether the right node-library Sidebar is visible (Admin only).</summary>
     [ObservableProperty]
     private bool _isSidebarVisible = true; // Dev: default to open.
-    /// <summary>Arrow glyph for the Sidebar toggle: left chevron when open (click to hide), right when closed (click to show).</summary>
-    public string SidebarToggleArrow => IsSidebarVisible ? "‹" : "›";
     /// <summary>Toggle the right node-library Sidebar (Admin only).</summary>
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
-    partial void OnIsSidebarVisibleChanged(bool value) => OnPropertyChanged(nameof(SidebarToggleArrow));
     /// <summary>Raised when the login dialog should be shown (View layer listens to open a window).</summary>
     public event EventHandler<LoginDialogViewModel>? LoginRequested;
     /// <summary>Top-right Login button: show the login dialog and update admin/Sidebar state by role.</summary>

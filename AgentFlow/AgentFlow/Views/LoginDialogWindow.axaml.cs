@@ -6,6 +6,8 @@
 // -----------------------------------------------------------------------
 
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
@@ -33,5 +35,17 @@ public partial class LoginDialogWindow : Window
         if (DataContext is LoginDialogViewModel vm)
             vm.RequestClose -= OnRequestClose;
         Close(isAdmin);
+    }
+
+    private void MinimizeButton_Click(object? sender, RoutedEventArgs e)
+        => WindowState = WindowState.Minimized;
+
+    private void CloseButton_Click(object? sender, RoutedEventArgs e)
+        => Close();
+
+    private void TitleBar_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
     }
 }

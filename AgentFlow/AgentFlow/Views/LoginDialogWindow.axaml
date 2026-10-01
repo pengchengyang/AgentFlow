@@ -8,59 +8,133 @@
         x:DataType="vm:LoginDialogViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="Login"
-        Width="360" Height="360"
-        MinWidth="320" MinHeight="320"
+        Width="360" Height="394"
+        MinWidth="320" MinHeight="354"
         WindowStartupLocation="CenterOwner"
         SizeToContent="Manual"
         CanResize="False"
-        Background="#F9FAFB">
-
-    <Border Margin="1" Background="#F9FAFB">
-        <DockPanel LastChildFill="True">
-
-            <!-- 标题栏 -->
-            <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="20,18">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="🔐" FontSize="16" Foreground="#7C3AED"/>
-                    <TextBlock Text="Login" FontSize="17" FontWeight="SemiBold" Foreground="#111827"/>
-                    <TextBlock Text="Select a role and enter its password." FontSize="12" Foreground="#6B7280"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 底部按钮 -->
-            <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="20,14">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-                    <Button Classes="secondary" Content="Cancel" Command="{Binding CancelCommand}" MinWidth="84"/>
-                    <Button Classes="primary" Content="Login" Command="{Binding ConfirmCommand}" IsDefault="True" MinWidth="84"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 表单 -->
-            <StackPanel Margin="20,20" Spacing="14" VerticalAlignment="Top">
-                <!-- 角色下拉 -->
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Role" FontSize="13" FontWeight="Medium" Foreground="#374151"/>
-                    <ComboBox ItemsSource="{Binding Roles}"
-                              SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
-                              HorizontalAlignment="Stretch"/>
-                </StackPanel>
-
-                <!-- 密码输入 -->
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Password" FontSize="13" FontWeight="Medium" Foreground="#374151"/>
-                    <TextBox Text="{Binding Password, Mode=TwoWay}"
-                             PasswordChar="●"
-                             PlaceholderText="Enter password"
-                             Padding="10,8"/>
-                </StackPanel>
-
-                <!-- 错误提示 -->
-                <TextBlock Text="{Binding ErrorMessage}"
-                           Foreground="#DC2626" FontSize="12"
-                           IsVisible="{Binding HasError}"/>
-            </StackPanel>
-
-        </DockPanel>
+        Background="#F9FAFB"
+        WindowDecorations="BorderOnly">
+  <Border BorderBrush="#6B7280" BorderThickness="1">
+  <Grid RowDefinitions="34,*">
+    <!-- 自定义标题栏（两个按钮：最小化、关闭） -->
+    <Border Grid.Row="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
+      <Border.Styles>
+        <Style Selector="Button.winbtn">
+          <Setter Property="Width" Value="40"/>
+          <Setter Property="Height" Value="34"/>
+          <Setter Property="Padding" Value="0"/>
+          <Setter Property="Background" Value="Transparent"/>
+          <Setter Property="BorderThickness" Value="0"/>
+          <Setter Property="CornerRadius" Value="8"/>
+          <Setter Property="HorizontalContentAlignment" Value="Center"/>
+          <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.winbtn:pointerover">
+          <Setter Property="Background" Value="#F3F4F6"/>
+        </Style>
+        <Style Selector="Button.winbtn:pressed">
+          <Setter Property="Background" Value="#E5E7EB"/>
+        </Style>
+        <Style Selector="Button.winbtn.close:pointerover">
+          <Setter Property="Background" Value="#E81123"/>
+        </Style>
+        <Style Selector="Button.winbtn.close:pointerover Path">
+          <Setter Property="Fill" Value="White"/>
+        </Style>
+      </Border.Styles>
+      <Grid ColumnDefinitions="*,Auto">
+        <Border Grid.Column="0" Background="Transparent" PointerPressed="TitleBar_OnPointerPressed">
+          <TextBlock Text="Login" FontSize="13" FontWeight="SemiBold"
+                     Foreground="#111827" VerticalAlignment="Center" Margin="12,0"/>
+        </Border>
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <Button Classes="winbtn" Click="MinimizeButton_Click" ToolTip.Tip="Minimize">
+            <Grid Width="20" Height="20">
+              <Border Width="14" Height="2" CornerRadius="1" Background="#111827"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+          </Button>
+          <Button Classes="winbtn close" Click="CloseButton_Click" ToolTip.Tip="Close">
+            <Grid Width="20" Height="20">
+              <Path Data="M64 112c-8.8 0-16 7.2-16 16l0 256c0 8.8 7.2 16 16 16l384 0c8.8 0 16-7.2 16-16l0-256c0-8.8-7.2-16-16-16L64 112zM0 128C0 92.7 28.7 64 64 64l384 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64L64 448c-35.3 0-64-28.7-64-64L0 128zm334.1 49.9c9.4 9.4 9.4 24.6 0 33.9l-44.1 44.1 44.1 44.1c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-44.1-44.1-44.1 44.1c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l44.1-44.1-44.1-44.1c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l44.1 44.1 44.1-44.1c9.4-9.4 24.6-9.4 33.9 0z"
+                    Stretch="Uniform" Fill="#111827" Width="20" Height="20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+          </Button>
+        </StackPanel>
+      </Grid>
     </Border>
-</Window>
 
+    <Border Grid.Row="1" Margin="1" Background="#F9FAFB">
+      <DockPanel LastChildFill="True">
+        <!-- 标题栏 -->
+        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="20,18">
+          <StackPanel Spacing="6">
+            <TextBlock Text="🔐" FontSize="16" Foreground="#7C3AED"/>
+            <TextBlock Text="Login" FontSize="17" FontWeight="SemiBold" Foreground="#111827"/>
+            <TextBlock Text="Select a role and enter its password." FontSize="12" Foreground="#6B7280"/>
+          </StackPanel>
+        </Border>
+
+        <!-- 底部按钮 -->
+        <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="20,14">
+          <Border.Styles>
+            <Style Selector="Button.toolbtn">
+              <Setter Property="Width" Value="40"/>
+              <Setter Property="Height" Value="36"/>
+              <Setter Property="Padding" Value="0"/>
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="BorderThickness" Value="0"/>
+              <Setter Property="CornerRadius" Value="8"/>
+              <Setter Property="HorizontalContentAlignment" Value="Center"/>
+              <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
+            <Style Selector="Button.toolbtn:pointerover">
+              <Setter Property="Background" Value="#F3F4F6"/>
+            </Style>
+            <Style Selector="Button.toolbtn:pressed">
+              <Setter Property="Background" Value="#E5E7EB"/>
+            </Style>
+          </Border.Styles>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+            <Button Classes="toolbtn" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel">
+              <Path Data="M256 48a208 208 0 1 1 0 416 208 208 0 1 1 0-416zm0 464a256 256 0 1 0 0-512 256 256 0 1 0 0 512zM167 167c-9.4 9.4-9.4 24.6 0 33.9l55 55-55 55c-9.4 9.4-9.4 24.6 0 33.9s24.6 9.4 33.9 0l55-55 55 55c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-55-55 55-55c9.4-9.4 9.4-24.6 0-33.9s-24.6-9.4-33.9 0l-55 55-55-55c-9.4-9.4-24.6-9.4-33.9 0z"
+                    Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
+            </Button>
+            <Button Classes="toolbtn" Command="{Binding ConfirmCommand}" IsDefault="True" ToolTip.Tip="Login">
+              <Path Data="M256 512a256 256 0 1 1 0-512 256 256 0 1 1 0 512zm0-464a208 208 0 1 0 0 416 208 208 0 1 0 0-416zm70.7 121.9c7.8-10.7 22.8-13.1 33.5-5.3 10.7 7.8 13.1 22.8 5.3 33.5L243.4 366.1c-4.1 5.7-10.5 9.3-17.5 9.8-7 .5-13.9-2-18.8-6.9l-55.9-55.9c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l36 36 105.6-145.2z"
+                    Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
+            </Button>
+          </StackPanel>
+        </Border>
+
+        <!-- 表单 -->
+        <StackPanel Margin="20,20" Spacing="14" VerticalAlignment="Top">
+          <!-- 角色下拉 -->
+          <StackPanel Spacing="6">
+            <TextBlock Text="Role" FontSize="13" FontWeight="Medium" Foreground="#374151"/>
+            <ComboBox ItemsSource="{Binding Roles}"
+                      SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch"/>
+          </StackPanel>
+
+          <!-- 密码输入 -->
+          <StackPanel Spacing="6">
+            <TextBlock Text="Password" FontSize="13" FontWeight="Medium" Foreground="#374151"/>
+            <TextBox Text="{Binding Password, Mode=TwoWay}"
+                     PasswordChar="●"
+                     PlaceholderText="Enter password"
+                     Padding="10,8"/>
+          </StackPanel>
+
+          <!-- 错误提示 -->
+          <TextBlock Text="{Binding ErrorMessage}"
+                     Foreground="#DC2626" FontSize="12"
+                     IsVisible="{Binding HasError}"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+  </Grid>
+  </Border>
+</Window>

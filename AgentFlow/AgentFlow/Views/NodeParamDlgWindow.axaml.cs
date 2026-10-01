@@ -5,7 +5,10 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
@@ -20,6 +23,7 @@ public partial class NodeParamDlgWindow : Window
     {
         InitializeComponent();
         Opened += OnOpened;
+        UpdateMaximizeRestoreIcon();
     }
 
     private void OnOpened(object? sender, System.EventArgs e)
@@ -33,5 +37,42 @@ public partial class NodeParamDlgWindow : Window
         if (DataContext is NodeParameterDialogViewModel vm)
             vm.RequestClose -= OnRequestClose;
         Close(result);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty)
+            UpdateMaximizeRestoreIcon();
+    }
+
+    private void UpdateMaximizeRestoreIcon()
+    {
+        if (MaximizeIcon is null || RestoreIcon is null)
+            return;
+
+        bool maximized = WindowState == WindowState.Maximized;
+        MaximizeIcon.IsVisible = !maximized;
+        RestoreIcon.IsVisible = maximized;
+    }
+
+    private void MinimizeButton_Click(object? sender, RoutedEventArgs e)
+        => WindowState = WindowState.Minimized;
+
+    private void MaxRestoreButton_Click(object? sender, RoutedEventArgs e)
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void CloseButton_Click(object? sender, RoutedEventArgs e)
+        => Close();
+
+    private void TitleBar_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            return;
+
+        if (e.ClickCount == 2)
+            MaxRestoreButton_Click(sender, e);
+        else
+            BeginMoveDrag(e);
     }
 }

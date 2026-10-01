@@ -7,7 +7,6 @@
              xmlns:conv="clr-namespace:AgentFlow.Converters"
              x:Class="AgentFlow.Views.MainView"
              x:DataType="vm:MainViewModel">
-
   <UserControl.KeyBindings>
     <KeyBinding Command="{Binding SaveAsCommand}" Gesture="Ctrl+S"/>
     <KeyBinding Command="{Binding OpenCommand}" Gesture="Ctrl+O"/>
@@ -15,12 +14,8 @@
   <UserControl.Resources>
     <conv:InverseBoolConverter x:Key="InverseBool"/>
   </UserControl.Resources>
-
-
-  <Grid RowDefinitions="Auto,*" Background="#F5F5F5">
-    <views:TopBarView Grid.Row="0" DataContext="{Binding TopBar}"/>
-
-    <Grid Grid.Row="1" ColumnDefinitions="44,*,Auto">
+  <Grid Background="#F5F5F5">
+    <Grid ColumnDefinitions="44,*,Auto">
       <!-- 最左侧图标工具栏 -->
       <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,1,0">
         <Border.Styles>
@@ -46,32 +41,35 @@
           </Style>
         </Border.Styles>
         <StackPanel Spacing="2" Margin="0,8">
-          <TextBlock Text="≡" FontSize="18" Foreground="#111827" HorizontalAlignment="Center" Margin="0,6,0,10"/>
+          <Path Data="M0 96C0 78.3 14.3 64 32 64l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 128C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 288c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32L32 448c-17.7 0-32-14.3-32-32s14.3-32 32-32l384 0c17.7 0 32 14.3 32 32z" Stretch="Uniform" Fill="#111827" Width="22" Height="22" HorizontalAlignment="Center" Margin="0,6,0,10"/>
           <Button Classes="toolbtn" Command="{Binding RunCommand}" ToolTip.Tip="Run" IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBool}}">
-            <Image Source="avares://AgentFlow/Assets/icons8-start-94.png"  Width="22" Height="22"/>
+            <Path Data="M320 112C434.9 112 528 205.1 528 320C528 434.9 434.9 528 320 528C205.1 528 112 434.9 112 320C112 205.1 205.1 112 320 112zM320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM276.5 211.5C269.1 207 259.8 206.8 252.2 211C244.6 215.2 240 223.3 240 232L240 408C240 416.7 244.7 424.7 252.3 428.9C259.9 433.1 269.1 433 276.6 428.4L420.6 340.4C427.7 336 432.1 328.3 432.1 319.9C432.1 311.5 427.7 303.8 420.6 299.4L276.6 211.4zM362 320L288 365.2L288 274.8L362 320z" Stretch="Uniform" Fill="#111827" Width="22" Height="22"/>
           </Button>
           <Button Classes="toolbtn" Command="{Binding StopCommand}" ToolTip.Tip="Stop" IsEnabled="{Binding IsRunning}">
-            <Image Source="avares://AgentFlow/Assets/icons8-cancel-94.png" Width="22" Height="22"/>
+            <Path Data="M320 112C434.9 112 528 205.1 528 320C528 434.9 434.9 528 320 528C205.1 528 112 434.9 112 320C112 205.1 205.1 112 320 112zM320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM288 248C288 234.7 277.3 224 264 224C250.7 224 240 234.7 240 248L240 392C240 405.3 250.7 416 264 416C277.3 416 288 405.3 288 392L288 248zM400 248C400 234.7 389.3 224 376 224C362.7 224 352 234.7 352 248L352 392C352 405.3 362.7 416 376 416C389.3 416 400 405.3 400 392L400 248z" Stretch="Uniform" Fill="#111827" Width="22" Height="22"/>
           </Button>
-          <Button Classes="toolbtn" Command="{Binding SaveAsCommand}" ToolTip.Tip="Save As...">
-            <TextBlock Text="💾" FontSize="15"/>
+          <Button Classes="toolbtn" Command="{Binding SaveAsCommand}" ToolTip.Tip="Save As..." IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBool}}">
+            <Path Data="M160 144C151.2 144 144 151.2 144 160L144 480C144 488.8 151.2 496 160 496L480 496C488.8 496 496 488.8 496 480L496 237.3C496 233.1 494.3 229 491.3 226L416 150.6L416 240C416 257.7 401.7 272 384 272L224 272C206.3 272 192 257.7 192 240L192 144L160 144zM240 144L240 224L368 224L368 144L240 144zM96 160C96 124.7 124.7 96 160 96L402.7 96C419.7 96 436 102.7 448 114.7L525.3 192C537.3 204 544 220.3 544 237.3L544 480C544 515.3 515.3 544 480 544L160 544C124.7 544 96 515.3 96 480L96 160zM256 384C256 348.7 284.7 320 320 320C355.3 320 384 348.7 384 384C384 419.3 355.3 448 320 448C284.7 448 256 419.3 256 384z" Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
           </Button>
-          <Button Classes="toolbtn" Command="{Binding OpenCommand}" ToolTip.Tip="Open Workflow...">
-            <TextBlock Text="📁" FontSize="15"/>
+          <Button Classes="toolbtn" Command="{Binding OpenCommand}" ToolTip.Tip="Open Workflow..." IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBool}}">
+            <Path Data="M129.5 464L179.5 304L558.9 304L508.9 464L129.5 464zM320.2 512L509 512C530 512 548.6 498.4 554.8 478.3L604.8 318.3C614.5 287.4 591.4 256 559 256L179.6 256C158.6 256 140 269.6 133.8 289.7L112.2 358.4L112.2 160C112.2 151.2 119.4 144 128.2 144L266.9 144C270.4 144 273.7 145.1 276.5 147.2L314.9 176C328.7 186.4 345.6 192 362.9 192L480.2 192C489 192 496.2 199.2 496.2 208L544.2 208C544.2 172.7 515.5 144 480.2 144L362.9 144C356 144 349.2 141.8 343.7 137.6L305.3 108.8C294.2 100.5 280.8 96 266.9 96L128.2 96C92.9 96 64.2 124.7 64.2 160L64.2 448C64.2 483.3 92.9 512 128.2 512L320.2 512z" Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
           </Button>
-          <Button Classes="toolbtn" Command="{Binding ClearGraphCommand}" ToolTip.Tip="Clear Canvas">
-            <TextBlock Text="🧹" FontSize="14"/>
+          <Button Classes="toolbtn" Command="{Binding ClearGraphCommand}" ToolTip.Tip="Clear Canvas" IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBool}}">
+            <Path Data="M136.7 5.9C141.1-7.2 153.3-16 167.1-16l113.9 0c13.8 0 26 8.8 30.4 21.9L320 32 416 32c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 96C14.3 96 0 81.7 0 64S14.3 32 32 32l96 0 8.7-26.1zM32 144l384 0 0 304c0 35.3-28.7 64-64 64L96 512c-35.3 0-64-28.7-64-64l0-304zm88 64c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24zm104 0c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24zm104 0c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24z" Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
+          </Button>
+          <Button Classes="toolbtn" Command="{Binding ResetZoomCommand}" ToolTip.Tip="Reset Zoom">
+            <Path Data="M344 0L488 0c13.3 0 24 10.7 24 24l0 144c0 9.7-5.8 18.5-14.8 22.2s-19.3 1.7-26.2-5.2l-39-39-87 87c-9.4 9.4-24.6 9.4-33.9 0l-32-32c-9.4-9.4-9.4-24.6 0-33.9l87-87-39-39c-6.9-6.9-8.9-17.2-5.2-26.2S334.3 0 344 0zM168 512L24 512c-13.3 0-24-10.7-24-24L0 344c0-9.7 5.8-18.5 14.8-22.2S34.1 320.2 41 327l39 39 87-87c9.4-9.4 24.6-9.4 33.9 0l32 32c9.4 9.4 9.4 24.6 0 33.9l-87 87 39 39c6.9 6.9 8.9 17.2 5.2 26.2S177.7 512 168 512z" Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
+          </Button>
+          <Button Classes="toolbtn" Command="{Binding OpenLoginCommand}" ToolTip.Tip="Login">
+            <Path Data="M224 248a120 120 0 1 0 0-240 120 120 0 1 0 0 240zm-29.7 56C95.8 304 16 383.8 16 482.3 16 498.7 29.3 512 45.7 512l356.6 0c16.4 0 29.7-13.3 29.7-29.7 0-98.5-79.8-178.3-178.3-178.3l-59.4 0z" Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
           </Button>
         </StackPanel>
       </Border>
-
       <!-- 中间：画布 + 可折叠日志面板 + 底部条 -->
       <Grid Grid.Column="1" RowDefinitions="*,Auto,40">
         <views:CanvasView Grid.Row="0" DataContext="{Binding Canvas}"/>
-
         <!-- 日志面板（Logs 按钮展开/收起） -->
         <views:LogPanelView Grid.Row="1" DataContext="{Binding LogPanel}" IsVisible="{Binding IsLogPanelOpen}"/>
-
         <!-- 底部条 -->
         <Border Grid.Row="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="Auto,*,Auto">
@@ -79,22 +77,21 @@
                     Command="{Binding ToggleLogPanelCommand}"
                     FontSize="13" Padding="12,4" Margin="12,0,0,0"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
-              <TextBlock Text="🔒" FontSize="12" Foreground="#9CA3AF"
-                         VerticalAlignment="Center" IsVisible="{Binding !IsAdmin}"/>
+              <Path Data="M128 96l0 64 128 0 0-64c0-35.3-28.7-64-64-64s-64 28.7-64 64zM64 160l0-64C64 25.3 121.3-32 192-32S320 25.3 320 96l0 64c35.3 0 64 28.7 64 64l0 224c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 224c0-35.3 28.7-64 64-64z" Stretch="Uniform" Fill="#9CA3AF" Width="14" Height="16" VerticalAlignment="Center" IsVisible="{Binding !IsAdmin}"/>
               <TextBlock Text="{Binding Canvas.ZoomText}" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
               <Button Classes="ghost" Command="{Binding ToggleSidebarCommand}"
                       IsVisible="{Binding IsAdmin}" ToolTip.Tip="Toggle Sidebar" Padding="4,0">
-                <TextBlock Text="{Binding SidebarToggleArrow}" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>
+                <Grid Width="16" Height="16">
+                  <Path Data="M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L77.3 256 214.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z" Stretch="Uniform" Fill="#111827" Width="16" Height="16" IsVisible="{Binding IsSidebarVisible}"/>
+                  <Path Data="M247.1 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L179.2 256 41.9 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z" Stretch="Uniform" Fill="#111827" Width="16" Height="16" IsVisible="{Binding !IsSidebarVisible}"/>
+                </Grid>
               </Button>
             </StackPanel>
           </Grid>
         </Border>
       </Grid>
-
       <!-- 右侧节点库 -->
       <views:NodeLibraryView Grid.Column="2" Width="264" DataContext="{Binding NodeLibrary}" IsVisible="{Binding IsSidebarVisible}"/>
     </Grid>
   </Grid>
 </UserControl>
-
-

@@ -6,6 +6,8 @@
 // -----------------------------------------------------------------------
 
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
@@ -34,5 +36,17 @@ public partial class CloseConfirmDialogWindow : Window
         if (DataContext is CloseConfirmDialogViewModel vm)
             vm.RequestClose -= OnRequestClose;
         Close(result);
+    }
+
+    private void MinimizeButton_Click(object? sender, RoutedEventArgs e)
+        => WindowState = WindowState.Minimized;
+
+    private void CloseButton_Click(object? sender, RoutedEventArgs e)
+        => Close();
+
+    private void TitleBar_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
     }
 }
