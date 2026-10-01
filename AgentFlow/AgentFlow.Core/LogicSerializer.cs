@@ -13,7 +13,7 @@ namespace AgentFlow.Core;
 
 /// <summary>
 /// Serializes <b>only</b> the logical parameters of a node instance
-/// (<see cref="BaseNode.Uuid"/>, <see cref="BaseNode.TypeId"/>,
+/// (<see cref="BaseNode.Uuid"/>, <see cref="BaseNode.FunctionName"/>,
 /// <see cref="BaseNode.InstanceId"/> and any subclass-specific data).
 /// It deliberately ignores all GUI state such as coordinates, node id, name,
 /// priority and connections, so the Core layer stays free of any UI dependency.

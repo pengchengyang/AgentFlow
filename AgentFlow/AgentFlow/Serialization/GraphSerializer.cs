@@ -34,7 +34,7 @@ public sealed class SerializedNode
 
     /// <summary>
     /// Logical parameters produced by <see cref="AgentFlow.Core.LogicSerializer"/>
-    /// (uuid, typeId, instanceId + subclass data), plus the node's display <c>name</c> as
+    /// (uuid, functionName, instanceId + subclass data), plus the node's display <c>name</c> as
     /// the first key. Serialized as the node's top-level <c>logic</c> field and restored
     /// on load via <see cref="AgentFlow.Core.LogicDeserializer"/>.
     /// </summary>

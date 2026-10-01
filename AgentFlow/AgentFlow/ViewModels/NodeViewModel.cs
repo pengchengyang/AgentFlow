@@ -91,7 +91,8 @@ public partial class NodeViewModel : ViewModelBase
     /// <summary>The domain model (wraps the contract-layer BaseNode).</summary>
     public NodeModel Model { get; }
 
-    public string TypeId => Model.TypeId;
+    public string FunctionName => Model.FunctionName;
+    public string Uuid => Model.Uuid;
 
     /// <summary>The Core-layer editor node (holds the BaseNode instance and runtime pins). The GUI does not operate its pins directly.</summary>
     public EditorNode? Runtime { get; set; }

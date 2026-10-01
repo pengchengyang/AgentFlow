@@ -34,7 +34,7 @@ public sealed class SocketServerNode : BaseNode
     private string _send3 = "";
     private string _send4 = "";
 
-    public override string TypeId => "node.socket-server";
+    public override string FunctionName => "node.socket-server";
     public override string DisplayName => "Socket Server";
     public override string Category => "Network";
 

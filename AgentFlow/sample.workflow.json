@@ -7,7 +7,7 @@
       "y": 0,
       "logic": {
         "name": "source",
-        "typeId": "nodes.string-source",
+        "functionName": "nodes.string-source",
         "instanceId": 1000,
         "dependsOn": 0,
         "pins": [ { "name": "Output", "type": "System.String", "id": 6001 } ],
@@ -20,7 +20,7 @@
       "y": 0,
       "logic": {
         "name": "upper",
-        "typeId": "nodes.string-upper",
+        "functionName": "nodes.string-upper",
         "instanceId": 1001,
         "dependsOn": 0,
         "pins": [ { "name": "Input", "type": "System.String", "id": 6002 } ],

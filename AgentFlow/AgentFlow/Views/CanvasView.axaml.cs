@@ -37,7 +37,7 @@ public sealed class GraphCanvas : Control
     // ---- Layout constants ----
     private const double NodeWidth = 280;
     private const double PadX = 16;
-    private const double HeaderHeight = 68;
+    private const double HeaderHeight = 82;
     private const double InputRow = 32;
     private const double OutputRow = 28;
     private const double ParamRow = 62;
@@ -45,7 +45,7 @@ public sealed class GraphCanvas : Control
     private static readonly Color ColorBg = Color.Parse("#FFFFFF");
     private static readonly Color ColorDot = Color.Parse("#E4DBCD");
     private static readonly Color ColorTitle = Color.Parse("#111827");
-    private static readonly Color ColorTypeId = Color.Parse("#6B7280");
+    private static readonly Color ColorFunctionName = Color.Parse("#6B7280");
     private static readonly Color ColorMuted = Color.Parse("#9CA3AF");
     private static readonly Color ColorBorder = Color.Parse("#94A3B8");
     private static readonly Color ColorDivider = Color.Parse("#F3F4F6");
@@ -218,8 +218,9 @@ public sealed class GraphCanvas : Control
         double x = b.X, y = b.Y;
 
         DrawText(ctx, "◆", new Point(x + PadX, y + 14), node.Accent, 15, FontWeight.SemiBold);
-        DrawText(ctx, node.Title, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
-        DrawText(ctx, node.TypeId, new Point(x + PadX, y + 42), new SolidColorBrush(ColorTypeId), 12);
+        DrawText(ctx, node.FunctionName, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
+        DrawText(ctx, node.Title, new Point(x + PadX, y + 42), new SolidColorBrush(ColorFunctionName), 12);
+        DrawText(ctx, node.Uuid, new Point(x + PadX, y + 58), new SolidColorBrush(ColorMuted), 11);
         ctx.DrawLine(new Pen(new SolidColorBrush(ColorDivider)),
             new Point(x + PadX, y + HeaderHeight), new Point(x + NodeWidth - PadX, y + HeaderHeight));
 

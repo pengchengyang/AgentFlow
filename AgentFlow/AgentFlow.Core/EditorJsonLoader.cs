@@ -84,11 +84,11 @@ public static class EditorJsonLoader
         foreach (var spec in doc.Nodes)
         {
             var logic = spec.Logic;
-            var typeId = logic?["typeId"]?.GetValue<string>() ?? "";
-            if (string.IsNullOrEmpty(typeId))
-                throw new InvalidDataException($"Node '{spec.Id}' has no logic.typeId.");
+            var functionName = logic?["functionName"]?.GetValue<string>() ?? "";
+            if (string.IsNullOrEmpty(functionName))
+                throw new InvalidDataException($"Node '{spec.Id}' has no logic.functionName.");
 
-            var instance = registry.CreateInstance(typeId);
+            var instance = registry.CreateInstance(functionName);
             LogicDeserializer.Deserialize(instance, logic);
 
             // Surface restored parameters so WorkflowEngine can re-apply them via Configure.
@@ -100,7 +100,7 @@ public static class EditorJsonLoader
             graph.Nodes.Add(new NodeSpec
             {
                 Id = spec.Id,
-                TypeId = typeId,
+                FunctionName = functionName,
                 Name = string.IsNullOrEmpty(instance.Name) ? null : instance.Name,
                 Parameters = parameters,
                 X = spec.X,

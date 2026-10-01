@@ -30,7 +30,7 @@ public sealed class SocketClientNode : BaseNode
     private readonly Channel<string> _sendChannel = Channel.CreateUnbounded<string>();
     private string _sendValue = "";
 
-    public override string TypeId => "node.socket-client";
+    public override string FunctionName => "node.socket-client";
     public override string DisplayName => "Socket Client";
     public override string Category => "Network";
 

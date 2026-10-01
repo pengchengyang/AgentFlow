@@ -26,8 +26,8 @@ public static class WorkflowValidation
         {
             if (!seenIds.Add(node.Id))
                 errors.Add($"Duplicate node id '{node.Id}'.");
-            if (!registry.Contains(node.TypeId))
-                errors.Add($"Node '{node.Id}' references unknown type '{node.TypeId}'.");
+            if (!registry.Contains(node.FunctionName))
+                errors.Add($"Node '{node.Id}' references unknown type '{node.FunctionName}'.");
         }
 
         // Per-input connection count and pin/type checks.
@@ -46,11 +46,11 @@ public static class WorkflowValidation
             }
 
             // Unknown types are reported above; skip detailed pin checks for them.
-            if (!registry.Contains(fromNode.TypeId) || !registry.Contains(toNode.TypeId))
+            if (!registry.Contains(fromNode.FunctionName) || !registry.Contains(toNode.FunctionName))
                 continue;
 
-            var fromDesc = registry.Get(fromNode.TypeId);
-            var toDesc = registry.Get(toNode.TypeId);
+            var fromDesc = registry.Get(fromNode.FunctionName);
+            var toDesc = registry.Get(toNode.FunctionName);
 
             var fromPin = fromDesc.OutputPins.FirstOrDefault(p => p.Name == conn.FromPin);
             var toPin = toDesc.InputPins.FirstOrDefault(p => p.Name == conn.ToPin);
@@ -77,9 +77,9 @@ public static class WorkflowValidation
         // Required inputs that are not connected.
         foreach (var node in graph.Nodes)
         {
-            if (!registry.Contains(node.TypeId))
+            if (!registry.Contains(node.FunctionName))
                 continue;
-            var desc = registry.Get(node.TypeId);
+            var desc = registry.Get(node.FunctionName);
             foreach (var pin in desc.InputPins.Where(p => p.Required))
             {
                 if (!graph.Connections.Any(c => c.ToNode == node.Id && c.ToPin == pin.Name))

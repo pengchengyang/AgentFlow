@@ -20,7 +20,7 @@ namespace AgentFlow.Core;
 public sealed class EditorNode
 {
     public string Id { get; }
-    public string TypeId { get; }
+    public string FunctionName { get; }
     public string DisplayName { get; }
     public string Category { get; }
 
@@ -56,7 +56,7 @@ public sealed class EditorNode
         IReadOnlyDictionary<string, object?>? parameters = null)
     {
         Id = id;
-        TypeId = descriptor.TypeId;
+        FunctionName = descriptor.FunctionName;
         DisplayName = descriptor.DisplayName;
         Category = descriptor.Category;
         Name = name;
@@ -138,7 +138,7 @@ public sealed class EditorGraph
         string? name = null,
         int priority = 0)
     {
-        var descriptor = _registry.Get(instance.TypeId);
+        var descriptor = _registry.Get(instance.FunctionName);
         if (parameters is not null && parameters.Count > 0)
             instance.Configure(parameters);
         if (!string.IsNullOrEmpty(name))
@@ -154,7 +154,7 @@ public sealed class EditorGraph
             priority,
             parameters);
         Nodes.Add(node);
-        _logger.LogInformation("EditorGraph: added node {Id} ({TypeId})", node.Id, node.TypeId);
+        _logger.LogInformation("EditorGraph: added node {Id} ({FunctionName})", node.Id, node.FunctionName);
         GraphChanged?.Invoke();
         return node;
     }
@@ -163,9 +163,9 @@ public sealed class EditorGraph
     public void Connect(EditorNode fromNode, string fromPin, EditorNode toNode, string toPin)
     {
         if (!fromNode.Outputs.TryGetValue(fromPin, out var output))
-            throw new InvalidOperationException($"Node {fromNode.TypeId} has no output pin: {fromPin}");
+            throw new InvalidOperationException($"Node {fromNode.FunctionName} has no output pin: {fromPin}");
         if (!toNode.Inputs.TryGetValue(toPin, out var input))
-            throw new InvalidOperationException($"Node {toNode.TypeId} has no input pin: {toPin}");
+            throw new InvalidOperationException($"Node {toNode.FunctionName} has no input pin: {toPin}");
 
         // One-to-one rule: if either pin is already connected, simply don't connect (no exception).
         if (Connections.Any(c =>
@@ -273,7 +273,7 @@ public sealed class EditorGraph
             graph.Nodes.Add(new NodeSpec
             {
                 Id = node.Id,
-                TypeId = node.TypeId,
+                FunctionName = node.FunctionName,
                 Name = node.RuntimeNode?.Name ?? node.Name,
                 Priority = node.Priority,
                 X = node.X,
@@ -342,7 +342,7 @@ public sealed class EditorGraph
         foreach (var pin in node.Inputs.Values)
             pin.Context = ctx;
         await node.RuntimeNode.Run(ctx, ct);
-        _logger.LogInformation("EditorGraph: sent node {Id} ({TypeId})", node.Id, node.TypeId);
+        _logger.LogInformation("EditorGraph: sent node {Id} ({FunctionName})", node.Id, node.FunctionName);
     }
 
     /// <summary>

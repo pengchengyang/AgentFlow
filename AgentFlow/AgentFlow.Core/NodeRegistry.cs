@@ -34,7 +34,7 @@ public sealed record ParameterDescriptor(
 /// <summary>Node metadata discovered via reflection (used by the palette and property panel).</summary>
 public sealed class NodeDescriptor
 {
-    public string TypeId { get; }
+    public string FunctionName { get; }
     public string DisplayName { get; }
     public string Category { get; }
     public Type NodeType { get; }
@@ -55,7 +55,7 @@ public sealed class NodeDescriptor
     internal IReadOnlyList<BasePin> RuntimePins { get; }
 
     public NodeDescriptor(
-        string typeId,
+        string functionName,
         string displayName,
         string category,
         Type nodeType,
@@ -63,7 +63,7 @@ public sealed class NodeDescriptor
         IReadOnlyList<BasePin> outputPins,
         IReadOnlyList<ParameterDefinition> parameters)
     {
-        TypeId = typeId;
+        FunctionName = functionName;
         DisplayName = displayName;
         Category = category;
         NodeType = nodeType;
@@ -85,24 +85,24 @@ public sealed class NodeDescriptor
     }
 }
 
-/// <summary>Registry mapping TypeId to node types.</summary>
+/// <summary>Registry mapping FunctionName to node types.</summary>
 public sealed class NodeRegistry
 {
     private readonly Dictionary<string, NodeDescriptor> _nodes = new(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyCollection<NodeDescriptor> Nodes => _nodes.Values;
 
-    public void Register(NodeDescriptor descriptor) => _nodes[descriptor.TypeId] = descriptor;
+    public void Register(NodeDescriptor descriptor) => _nodes[descriptor.FunctionName] = descriptor;
 
-    public NodeDescriptor Get(string typeId) =>
-        _nodes.TryGetValue(typeId, out var d)
+    public NodeDescriptor Get(string functionName) =>
+        _nodes.TryGetValue(functionName, out var d)
             ? d
-            : throw new KeyNotFoundException($"Unregistered node type: {typeId}");
+            : throw new KeyNotFoundException($"Unregistered node type: {functionName}");
 
-    public bool Contains(string typeId) => _nodes.ContainsKey(typeId);
+    public bool Contains(string functionName) => _nodes.ContainsKey(functionName);
 
     /// <summary>Create a node instance.</summary>
-    public BaseNode CreateInstance(string typeId) =>
-        (BaseNode)(Activator.CreateInstance(Get(typeId).NodeType)
-            ?? throw new InvalidOperationException($"Cannot instantiate node: {typeId}"));
+    public BaseNode CreateInstance(string functionName) =>
+        (BaseNode)(Activator.CreateInstance(Get(functionName).NodeType)
+            ?? throw new InvalidOperationException($"Cannot instantiate node: {functionName}"));
 }

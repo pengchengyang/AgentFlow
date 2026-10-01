@@ -69,20 +69,20 @@ public sealed class PluginLoader
     /// Create a managed node instance, assign it a compact <see cref="int"/>
     /// <see cref="BaseNode.InstanceId"/> (reusing a freed id when available) and track it.
     /// </summary>
-    public BaseNode CreateNodeInstance(string typeId)
+    public BaseNode CreateNodeInstance(string functionName)
     {
         var registry = _registry ?? throw new InvalidOperationException(
             "PluginLoader is not initialized: call LoadFromDirectory first.");
 
-        var instance = registry.CreateInstance(typeId);
-        EnsurePinsCreated(instance, registry.Get(typeId));
+        var instance = registry.CreateInstance(functionName);
+        EnsurePinsCreated(instance, registry.Get(functionName));
         lock (_gate)
         {
             instance.InstanceId = NodeIdPool.Allocate();
             _instances.Add(instance);
         }
-        _logger.LogInformation("PluginLoader: created node instance #{InstanceId} ({TypeId})",
-            instance.InstanceId, typeId);
+        _logger.LogInformation("PluginLoader: created node instance #{InstanceId} ({FunctionName})",
+            instance.InstanceId, functionName);
         return instance;
     }
 
@@ -90,15 +90,15 @@ public sealed class PluginLoader
     /// Restore a node instance from a saved configuration (used when loading a graph).
     /// Creates the node and its pin instances, reserves the saved instance id, restores
     /// <see cref="BaseNode.DependsOn"/>, and applies the saved logical parameters
-    /// (uuid / typeId / instanceId / dependsOn / parameters) from <paramref name="logic"/>.
+    /// (uuid / functionName / instanceId / dependsOn / parameters) from <paramref name="logic"/>.
     /// </summary>
-    public BaseNode CreateNodeInstance(string typeId, int instanceId, int dependsOn, JsonObject? logic = null)
+    public BaseNode CreateNodeInstance(string functionName, int instanceId, int dependsOn, JsonObject? logic = null)
     {
         var registry = _registry ?? throw new InvalidOperationException(
             "PluginLoader is not initialized: call LoadFromDirectory first.");
 
-        var instance = registry.CreateInstance(typeId);
-        EnsurePinsCreated(instance, registry.Get(typeId));
+        var instance = registry.CreateInstance(functionName);
+        EnsurePinsCreated(instance, registry.Get(functionName));
         lock (_gate)
         {
             if (instanceId > 0)
@@ -118,8 +118,8 @@ public sealed class PluginLoader
             LogicDeserializer.Deserialize(instance, logic);
             LogicDeserializer.RestorePinIds(instance, logic);
         }
-        _logger.LogInformation("PluginLoader: restored node instance #{InstanceId} ({TypeId}, dependsOn={DependsOn})",
-            instanceId, typeId, dependsOn);
+        _logger.LogInformation("PluginLoader: restored node instance #{InstanceId} ({FunctionName}, dependsOn={DependsOn})",
+            instanceId, functionName, dependsOn);
         return instance;
     }
 
@@ -150,8 +150,8 @@ public sealed class PluginLoader
             NodeIdPool.Release(instance.InstanceId);
             ReleasePins(instance);
         }
-        _logger.LogInformation("PluginLoader: deleted node instance #{InstanceId} ({TypeId})",
-            instance.InstanceId, instance.TypeId);
+        _logger.LogInformation("PluginLoader: deleted node instance #{InstanceId} ({FunctionName})",
+            instance.InstanceId, instance.FunctionName);
         return true;
     }
 
@@ -289,10 +289,10 @@ public sealed class PluginLoader
                 continue;
 
             registry.Register(new NodeDescriptor(
-                probe.TypeId, probe.DisplayName, probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
+                probe.FunctionName, probe.DisplayName, probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
 
-            _logger.LogInformation("Registered node: {TypeId} ({Name}) <- {Dll}",
-                probe.TypeId, probe.DisplayName, Path.GetFileName(dllPath));
+            _logger.LogInformation("Registered node: {FunctionName} ({Name}) <- {Dll}",
+                probe.FunctionName, probe.DisplayName, Path.GetFileName(dllPath));
         }
     }
 }

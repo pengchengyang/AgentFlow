@@ -21,7 +21,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 namespace AgentFlow.ViewModels;
 /// <summary>A node entry in the component palette.</summary>
-public sealed record PaletteItem(string TypeId, string DisplayName, string Category, string PinSummary, SolidColorBrush Accent);
+public sealed record PaletteItem(string FunctionName, string DisplayName, string Category, string PinSummary, SolidColorBrush Accent);
 public partial class MainViewModel : ViewModelBase
 {
     private readonly NodeRegistry _registry = new();
@@ -47,7 +47,6 @@ public partial class MainViewModel : ViewModelBase
     // ---- Dedicated view-models (1 view <-> 1 view-model) ----
     public NodeLibraryViewModel NodeLibrary { get; }
     public LogPanelViewModel LogPanel { get; }
-    public InspectorViewModel Inspector { get; }
     public CanvasViewModel Canvas { get; }
     [ObservableProperty]
     private NodeViewModel? _selectedNode;
@@ -75,7 +74,7 @@ public partial class MainViewModel : ViewModelBase
         {
             if (string.IsNullOrWhiteSpace(value)
                 || item.DisplayName.Contains(value, StringComparison.OrdinalIgnoreCase)
-                || item.TypeId.Contains(value, StringComparison.OrdinalIgnoreCase)
+                || item.FunctionName.Contains(value, StringComparison.OrdinalIgnoreCase)
                 || item.Category.Contains(value, StringComparison.OrdinalIgnoreCase))
                 PaletteItems.Add(item);
         }
@@ -103,7 +102,6 @@ public partial class MainViewModel : ViewModelBase
         // Dedicated view-models (composed per view).
         NodeLibrary = new NodeLibraryViewModel(this);
         LogPanel = new LogPanelViewModel(this);
-        Inspector = new InspectorViewModel(this);
         Canvas = new CanvasViewModel(this);
     }
     [BroadcastHandler("result")]
@@ -130,7 +128,7 @@ public partial class MainViewModel : ViewModelBase
         {
             var pins = string.Join(", ", d.Pins.Select(p =>
                 $"{(p.Direction == PinDirection.Input ? "in" : "out")}:{p.Name}:{p.DataType.Name}"));
-            _allPaletteItems.Add(new PaletteItem(d.TypeId, d.DisplayName, d.Category, pins, CategoryColors.Accent(d.Category)));
+            _allPaletteItems.Add(new PaletteItem(d.FunctionName, d.DisplayName, d.Category, pins, CategoryColors.Accent(d.Category)));
         }
         OnSearchTextChanged(SearchText);
         StatusText = L.Fmt("NodesLoaded", _registry.Nodes.Count);
@@ -143,7 +141,7 @@ public partial class MainViewModel : ViewModelBase
     public void AddNodeAt(PaletteItem item, Point graphLocation)
     {
         // Create a contract-layer instance; NodeModel and EditorGraph share the same BaseNode instance.
-        var instance = _pluginLoader.CreateNodeInstance(item.TypeId);
+        var instance = _pluginLoader.CreateNodeInstance(item.FunctionName);
         var node = new NodeViewModel(new NodeModel(instance)) { Location = graphLocation };
         // The Core layer builds a runtime node from the same instance (holds BaseNode + runtime pins)
         node.Runtime = _graph.AddNode(instance, graphLocation.X, graphLocation.Y);
@@ -445,15 +443,15 @@ public partial class MainViewModel : ViewModelBase
         foreach (var spec in doc.Nodes)
         {
             // Create a contract-layer instance; NodeModel and EditorGraph share the same instance.
-            // typeId now lives inside the logic blob (no longer duplicated on the outer node object).
-            var typeId = spec.Logic?["typeId"]?.GetValue<string>()
-                ?? throw new InvalidOperationException($"Node '{spec.Id}' is missing typeId in logic.");
+            // functionName now lives inside the logic blob (no longer duplicated on the outer node object).
+            var functionName = spec.Logic?["functionName"]?.GetValue<string>()
+                ?? throw new InvalidOperationException($"Node '{spec.Id}' is missing functionName in logic.");
             var nodeName = spec.Logic?["name"]?.GetValue<string>() ?? "";
             var instanceId = spec.Logic?["instanceId"]?.GetValue<int>() ?? 0;
             var dependsOn = spec.Logic?["dependsOn"]?.GetValue<int>() ?? 0;
             // PluginLoader now owns restore: create node/pin instances, reserve the saved
             // instance id, set dependsOn and deserialize the logic blob.
-            var instance = _pluginLoader.CreateNodeInstance(typeId, instanceId, dependsOn, spec.Logic);
+            var instance = _pluginLoader.CreateNodeInstance(functionName, instanceId, dependsOn, spec.Logic);
             var node = new NodeViewModel(new NodeModel(instance))
             {
                 Name = nodeName,

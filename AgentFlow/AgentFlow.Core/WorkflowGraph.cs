@@ -14,7 +14,7 @@ namespace AgentFlow.Core;
 public sealed class NodeSpec
 {
     public string Id { get; set; } = "";
-    public string TypeId { get; set; } = "";
+    public string FunctionName { get; set; } = "";
 
     /// <summary>User-editable instance name shown on the canvas (falls back to the type display name).</summary>
     public string? Name { get; set; }
