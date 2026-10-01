@@ -37,16 +37,18 @@ public sealed class GraphCanvas : Control
     // ---- Layout constants ----
     private const double NodeWidth = 280;
     private const double PadX = 16;
-    private const double HeaderHeight = 82;
+    private const double HeaderRowName = 42;
+    private const double HeaderRowUuid = 58;
+    private const double HeaderRowDependsOn = 74;
+    private const double HeaderLineHeight = 19; // text height + gap below the last header row
     private const double InputRow = 32;
     private const double OutputRow = 28;
-
 
     private static readonly Color ColorBg = Color.Parse("#FFFFFF");
     private static readonly Color ColorDot = Color.Parse("#E4DBCD");
     private static readonly Color ColorTitle = Color.Parse("#111827");
-    private static readonly Color ColorName = Color.Parse("#6B7280");
-    private static readonly Color ColorMuted = Color.Parse("#9CA3AF");
+    private static readonly Color ColorName = Color.Parse("#374151");
+    private static readonly Color ColorMuted = Color.Parse("#6B7280");
     private static readonly Color ColorBorder = Color.Parse("#94A3B8");
     private static readonly Color ColorDivider = Color.Parse("#F3F4F6");
     private static readonly Color ColorSelected = Color.Parse("#F59E0B");
@@ -82,52 +84,64 @@ public sealed class GraphCanvas : Control
     {
         public required NodeViewModel Node { get; init; }
         public double Height;
+        public double HeaderBottom;
         public Rect Body = default;
         public List<Rect> InputHits = new();
         public List<Rect> OutputHits = new();
 
     }
 
+    /// <summary>Header divider Y (relative to node top): below the last header text row.</summary>
+    private static double ComputeHeaderBottom(NodeViewModel node)
+    {
+        double lastRow = node.DependsOn > 0 ? HeaderRowDependsOn : HeaderRowUuid;
+        return lastRow + HeaderLineHeight;
+    }
+
     private NodeLayout ComputeLayout(NodeViewModel node)
     {
         var loc = node.Location;
         var l = new NodeLayout { Node = node };
-        double y = HeaderHeight;
 
         int nIn = node.Inputs.Count;
+        int nOut = node.Outputs.Count;
+        int rows = Math.Max(nIn, nOut);
+        double topPad = 6;
+        double content = rows * InputRow;
+        double headerBottom = ComputeHeaderBottom(node);
+        l.HeaderBottom = headerBottom;
+        double bodyStart = headerBottom + topPad;
+
+        // Left inputs: vertically centered within the body span based on input count.
         if (nIn > 0)
         {
-            y += 6;
+            double start = bodyStart + (content - nIn * InputRow) / 2;
             for (int i = 0; i < nIn; i++)
             {
                 var pin = node.Inputs[i];
-                pin.Anchor = new Point(loc.X, loc.Y + y + InputRow / 2);
-                l.InputHits.Add(new Rect(loc.X - 8, loc.Y + y, 64, InputRow));
-                y += InputRow;
+                pin.Anchor = new Point(loc.X, loc.Y + start + i * InputRow + InputRow / 2);
+                l.InputHits.Add(new Rect(loc.X - 8, loc.Y + start + i * InputRow, 64, InputRow));
             }
         }
 
-
-        int nOut = node.Outputs.Count;
+        // Right outputs: vertically centered within the body span based on output count.
         if (nOut > 0)
         {
-            y += 8;
+            double start = bodyStart + (content - nOut * InputRow) / 2;
             for (int i = 0; i < nOut; i++)
             {
                 var pin = node.Outputs[i];
-                pin.Anchor = new Point(loc.X + NodeWidth, loc.Y + y + OutputRow / 2);
-                l.OutputHits.Add(new Rect(loc.X + NodeWidth - 56, loc.Y + y, 64, OutputRow));
-                y += OutputRow;
+                pin.Anchor = new Point(loc.X + NodeWidth, loc.Y + start + i * InputRow + InputRow / 2);
+                l.OutputHits.Add(new Rect(loc.X + NodeWidth - 56, loc.Y + start + i * InputRow, 64, InputRow));
             }
         }
 
-        y += 12;
+        double y = bodyStart + content + 12;
         l.Height = y;
         l.Body = new Rect(loc.X, loc.Y, NodeWidth, y);
         _layouts[node] = l;
         return l;
     }
-
     private void RefreshLayouts()
     {
         var vm = Vm;
@@ -209,13 +223,15 @@ public sealed class GraphCanvas : Control
         double x = b.X, y = b.Y;
 
         DrawText(ctx, "◆", new Point(x + PadX, y + 14), node.Accent, 15, FontWeight.SemiBold);
-        DrawText(ctx, node.Name, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
+        DrawText(ctx, node.Title, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
         double instW = TextWidth(node.InstanceId.ToString(), 12);
         DrawText(ctx, node.InstanceId.ToString(), new Point(x + NodeWidth - PadX - instW, y + 17), new SolidColorBrush(ColorMuted), 12);
-        DrawText(ctx, node.Title, new Point(x + PadX, y + 42), new SolidColorBrush(ColorName), 12);
+        DrawText(ctx, node.Name, new Point(x + PadX, y + 42), new SolidColorBrush(ColorName), 12);
         DrawText(ctx, node.Uuid, new Point(x + PadX, y + 58), new SolidColorBrush(ColorMuted), 11);
+        if (node.DependsOn > 0)
+            DrawText(ctx, $"DependsOn {node.DependsOn}", new Point(x + PadX, y + 74), new SolidColorBrush(ColorName), 11);
         ctx.DrawLine(new Pen(new SolidColorBrush(ColorDivider)),
-            new Point(x + PadX, y + HeaderHeight), new Point(x + NodeWidth - PadX, y + HeaderHeight));
+            new Point(x + PadX, y + l.HeaderBottom), new Point(x + NodeWidth - PadX, y + l.HeaderBottom));
 
         for (int i = 0; i < node.Inputs.Count; i++)
         {
@@ -579,8 +595,9 @@ public sealed class GraphCanvas : Control
             ComputeLayout(n);
         if (e.PropertyName == nameof(NodeViewModel.Location)
             || e.PropertyName == nameof(NodeViewModel.IsSelected)
-            || e.PropertyName == nameof(NodeViewModel.ZIndex))
+            || e.PropertyName == nameof(NodeViewModel.ZIndex)
+            || e.PropertyName == nameof(NodeViewModel.Title)
+            || e.PropertyName == nameof(NodeViewModel.DependsOn))
             InvalidateVisual();
     }
 }
-

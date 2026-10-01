@@ -118,12 +118,19 @@ public abstract class BaseNode
     {
         AddParameter(new NodeParameter("Name", typeof(string), Name, isEditable: false, group: "General"));
         AddParameter(new NodeParameter("Uuid", typeof(string), Uuid, isEditable: false, group: "General"));
-        AddParameter(new NodeParameter("DisplayName", typeof(string), DisplayName, isEditable: true, group: "General"));
         AddParameter(new NodeParameter("InstanceId", typeof(int), InstanceId, isEditable: false, group: "General"));
+        AddParameter(new NodeParameter("DisplayName", typeof(string), DisplayName, isEditable: true, group: "General"));
         AddParameter(new NodeParameter("DependsOn", typeof(int), DependsOn, isEditable: true, group: "General"));
     }
 
     /// <summary>Apply parameters (from JSON deserialization / property panel).</summary>
+
+    /// <summary>
+    /// Declare this node's input / output pins. Subclasses MUST implement this; the base
+    /// class provides no default pins. Call <see cref="AddInputPin"/> / <see cref="AddOutputPin"/>
+    /// inside the override.
+    /// </summary>
+    public abstract void AddPins();
     public abstract void Configure(IReadOnlyDictionary<string, object?> parameters);
 
     /// <summary>Refresh the built-in General parameter values from the live property values.</summary>
@@ -209,24 +216,37 @@ public abstract class BaseNode
             json["parameters"] = parameters;
         }
 
-        foreach (var group in _nodeParameters
+        // New hierarchical layout: parameters.<Zone>.<Group> = [ params ].
+        foreach (var zoneGroup in _nodeParameters
                      .Where(p => !string.IsNullOrEmpty(p.Name))
-                     .GroupBy(p => p.Group ?? string.Empty))
+                     .GroupBy(p => p.Zone ?? string.Empty))
         {
-            var arr = new JsonArray();
-            foreach (var p in group)
+            var zoneKey = zoneGroup.Key;
+            var zoneObj = parameters[zoneKey] as JsonObject;
+            if (zoneObj is null)
             {
-                var obj = new JsonObject
-                {
-                    ["name"] = p.Name,
-                    ["type"] = p.Type.AssemblyQualifiedName ?? p.Type.FullName ?? p.Type.Name,
-                    ["isEditable"] = p.IsEditable,
-                    ["group"] = p.Group ?? string.Empty,
-                    ["value"] = p.Value is null ? null : JsonSerializer.SerializeToNode(p.Value, p.Type)
-                };
-                arr.Add(obj);
+                zoneObj = new JsonObject();
+                parameters[zoneKey] = zoneObj;
             }
-            parameters[group.Key] = arr;
+
+            foreach (var group in zoneGroup.GroupBy(p => p.Group ?? string.Empty))
+            {
+                var arr = new JsonArray();
+                foreach (var p in group)
+                {
+                    var obj = new JsonObject
+                    {
+                        ["name"] = p.Name,
+                        ["type"] = p.Type.AssemblyQualifiedName ?? p.Type.FullName ?? p.Type.Name,
+                        ["isEditable"] = p.IsEditable,
+                        ["zone"] = p.Zone ?? string.Empty,
+                        ["group"] = p.Group ?? string.Empty,
+                        ["value"] = p.Value is null ? null : JsonSerializer.SerializeToNode(p.Value, p.Type)
+                    };
+                    arr.Add(obj);
+                }
+                zoneObj[group.Key] = arr;
+            }
         }
     }
 
@@ -250,68 +270,92 @@ public abstract class BaseNode
 
     private void DeserializeParameterGroups(JsonObject container)
     {
-        foreach (var group in container)
+        foreach (var entry in container)
         {
-            switch (group.Value)
+            switch (entry.Value)
             {
                 case JsonArray arr:
-                    foreach (var item in arr)
-                    {
-                        if (item is not JsonObject obj)
-                            continue;
-
-                        var name = ReadString(obj, "name", "Name");
-                        if (string.IsNullOrEmpty(name))
-                            continue;
-
-                        var np = _nodeParameters.FirstOrDefault(p =>
-                            p.Name == name && (p.Group ?? string.Empty) == group.Key);
-                        if (np is null)
-                        {
-                            np = CreateNodeParameterFromJson(obj, group.Key);
-                            if (np is null)
-                                continue;
-                            _nodeParameters.Add(np);
-                        }
-                        else
-                        {
-                            np.Group = group.Key;
-                        }
-
-                        if (ReadString(obj, "type", "Type") is string typeName &&
-                            Type.GetType(typeName) is { } restoredType)
-                        {
-                            np.Type = restoredType;
-                        }
-
-                        var valueNode = obj["value"] ?? obj["Value"];
-                        np.Value = valueNode is null
-                            ? null
-                            : JsonSerializer.Deserialize(valueNode.ToJsonString(), np.Type);
-
-                        if ((obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() is bool editable)
-                            np.IsEditable = editable;
-                    }
+                    // Legacy flat form: parameters.<Group> = [ params ].
+                    DeserializeParameterArray("", entry.Key, arr);
                     break;
 
-                case JsonObject groupObj:
-                    foreach (var param in groupObj)
+                case JsonObject obj:
+                    // New form: parameters.<Zone> = { <Group>: [ params ] }.
+                    bool isZoneNested = obj.FirstOrDefault().Value is JsonArray;
+                    if (isZoneNested)
                     {
-                        // Skip reserved keys in the legacy fallback path.
-                        if (param.Key is "uuid" or "displayName" or "instanceId" or "dependsOn" or "parameters")
-                            continue;
+                        foreach (var groupEntry in obj)
+                        {
+                            if (groupEntry.Value is JsonArray groupArr)
+                                DeserializeParameterArray(entry.Key, groupEntry.Key, groupArr);
+                        }
+                    }
+                    else
+                    {
+                        // Legacy flat map form: parameters.<Group> = { name: value, ... }.
+                        foreach (var param in obj)
+                        {
+                            if (param.Key is "uuid" or "displayName" or "instanceId" or "dependsOn" or "parameters")
+                                continue;
 
-                        var np = _nodeParameters.FirstOrDefault(p =>
-                            p.Name == param.Key && (p.Group ?? string.Empty) == group.Key);
-                        if (np is null)
-                            continue;
+                            var np = _nodeParameters.FirstOrDefault(p =>
+                                p.Name == param.Key && (p.Group ?? string.Empty) == entry.Key);
+                            if (np is null)
+                                continue;
 
-                        np.Value = param.Value is null
-                            ? null
-                            : JsonSerializer.Deserialize(param.Value.ToJsonString(), np.Type);
+                            np.Value = param.Value is null
+                                ? null
+                                : JsonSerializer.Deserialize(param.Value.ToJsonString(), np.Type);
+                        }
                     }
                     break;
             }
+        }
+    }
+
+    private void DeserializeParameterArray(string zone, string groupKey, JsonArray arr)
+    {
+        foreach (var item in arr)
+        {
+            if (item is not JsonObject obj)
+                continue;
+
+            var name = ReadString(obj, "name", "Name");
+            if (string.IsNullOrEmpty(name))
+                continue;
+
+            // Match on group first, then fall back to the name alone: a document saved while the
+            // group / zone labels were different must update the existing declaration rather than
+            // append a second copy of the same parameter.
+            var np = _nodeParameters.FirstOrDefault(p =>
+                         p.Name == name && (p.Group ?? string.Empty) == groupKey)
+                     ?? _nodeParameters.FirstOrDefault(p => p.Name == name);
+            if (np is null)
+            {
+                np = CreateNodeParameterFromJson(obj, groupKey);
+                if (np is null)
+                    continue;
+                _nodeParameters.Add(np);
+            }
+            else
+            {
+                np.Group = groupKey;
+                np.Zone = string.IsNullOrEmpty(zone) ? ReadString(obj, "zone", "Zone") : zone;
+            }
+
+            if (ReadString(obj, "type", "Type") is string typeName &&
+                Type.GetType(typeName) is { } restoredType)
+            {
+                np.Type = restoredType;
+            }
+
+            var valueNode = obj["value"] ?? obj["Value"];
+            np.Value = valueNode is null
+                ? null
+                : JsonSerializer.Deserialize(valueNode.ToJsonString(), np.Type);
+
+            if ((obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() is bool editable)
+                np.IsEditable = editable;
         }
     }
 
@@ -326,10 +370,10 @@ public abstract class BaseNode
         var valueNode = obj["value"] ?? obj["Value"];
         var value = valueNode is null ? null : JsonSerializer.Deserialize(valueNode.ToJsonString(), type);
         var isEditable = (obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() ?? true;
+        var zone = ReadString(obj, "zone", "Zone");
 
-        return new NodeParameter(name, type, value, isEditable, groupName);
+        return new NodeParameter(name, type, value, isEditable, groupName, zone);
     }
-
     private static string? ReadString(JsonObject obj, params string[] keys)
     {
         foreach (var key in keys)
@@ -354,5 +398,5 @@ public abstract class BaseNode
     /// The default implementation is a no-op for nodes that only read inputs
     /// inside <see cref="Run"/>.
     /// </summary>
-    public virtual void Receive(INodeContext context, BasePin pin, object? value) { }
+    public virtual void Receive(BasePin pin, object? value) { }
 }

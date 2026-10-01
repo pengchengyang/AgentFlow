@@ -30,8 +30,8 @@ public sealed class SocketClientNode : BaseNode
     private readonly Channel<string> _sendChannel = Channel.CreateUnbounded<string>();
     private string _sendValue = "";
 
-    public override string Name => "node.socket-client";
-    public override string DisplayName { get; set; } = "Socket Client";
+    public override string Name => "Socket Client";
+    public override string? DisplayName { get; set; } = string.Empty;
     public override string Category => "Network";
 
     /// <summary>Send input pin, kept as a property so its parameter value can be saved.</summary>
@@ -43,11 +43,16 @@ public sealed class SocketClientNode : BaseNode
     public SocketClientNode()
     {
         Uuid = "DCB15DED-9BDF-4C44-858F-560261B685D7";
+        AddParam();
+        AddPins();
+    }
+
+    /// <summary>Create the node's input / output pins (required by <see cref="BaseNode"/>).</summary>
+    public override void AddPins()
+    {
         AddInputPin(_inPin);
         AddOutputPin(_outPin);
     }
-
-    /// <summary>
     /// Declare the node's parameters. Called by the base constructor; each declared
     /// parameter is automatically surfaced in the property panel and serialized /
     /// deserialized to JSON by <see cref="BaseNode"/>.
@@ -55,9 +60,9 @@ public sealed class SocketClientNode : BaseNode
     protected override void AddParam()
     {
         base.AddParam();
-        AddParameter(new NodeParameter("Host", typeof(string), "127.0.0.1", isEditable: true, group: "Settings"));
-        AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "Settings"));
-        AddParameter(new NodeParameter("Payload", typeof(string), "ping", isEditable: true, group: "Settings"));
+        AddParameter(new NodeParameter("Host", typeof(string), "127.0.0.1", isEditable: true, group: "General", zone: "ClientZone"));
+        AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "General", zone: "ClientZone"));
+        AddParameter(new NodeParameter("Payload", typeof(string), "ping", isEditable: true, group: "General", zone: "ClientZone"));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
@@ -74,7 +79,7 @@ public sealed class SocketClientNode : BaseNode
     /// Called when the Send input pin receives a value from an upstream node: enqueue it so the
     /// communication loop writes it to the server (the C# analogue of <c>sendData</c>).
     /// </summary>
-    public override void Receive(INodeContext context, BasePin pin, object? value)
+    public override void Receive(BasePin pin, object? value)
     {
         if (pin.Id == _inPin.Id && value is string s)
         {

@@ -95,6 +95,11 @@ public partial class NodeViewModel : ViewModelBase
     public string Uuid => Model.Uuid;
     public int InstanceId => Model.InstanceId;
 
+    public int DependsOn => Model.Node.DependsOn;
+
+    /// <summary>Notify listeners that the DependsOn parameter changed (raised after the dialog applies it).</summary>
+    public void NotifyDependsOnChanged() => OnPropertyChanged(nameof(DependsOn));
+
     /// <summary>The Core-layer editor node (holds the BaseNode instance and runtime pins). The GUI does not operate its pins directly.</summary>
     public EditorNode? Runtime { get; set; }
 
@@ -141,7 +146,7 @@ public partial class NodeViewModel : ViewModelBase
     public NodeViewModel(NodeModel model)
     {
         Model = model;
-        DisplayName = model.Node.DisplayName;
+        DisplayName = model.Node.DisplayName ?? "";
         Accent = CategoryColors.Accent(model.Category);
         AccentTint = CategoryColors.AccentTint(model.Category);
 

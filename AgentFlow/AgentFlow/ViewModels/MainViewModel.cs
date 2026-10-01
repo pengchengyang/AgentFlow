@@ -57,6 +57,9 @@ public partial class MainViewModel : ViewModelBase
     private bool _isDirty;
     [ObservableProperty]
     private string _statusText = Loc.Instance["Ready"];
+    /// <summary>Full path of the currently open / saved JSON workflow file.</summary>
+    [ObservableProperty]
+    private string _currentFilePath = "";
     [ObservableProperty]
     private bool _isDarkTheme;
     /// <summary>Whether the bottom log panel is expanded (toggled by the Logs button).</summary>
@@ -220,6 +223,7 @@ public partial class MainViewModel : ViewModelBase
             _isLoading = true;
             var doc = GraphDeserializer.Deserialize(json);
             LoadGraphFromDocument(doc);
+            CurrentFilePath = _store.Description;
             StatusText = $"{L["LoadedFrom"]}: {_store.Description}";
         }
         catch (Exception ex)
@@ -601,6 +605,7 @@ public partial class MainViewModel : ViewModelBase
     {
         SyncGraphState();
         GraphSerializer.Save(_graph, path);
+        CurrentFilePath = path;
         IsDirty = false;
         StatusText = $"{L["SavedTo"]}: {path}";
     }
@@ -617,6 +622,7 @@ public partial class MainViewModel : ViewModelBase
     {
         var doc = GraphDeserializer.Load(path);
         LoadGraphFromDocument(doc);
+        CurrentFilePath = path;
         IsDirty = false;
         StatusText = $"{L["LoadedFrom"]}: {path}";
     }
@@ -632,6 +638,7 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             LoadGraphFromDocument(GraphDeserializer.Load(path));
+            CurrentFilePath = path;
             StatusText = $"{L["LoadedFrom"]}: {path}";
         }
         catch (Exception ex)

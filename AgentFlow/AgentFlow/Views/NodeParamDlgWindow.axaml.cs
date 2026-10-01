@@ -11,6 +11,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using AgentFlow.ViewModels;
+using AgentFlow.Services;
 
 namespace AgentFlow.Views;
 
@@ -36,14 +37,40 @@ public partial class NodeParamDlgWindow : Window
     private void OnOpened(object? sender, System.EventArgs e)
     {
         if (DataContext is NodeParameterDialogViewModel vm)
+        {
             vm.RequestClose += OnRequestClose;
+            vm.RequestApplyConfirm += OnApplyConfirmRequested;
+        }
     }
-
     private void OnRequestClose(object? sender, bool result)
     {
         if (DataContext is NodeParameterDialogViewModel vm)
             vm.RequestClose -= OnRequestClose;
         Close(result);
+    }
+
+    /// <summary>Ask whether to apply unsaved zone edits before switching; presentation and lifecycle only.</summary>
+    private async void OnApplyConfirmRequested(object? sender, System.EventArgs e)
+    {
+        if (DataContext is not NodeParameterDialogViewModel vm) return;
+        var confirm = new ConfirmDialogViewModel(
+            Loc.Instance["ConfirmApplyTitle"],
+            Loc.Instance["ConfirmApplyMessage"]);
+        var win = new ConfirmDialogWindow { DataContext = confirm };
+        bool? result = null;
+        confirm.RequestClose += (_, r) =>
+        {
+            result = r;
+            win.Close();
+        };
+        if (TopLevel.GetTopLevel(this) is Window owner)
+            await win.ShowDialog(owner);
+        else
+            win.Show();
+        if (result == true)
+            vm.ApplyPendingZoneChanges();
+        else
+            vm.DiscardPendingZoneChanges();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

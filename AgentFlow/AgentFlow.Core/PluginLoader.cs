@@ -289,7 +289,7 @@ public sealed class PluginLoader
                 continue;
 
             registry.Register(new NodeDescriptor(
-                probe.Name, probe.DisplayName, probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
+                probe.Name, probe.DisplayName ?? "", probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
 
             _logger.LogInformation("Registered node: {Name} ({DisplayName}) <- {Dll}",
                 probe.Name, probe.DisplayName, Path.GetFileName(dllPath));

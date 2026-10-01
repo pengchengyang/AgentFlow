@@ -74,9 +74,16 @@
         <!-- 底部条 -->
         <Border Grid.Row="2" Background="White" BorderBrush="#C0C4CC" BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="Auto,*,Auto">
-            <Button Grid.Column="0" Classes="secondary" Content="{Binding [Log], Source={x:Static s:Loc.Instance}, StringFormat='›_  {0}'}"
-                    Command="{Binding ToggleLogPanelCommand}"
-                    FontSize="13" Padding="12,4" Margin="12,0,0,0"/>
+            <Button Grid.Column="0" Classes="secondary" Command="{Binding ToggleLogPanelCommand}"
+                    FontSize="13" Padding="12,4" Margin="12,0,0,0">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Path Data="M297.4 73.4C309.9 60.9 330.2 60.9 342.7 73.4L502.7 233.4C515.2 245.9 515.2 266.2 502.7 278.7C490.2 291.2 469.9 291.2 457.4 278.7L320 141.3L182.6 278.6C170.1 291.1 149.8 291.1 137.3 278.6C124.8 266.1 124.8 245.8 137.3 233.3L297.3 73.3z" Stretch="Uniform" Fill="#111827" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding IsLogPanelOpen}"/>
+                <Path Data="M247.1 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L179.2 256 41.9 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z" Stretch="Uniform" Fill="#111827" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding !IsLogPanelOpen}"/>
+                <TextBlock Text="{Binding [Log], Source={x:Static s:Loc.Instance}}" FontSize="13" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <TextBlock Grid.Column="1" Text="{Binding CurrentFilePath}" FontSize="12" Foreground="#6B7280"
+                       VerticalAlignment="Center" Margin="16,0,0,0" TextTrimming="CharacterEllipsis"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0" VerticalAlignment="Center">
               <Path Data="M128 96l0 64 128 0 0-64c0-35.3-28.7-64-64-64s-64 28.7-64 64zM64 160l0-64C64 25.3 121.3-32 192-32S320 25.3 320 96l0 64c35.3 0 64 28.7 64 64l0 224c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 224c0-35.3 28.7-64 64-64z" Stretch="Uniform" Fill="#9CA3AF" Width="14" Height="16" VerticalAlignment="Center" IsVisible="{Binding !IsAdmin}"/>
               <TextBlock Text="{Binding Canvas.ZoomText}" FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"/>

@@ -67,6 +67,8 @@ public sealed class Loc : ObservableObject
         ["EnterPassword"] = ("Enter password", "输入密码"),
         ["ParamConfig"] = ("Parameter Configuration", "参数配置"),
         ["NoParameters"] = ("No parameters", "暂无参数"),
+        ["ConfirmApplyTitle"] = ("Unsaved Changes", "未保存的更改"),
+        ["ConfirmApplyMessage"] = ("Apply your changes before switching zones?", "切换区域前是否应用当前改动？"),
         ["IncorrectPassword"] = ("Incorrect password.", "密码错误"),
     };
     private string _lang = "en";

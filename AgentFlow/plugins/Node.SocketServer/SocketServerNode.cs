@@ -34,8 +34,8 @@ public sealed class SocketServerNode : BaseNode
     private string _send3 = "";
     private string _send4 = "";
 
-    public override string Name => "node.socket-server";
-    public override string DisplayName { get; set; } = "Socket Server";
+    public override string Name => "Socket Server";
+    public override string? DisplayName { get; set; } = string.Empty;
     public override string Category => "Network";
 
     /// <summary>Send1 input pin, kept as a property so its parameter value can be saved.</summary>
@@ -56,20 +56,26 @@ public sealed class SocketServerNode : BaseNode
     public SocketServerNode()
     {
         Uuid = "9A652C51-6A66-4C36-B7A1-DF1E9B38F36F";
+        AddParam();
+        AddPins();
+    }
+
+    /// <summary>Create the node's input / output pins (required by <see cref="BaseNode"/>).</summary>
+    public override void AddPins()
+    {
         AddInputPin(Send1Pin);
         AddInputPin(Send2Pin);
         AddInputPin(Send3Pin);
         AddInputPin(Send4Pin);
         AddOutputPin(ReceivedPin);
     }
-
     /// <summary>Declare the node's parameters.</summary>
     protected override void AddParam()
     {
         base.AddParam();
-        AddParameter(new NodeParameter("Host", typeof(string), "0.0.0.0", isEditable: true, group: "General"));
-        AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "General"));
-        AddParameter(new NodeParameter("Response", typeof(string), "pong", isEditable: true, group: "General"));
+        AddParameter(new NodeParameter("Host", typeof(string), "0.0.0.0", isEditable: true, group: "Settings", zone: "General"));
+        AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "Settings", zone: "General"));
+        AddParameter(new NodeParameter("Response", typeof(string), "pong", isEditable: true, group: "Settings", zone: "General"));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
@@ -81,7 +87,7 @@ public sealed class SocketServerNode : BaseNode
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
 
-    public override void Receive(INodeContext context, BasePin pin, object? value)
+    public override void Receive(BasePin pin, object? value)
     {
         if (value is not string s) return;
         lock (_sendLock)

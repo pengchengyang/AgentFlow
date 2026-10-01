@@ -149,10 +149,10 @@ public class BasePin
 
         OnReceive(value);
 
-        if (Owner is null || Context is null)
+        if (Owner is null)
             return;
 
-        Owner.Receive(Context, this, value);
+        Owner.Receive(this, value);
     }
 
     // ---- Convenience factories: inject pin behaviour via lambdas without subclassing ----
