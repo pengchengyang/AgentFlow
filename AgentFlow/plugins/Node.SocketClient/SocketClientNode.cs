@@ -30,8 +30,8 @@ public sealed class SocketClientNode : BaseNode
     private readonly Channel<string> _sendChannel = Channel.CreateUnbounded<string>();
     private string _sendValue = "";
 
-    public override string FunctionName => "node.socket-client";
-    public override string DisplayName => "Socket Client";
+    public override string Name => "node.socket-client";
+    public override string DisplayName { get; set; } = "Socket Client";
     public override string Category => "Network";
 
     /// <summary>Send input pin, kept as a property so its parameter value can be saved.</summary>
@@ -54,9 +54,10 @@ public sealed class SocketClientNode : BaseNode
     /// </summary>
     protected override void AddParam()
     {
-        AddParameter(new NodeParameter("Host", typeof(string), "127.0.0.1", isEditable: true, group: "General"));
-        AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "General"));
-        AddParameter(new NodeParameter("Payload", typeof(string), "ping", isEditable: true, group: "General"));
+        base.AddParam();
+        AddParameter(new NodeParameter("Host", typeof(string), "127.0.0.1", isEditable: true, group: "Settings"));
+        AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "Settings"));
+        AddParameter(new NodeParameter("Payload", typeof(string), "ping", isEditable: true, group: "Settings"));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)

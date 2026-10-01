@@ -40,12 +40,12 @@ public sealed class GraphCanvas : Control
     private const double HeaderHeight = 82;
     private const double InputRow = 32;
     private const double OutputRow = 28;
-    private const double ParamRow = 62;
+
 
     private static readonly Color ColorBg = Color.Parse("#FFFFFF");
     private static readonly Color ColorDot = Color.Parse("#E4DBCD");
     private static readonly Color ColorTitle = Color.Parse("#111827");
-    private static readonly Color ColorFunctionName = Color.Parse("#6B7280");
+    private static readonly Color ColorName = Color.Parse("#6B7280");
     private static readonly Color ColorMuted = Color.Parse("#9CA3AF");
     private static readonly Color ColorBorder = Color.Parse("#94A3B8");
     private static readonly Color ColorDivider = Color.Parse("#F3F4F6");
@@ -54,7 +54,7 @@ public sealed class GraphCanvas : Control
     private static readonly Color ColorIn = Color.Parse("#3B82F6");
     private static readonly Color ColorOut = Color.Parse("#8B5CF6");
     private static readonly Color ColorPinBorder = Color.Parse("#D1D5DB");
-    private static readonly Color ColorParamValue = Color.Parse("#6B7280");
+
 
     private readonly Dictionary<NodeViewModel, NodeLayout> _layouts = new();
 
@@ -85,7 +85,7 @@ public sealed class GraphCanvas : Control
         public Rect Body = default;
         public List<Rect> InputHits = new();
         public List<Rect> OutputHits = new();
-        public List<(string Label, string Value, double Y)> Params = new();
+
     }
 
     private NodeLayout ComputeLayout(NodeViewModel node)
@@ -107,15 +107,6 @@ public sealed class GraphCanvas : Control
             }
         }
 
-        if (node.HasParameters)
-        {
-            y += 8;
-            foreach (var p in node.Parameters)
-            {
-                l.Params.Add((p.Label, p.Value, loc.Y + y));
-                y += ParamRow;
-            }
-        }
 
         int nOut = node.Outputs.Count;
         if (nOut > 0)
@@ -218,8 +209,10 @@ public sealed class GraphCanvas : Control
         double x = b.X, y = b.Y;
 
         DrawText(ctx, "◆", new Point(x + PadX, y + 14), node.Accent, 15, FontWeight.SemiBold);
-        DrawText(ctx, node.FunctionName, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
-        DrawText(ctx, node.Title, new Point(x + PadX, y + 42), new SolidColorBrush(ColorFunctionName), 12);
+        DrawText(ctx, node.Name, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
+        double instW = TextWidth(node.InstanceId.ToString(), 12);
+        DrawText(ctx, node.InstanceId.ToString(), new Point(x + NodeWidth - PadX - instW, y + 17), new SolidColorBrush(ColorMuted), 12);
+        DrawText(ctx, node.Title, new Point(x + PadX, y + 42), new SolidColorBrush(ColorName), 12);
         DrawText(ctx, node.Uuid, new Point(x + PadX, y + 58), new SolidColorBrush(ColorMuted), 11);
         ctx.DrawLine(new Pen(new SolidColorBrush(ColorDivider)),
             new Point(x + PadX, y + HeaderHeight), new Point(x + NodeWidth - PadX, y + HeaderHeight));
@@ -231,11 +224,6 @@ public sealed class GraphCanvas : Control
             DrawText(ctx, pin.Name, new Point(x + 18, pin.Anchor.Y - 8), new SolidColorBrush(ColorTitle), 12);
         }
 
-        foreach (var (label, value, py) in l.Params)
-        {
-            DrawText(ctx, label, new Point(x + PadX, py), new SolidColorBrush(ColorTitle), 12, FontWeight.Medium);
-            DrawText(ctx, value, new Point(x + PadX, py + 20), new SolidColorBrush(ColorParamValue), 12);
-        }
 
         for (int i = 0; i < node.Outputs.Count; i++)
         {

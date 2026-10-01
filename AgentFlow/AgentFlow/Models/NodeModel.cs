@@ -20,9 +20,9 @@ public sealed class NodeModel
     /// <summary>The underlying contract node instance.</summary>
     public BaseNode Node { get; }
 
-    public string FunctionName => Node.FunctionName;
-    public string Uuid => Node.Uuid;
     public string DisplayName => Node.DisplayName;
+    public string Uuid => Node.Uuid;
+    public string Name => Node.Name;
     public string Category => Node.Category;
     public int InstanceId => Node.InstanceId;
 

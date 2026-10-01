@@ -12,7 +12,7 @@ namespace AgentFlow.Core;
 
 /// <summary>
 /// Deserializes <b>only</b> the logical parameters of a node instance from a JSON
-/// object. It restores <see cref="BaseNode.Uuid"/>, <see cref="BaseNode.FunctionName"/>,
+/// object. It restores <see cref="BaseNode.Uuid"/>, <see cref="BaseNode.DisplayName"/>,
 /// <see cref="BaseNode.InstanceId"/> and any subclass-specific data while ignoring
 /// all GUI fields such as coordinate positions, node id, name and priority.
 /// The upper-layer <c>GraphDeserializer</c> (in the AgentFlow project) extracts the

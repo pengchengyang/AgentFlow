@@ -16,7 +16,7 @@
         Background="Transparent"
         TransparencyLevelHint="Transparent"
         WindowDecorations="BorderOnly">
-  <Border CornerRadius="8" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
+  <Border CornerRadius="0" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
   <Grid RowDefinitions="34,*">
     <!-- 自定义标题栏（两个按钮：最小化、关闭） -->
     <Border Grid.Row="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">

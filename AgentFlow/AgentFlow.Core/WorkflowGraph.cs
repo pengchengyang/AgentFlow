@@ -14,10 +14,10 @@ namespace AgentFlow.Core;
 public sealed class NodeSpec
 {
     public string Id { get; set; } = "";
-    public string FunctionName { get; set; } = "";
+    public string Name { get; set; } = "";
 
-    /// <summary>User-editable instance name shown on the canvas (falls back to the type display name).</summary>
-    public string? Name { get; set; }
+    /// <summary>User-editable display name shown on the canvas.</summary>
+    public string? DisplayName { get; set; }
 
     /// <summary>Start-up priority, mirroring ALC's "Startup Priority": lower runs earlier; bigger means later.</summary>
     public int Priority { get; set; }

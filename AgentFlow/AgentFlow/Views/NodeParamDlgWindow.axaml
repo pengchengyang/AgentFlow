@@ -16,7 +16,7 @@
         Background="Transparent"
         TransparencyLevelHint="Transparent"
         WindowDecorations="None">
-  <Border CornerRadius="8" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
+  <Border CornerRadius="0" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
   <Grid RowDefinitions="34,*">
     <!-- 自定义标题栏 -->
     <Border Grid.Row="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
@@ -126,14 +126,18 @@
           <StackPanel Spacing="14">
             <TextBlock Text="{Binding [NoParameters], Source={x:Static s:Loc.Instance}}" IsVisible="{Binding HasNoParameters}"
                        Foreground="#9CA3AF" HorizontalAlignment="Center" Margin="0,40,0,0"/>
-            <TreeView ItemsSource="{Binding Groups}">
+            <TreeView ItemsSource="{Binding Groups}" Grid.IsSharedSizeScope="True">
               <TreeView.DataTemplates>
                 <TreeDataTemplate DataType="{x:Type vm:ParameterGroupNode}" ItemsSource="{Binding Children}">
                   <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                              Foreground="#111827" Margin="0,4,0,6"/>
                 </TreeDataTemplate>
                 <DataTemplate DataType="{x:Type vm:ParameterEditRow}">
-                  <Grid ColumnDefinitions="Auto,*" Margin="0,6,0,6">
+                  <Grid Margin="0,6,0,6">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" SharedSizeGroup="ParamLabel"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,12,0" VerticalAlignment="Center"
                                 Orientation="Horizontal" Spacing="8">
                       <TextBlock Text="{Binding Label}" VerticalAlignment="Center"

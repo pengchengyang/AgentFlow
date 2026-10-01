@@ -20,12 +20,11 @@ namespace AgentFlow.Core;
 public sealed class EditorNode
 {
     public string Id { get; }
-    public string FunctionName { get; }
-    public string DisplayName { get; }
+    public string Name { get; }
     public string Category { get; }
 
-    /// <summary>User-editable instance name (persisted to JSON).</summary>
-    public string? Name { get; set; }
+    /// <summary>User-editable display name (persisted to JSON).</summary>
+    public string? DisplayName { get; set; }
 
     /// <summary>Start-up priority, mirroring ALC's "Startup Priority".</summary>
     public int Priority { get; set; }
@@ -56,10 +55,9 @@ public sealed class EditorNode
         IReadOnlyDictionary<string, object?>? parameters = null)
     {
         Id = id;
-        FunctionName = descriptor.FunctionName;
-        DisplayName = descriptor.DisplayName;
+        Name = descriptor.Name;
         Category = descriptor.Category;
-        Name = name;
+        DisplayName = name;
         Priority = priority;
         X = x;
         Y = y;
@@ -138,11 +136,11 @@ public sealed class EditorGraph
         string? name = null,
         int priority = 0)
     {
-        var descriptor = _registry.Get(instance.FunctionName);
+        var descriptor = _registry.Get(instance.Name);
         if (parameters is not null && parameters.Count > 0)
             instance.Configure(parameters);
         if (!string.IsNullOrEmpty(name))
-            instance.Name = name;
+            instance.DisplayName = name;
 
         var node = new EditorNode(
             id ?? Guid.NewGuid().ToString("N")[..8],
@@ -154,7 +152,7 @@ public sealed class EditorGraph
             priority,
             parameters);
         Nodes.Add(node);
-        _logger.LogInformation("EditorGraph: added node {Id} ({FunctionName})", node.Id, node.FunctionName);
+        _logger.LogInformation("EditorGraph: added node {Id} ({Name})", node.Id, node.Name);
         GraphChanged?.Invoke();
         return node;
     }
@@ -163,9 +161,9 @@ public sealed class EditorGraph
     public void Connect(EditorNode fromNode, string fromPin, EditorNode toNode, string toPin)
     {
         if (!fromNode.Outputs.TryGetValue(fromPin, out var output))
-            throw new InvalidOperationException($"Node {fromNode.FunctionName} has no output pin: {fromPin}");
+            throw new InvalidOperationException($"Node {fromNode.Name} has no output pin: {fromPin}");
         if (!toNode.Inputs.TryGetValue(toPin, out var input))
-            throw new InvalidOperationException($"Node {toNode.FunctionName} has no input pin: {toPin}");
+            throw new InvalidOperationException($"Node {toNode.Name} has no input pin: {toPin}");
 
         // One-to-one rule: if either pin is already connected, simply don't connect (no exception).
         if (Connections.Any(c =>
@@ -254,9 +252,9 @@ public sealed class EditorGraph
         double y,
         IReadOnlyDictionary<string, object?>? parameters = null)
     {
-        node.Name = name;
+        node.DisplayName = name;
         if (node.RuntimeNode is not null)
-            node.RuntimeNode.Name = name ?? string.Empty;
+            node.RuntimeNode.DisplayName = name ?? string.Empty;
         node.Priority = priority;
         node.X = x;
         node.Y = y;
@@ -273,8 +271,8 @@ public sealed class EditorGraph
             graph.Nodes.Add(new NodeSpec
             {
                 Id = node.Id,
-                FunctionName = node.FunctionName,
-                Name = node.RuntimeNode?.Name ?? node.Name,
+                Name = node.Name,
+                DisplayName = node.RuntimeNode?.DisplayName ?? node.DisplayName,
                 Priority = node.Priority,
                 X = node.X,
                 Y = node.Y,
@@ -342,7 +340,7 @@ public sealed class EditorGraph
         foreach (var pin in node.Inputs.Values)
             pin.Context = ctx;
         await node.RuntimeNode.Run(ctx, ct);
-        _logger.LogInformation("EditorGraph: sent node {Id} ({FunctionName})", node.Id, node.FunctionName);
+        _logger.LogInformation("EditorGraph: sent node {Id} ({Name})", node.Id, node.Name);
     }
 
     /// <summary>

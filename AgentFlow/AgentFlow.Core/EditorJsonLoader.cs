@@ -84,11 +84,11 @@ public static class EditorJsonLoader
         foreach (var spec in doc.Nodes)
         {
             var logic = spec.Logic;
-            var functionName = logic?["functionName"]?.GetValue<string>() ?? "";
-            if (string.IsNullOrEmpty(functionName))
-                throw new InvalidDataException($"Node '{spec.Id}' has no logic.functionName.");
+            var name = logic?["name"]?.GetValue<string>() ?? "";
+            if (string.IsNullOrEmpty(name))
+                throw new InvalidDataException($"Node '{spec.Id}' has no logic.name.");
 
-            var instance = registry.CreateInstance(functionName);
+            var instance = registry.CreateInstance(name);
             LogicDeserializer.Deserialize(instance, logic);
 
             // Surface restored parameters so WorkflowEngine can re-apply them via Configure.
@@ -100,8 +100,8 @@ public static class EditorJsonLoader
             graph.Nodes.Add(new NodeSpec
             {
                 Id = spec.Id,
-                FunctionName = functionName,
-                Name = string.IsNullOrEmpty(instance.Name) ? null : instance.Name,
+                Name = name,
+                DisplayName = string.IsNullOrEmpty(instance.DisplayName) ? null : instance.DisplayName,
                 Parameters = parameters,
                 X = spec.X,
                 Y = spec.Y
@@ -113,12 +113,12 @@ public static class EditorJsonLoader
                 foreach (var item in pins)
                 {
                     if (item is not JsonObject pinObj) continue;
-                    var name = pinObj["name"]?.GetValue<string>();
+                    var pinName = pinObj["name"]?.GetValue<string>();
                     var id = pinObj["id"]?.GetValue<int>();
-                    if (string.IsNullOrEmpty(name) || id is null) continue;
+                    if (string.IsNullOrEmpty(pinName) || id is null) continue;
 
-                    var isOutput = instance.OutputPins.Any(p => p.Name == name);
-                    pinMap[id.Value] = (spec.Id, name, isOutput);
+                    var isOutput = instance.OutputPins.Any(p => p.Name == pinName);
+                    pinMap[id.Value] = (spec.Id, pinName, isOutput);
                 }
             }
         }

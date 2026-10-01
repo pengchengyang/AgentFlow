@@ -97,13 +97,13 @@ public sealed class WorkflowEngine
 
         foreach (var spec in graph.Nodes)
         {
-            var node = _registry.CreateInstance(spec.FunctionName);
+            var node = _registry.CreateInstance(spec.Name);
             node.Configure(NormalizeParameters(spec.Parameters));
             instances[spec.Id] = node;
             contexts[spec.Id] = new NodeContext(
                 spec.Id, node,
                 _loggerFactory.CreateLogger($"Node:{spec.Id}"), _guiBridge);
-            _logger.LogInformation("Instantiated node {Id} ({FunctionName})", spec.Id, spec.FunctionName);
+            _logger.LogInformation("Instantiated node {Id} ({Name})", spec.Id, spec.Name);
         }
 
         // 2. Wire the graph: output.Connect(input) -- output pins hold input pin references.

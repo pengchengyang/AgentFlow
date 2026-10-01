@@ -13,7 +13,7 @@ namespace AgentFlow.Contracts;
 /// <summary>
 /// Base class for every AgentFlow node. A node declares its pins by calling
 /// <see cref="AddInputPin"/> / <see cref="AddOutputPin"/> (the pin sets are stored in
-/// mutable lists, so a node can append pins as needed), and provides <see cref="FunctionName"/>,
+/// mutable lists, so a node can append pins as needed), and provides <see cref="Name"/>,
 /// <see cref="DisplayName"/>, <see cref="Configure"/> and <see cref="Run"/>.
 /// <see cref="Initialize"/> and <see cref="Stop"/> default to no-ops; <see cref="Run"/> must be implemented.
 /// </summary>
@@ -26,18 +26,17 @@ public abstract class BaseNode
     /// <summary>Names of the built-in General parameters that every node owns (not shown in the property-panel <see cref="Parameters"/> list).</summary>
     private static readonly HashSet<string> BuiltInParamNames = new(StringComparer.Ordinal)
     {
-        "DisplayName", "DependsOn", "Uuid", "FunctionName", "InstanceId"
+        "Name", "DependsOn", "Uuid", "DisplayName", "InstanceId"
     };
 
     protected BaseNode()
     {
-        // Uuid is intentionally left empty here. Each derived class assigns its own
-        // value as the unique type identifier of that subclass.
-        AddParam();
     }
 
-    /// <summary>Node type id (globally unique, e.g. "basic.add"). Serialized into JSON.</summary>
-    public abstract string FunctionName { get; }
+    /// <summary>
+    /// Node type id (globally unique, e.g. "node.socket-server"). Read-only; serialized into JSON.
+    /// </summary>
+    public abstract string Name { get; }
 
     /// <summary>Unique id of this node instance. Assigned/managed by AgentFlow.Core.</summary>
     public int InstanceId { get; set; }
@@ -60,14 +59,12 @@ public abstract class BaseNode
     /// </summary>
     public string Uuid { get; protected set; } = string.Empty;
 
-    /// <summary>Display name in the UI.</summary>
-    public abstract string DisplayName { get; }
-
     /// <summary>
-    /// User-editable instance display name (shown on canvas). Persisted as the editable
-    /// DisplayName General parameter and to <c>logic.name</c>.
+    /// Node display name (shown on canvas). Must be assigned by each subclass
+    /// (usually via an auto-property initializer); user-editable. Persisted as the
+    /// editable DisplayName General parameter and to <c>logic.displayName</c>.
     /// </summary>
-    public string Name { get; set; } = string.Empty;
+    public abstract string DisplayName { get; set; }
 
     /// <summary>Node category (used by the palette grouping and accent color).</summary>
     public abstract string Category { get; }
@@ -115,15 +112,15 @@ public abstract class BaseNode
     /// serialize / deserialize every declared parameter to JSON (grouped under the
     /// <c>parameters</c> root of the logic blob). The base implementation registers the
     /// mandatory per-node fields as a <c>General</c> group: DisplayName and DependsOn are
-    /// editable; Uuid, FunctionName and InstanceId are read-only.
+    /// editable; Name, Uuid and InstanceId are read-only.
     /// </summary>
     protected virtual void AddParam()
     {
-        AddParameter(new NodeParameter("DisplayName", typeof(string), Name, isEditable: true, group: "General"));
-        AddParameter(new NodeParameter("DependsOn", typeof(int), DependsOn, isEditable: true, group: "General"));
+        AddParameter(new NodeParameter("Name", typeof(string), Name, isEditable: false, group: "General"));
         AddParameter(new NodeParameter("Uuid", typeof(string), Uuid, isEditable: false, group: "General"));
-        AddParameter(new NodeParameter("FunctionName", typeof(string), FunctionName, isEditable: false, group: "General"));
+        AddParameter(new NodeParameter("DisplayName", typeof(string), DisplayName, isEditable: true, group: "General"));
         AddParameter(new NodeParameter("InstanceId", typeof(int), InstanceId, isEditable: false, group: "General"));
+        AddParameter(new NodeParameter("DependsOn", typeof(int), DependsOn, isEditable: true, group: "General"));
     }
 
     /// <summary>Apply parameters (from JSON deserialization / property panel).</summary>
@@ -132,10 +129,10 @@ public abstract class BaseNode
     /// <summary>Refresh the built-in General parameter values from the live property values.</summary>
     public void RefreshBuiltInParameters()
     {
-        SetBuiltInValue("DisplayName", Name);
+        SetBuiltInValue("Name", Name);
         SetBuiltInValue("DependsOn", DependsOn);
         SetBuiltInValue("Uuid", Uuid);
-        SetBuiltInValue("FunctionName", FunctionName);
+        SetBuiltInValue("DisplayName", DisplayName);
         SetBuiltInValue("InstanceId", InstanceId);
     }
 
@@ -143,7 +140,7 @@ public abstract class BaseNode
     public void ApplyBuiltInParameters()
     {
         var display = BuiltInParam("DisplayName")?.Value?.ToString();
-        if (display is not null) Name = display;
+        if (display is not null) DisplayName = display;
         if (BuiltInParam("DependsOn")?.Value is { } dep && int.TryParse(dep.ToString(), out var d))
             DependsOn = d;
     }
@@ -160,7 +157,7 @@ public abstract class BaseNode
     /// <summary>
     /// Serialize this node's logical parameters into the given JSON object.
     /// The base implementation writes the mandatory instance identity
-    /// (<see cref="Name"/>, <see cref="Uuid"/>, <see cref="FunctionName"/>, <see cref="InstanceId"/>)
+    /// (<see cref="Name"/>, <see cref="Uuid"/>, <see cref="DisplayName"/>, <see cref="InstanceId"/>)
     /// first, then serializes every parameter declared via <see cref="AddParam"/> /
     /// <see cref="AddParameter"/> (grouped under the <c>parameters</c> root of the logic blob).
     /// Subclasses must not need to know about UI state.
@@ -169,7 +166,7 @@ public abstract class BaseNode
     {
         json["name"] = Name;
         json["uuid"] = Uuid;
-        json["functionName"] = FunctionName;
+        json["displayName"] = DisplayName;
         json["instanceId"] = InstanceId;
         RefreshBuiltInParameters();
         SerializeGroupedParameters(json);
@@ -189,9 +186,9 @@ public abstract class BaseNode
         var instanceId = json["instanceId"]?.GetValue<int>();
         if (instanceId.HasValue)
             InstanceId = instanceId.Value;
-        var name = json["name"]?.GetValue<string>();
-        if (!string.IsNullOrEmpty(name))
-            Name = name;
+        var displayName = json["displayName"]?.GetValue<string>();
+        if (displayName is not null)
+            DisplayName = displayName;
         DeserializeGroupedParameters(json);
         RefreshBuiltInParameters();
     }
@@ -301,7 +298,7 @@ public abstract class BaseNode
                     foreach (var param in groupObj)
                     {
                         // Skip reserved keys in the legacy fallback path.
-                        if (param.Key is "uuid" or "functionName" or "instanceId" or "dependsOn" or "parameters")
+                        if (param.Key is "uuid" or "displayName" or "instanceId" or "dependsOn" or "parameters")
                             continue;
 
                         var np = _nodeParameters.FirstOrDefault(p =>

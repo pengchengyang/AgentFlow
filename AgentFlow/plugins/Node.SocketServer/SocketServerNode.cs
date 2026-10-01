@@ -34,8 +34,8 @@ public sealed class SocketServerNode : BaseNode
     private string _send3 = "";
     private string _send4 = "";
 
-    public override string FunctionName => "node.socket-server";
-    public override string DisplayName => "Socket Server";
+    public override string Name => "node.socket-server";
+    public override string DisplayName { get; set; } = "Socket Server";
     public override string Category => "Network";
 
     /// <summary>Send1 input pin, kept as a property so its parameter value can be saved.</summary>
@@ -55,7 +55,7 @@ public sealed class SocketServerNode : BaseNode
 
     public SocketServerNode()
     {
-        Uuid = "node.socket-server";
+        Uuid = "9A652C51-6A66-4C36-B7A1-DF1E9B38F36F";
         AddInputPin(Send1Pin);
         AddInputPin(Send2Pin);
         AddInputPin(Send3Pin);
@@ -66,6 +66,7 @@ public sealed class SocketServerNode : BaseNode
     /// <summary>Declare the node's parameters.</summary>
     protected override void AddParam()
     {
+        base.AddParam();
         AddParameter(new NodeParameter("Host", typeof(string), "0.0.0.0", isEditable: true, group: "General"));
         AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "General"));
         AddParameter(new NodeParameter("Response", typeof(string), "pong", isEditable: true, group: "General"));

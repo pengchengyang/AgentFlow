@@ -91,14 +91,15 @@ public partial class NodeViewModel : ViewModelBase
     /// <summary>The domain model (wraps the contract-layer BaseNode).</summary>
     public NodeModel Model { get; }
 
-    public string FunctionName => Model.FunctionName;
+    public string Name => Model.Name;
     public string Uuid => Model.Uuid;
+    public int InstanceId => Model.InstanceId;
 
     /// <summary>The Core-layer editor node (holds the BaseNode instance and runtime pins). The GUI does not operate its pins directly.</summary>
     public EditorNode? Runtime { get; set; }
 
-    /// <summary>Canvas title: user-editable instance name falls back to the type display name.</summary>
-    public string Title => string.IsNullOrWhiteSpace(Name) ? Model.DisplayName : Name;
+    /// <summary>Canvas title: user-editable display name falls back to the type id (Name).</summary>
+    public string Title => string.IsNullOrWhiteSpace(DisplayName) ? Model.Name : DisplayName;
     public string Category => Model.Category;
 
     /// <summary>Category accent color (header icon dot / header tint).</summary>
@@ -106,12 +107,12 @@ public partial class NodeViewModel : ViewModelBase
     public SolidColorBrush AccentTint { get; }
 
     [ObservableProperty]
-    private string _name = "";
+    private string _displayName = "";
 
     [ObservableProperty]
     private int _priority;
 
-    partial void OnNameChanged(string value) => OnPropertyChanged(nameof(Title));
+    partial void OnDisplayNameChanged(string value) => OnPropertyChanged(nameof(Title));
 
     [ObservableProperty]
     private Point _location;
@@ -140,7 +141,7 @@ public partial class NodeViewModel : ViewModelBase
     public NodeViewModel(NodeModel model)
     {
         Model = model;
-        Name = model.Node.Name;
+        DisplayName = model.Node.DisplayName;
         Accent = CategoryColors.Accent(model.Category);
         AccentTint = CategoryColors.AccentTint(model.Category);
 
