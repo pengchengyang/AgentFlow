@@ -8,6 +8,7 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\AgentFlow\Assets\avalonia-logo.ico</ApplicationIcon>
+    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,8 +20,7 @@
   </ItemGroup>
   <Target Name="CopyPlugins" AfterTargets="Build">
     <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll"
-                  Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
+      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
   </Target>
