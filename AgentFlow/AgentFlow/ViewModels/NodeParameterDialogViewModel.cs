@@ -7,6 +7,7 @@
 
 using System.Collections.ObjectModel;
 using AgentFlow.Contracts;
+using AgentFlow.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -27,6 +28,9 @@ public partial class NodeParameterDialogViewModel : ViewModelBase
 
     /// <summary>Dialog title.</summary>
     public string Title => Node.Title;
+
+    /// <summary>Localized dialog title (node name + "Parameter Configuration").</summary>
+    public string DialogTitle => $"{Title} - {Loc.Instance["ParamConfig"]}";
 
     /// <summary>The grouped parameter tree (group node -> parameter rows).</summary>
     public ObservableCollection<ParameterGroupNode> Groups { get; } = new();

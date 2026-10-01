@@ -46,6 +46,28 @@ public sealed class Loc : ObservableObject
         ["DisplayName"] = ("Display Name", "显示名称"),
         ["Priority"] = ("Priority", "优先级"),
         ["ValidationFailed"] = ("Validation failed", "校验失败"),
+
+        ["SaveAs"] = ("Save As...", "另存为..."),
+        ["OpenWorkflow"] = ("Open Workflow...", "打开工作流..."),
+        ["ClearCanvas"] = ("Clear Canvas", "清空画布"),
+        ["ResetZoom"] = ("Reset Zoom", "重置缩放"),
+        ["Login"] = ("Login", "登录"),
+        ["ToggleSidebar"] = ("Toggle Sidebar", "切换侧边栏"),
+        ["AppTitle"] = ("AgentFlow", "AgentFlow"),
+        ["Minimize"] = ("Minimize", "最小化"),
+        ["Maximize"] = ("Maximize", "最大化"),
+        ["Close"] = ("Close", "关闭"),
+        ["Discard"] = ("Discard", "放弃"),
+        ["SaveAndExit"] = ("Save & Exit", "保存并退出"),
+        ["Cancel"] = ("Cancel", "取消"),
+        ["Confirm"] = ("Confirm", "确认"),
+        ["LoginHint"] = ("Select a role and enter its password.", "选择角色并输入密码。"),
+        ["Role"] = ("Role", "角色"),
+        ["Password"] = ("Password", "密码"),
+        ["EnterPassword"] = ("Enter password", "输入密码"),
+        ["ParamConfig"] = ("Parameter Configuration", "参数配置"),
+        ["NoParameters"] = ("No parameters", "暂无参数"),
+        ["IncorrectPassword"] = ("Incorrect password.", "密码错误"),
     };
     private string _lang = "en";
     public string CurrentLanguage => _lang;
@@ -64,3 +86,6 @@ public sealed class Loc : ObservableObject
         OnPropertyChanged(nameof(CurrentLanguage));
     }
 }
+
+
+

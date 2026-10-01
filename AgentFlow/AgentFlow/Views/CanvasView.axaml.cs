@@ -42,7 +42,7 @@ public sealed class GraphCanvas : Control
     private const double OutputRow = 28;
     private const double ParamRow = 62;
 
-    private static readonly Color ColorBg = Color.Parse("#F9F5EB");
+    private static readonly Color ColorBg = Color.Parse("#FFFFFF");
     private static readonly Color ColorDot = Color.Parse("#E4DBCD");
     private static readonly Color ColorTitle = Color.Parse("#111827");
     private static readonly Color ColorTypeId = Color.Parse("#6B7280");
@@ -594,3 +594,4 @@ public sealed class GraphCanvas : Control
             InvalidateVisual();
     }
 }
+

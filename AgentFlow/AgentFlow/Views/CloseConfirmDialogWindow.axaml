@@ -3,6 +3,7 @@
         xmlns:vm="clr-namespace:AgentFlow.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:s="clr-namespace:AgentFlow.Services"
         mc:Ignorable="d"
         x:Class="AgentFlow.Views.CloseConfirmDialogWindow"
         x:DataType="vm:CloseConfirmDialogViewModel"
@@ -12,9 +13,10 @@
         MinWidth="400" MinHeight="234"
         WindowStartupLocation="CenterOwner"
         CanResize="False"
-        Background="#F9FAFB"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
         WindowDecorations="BorderOnly">
-  <Border BorderBrush="#6B7280" BorderThickness="1">
+  <Border CornerRadius="8" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
   <Grid RowDefinitions="34,*">
     <!-- 自定义标题栏（两个按钮：最小化、关闭） -->
     <Border Grid.Row="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
@@ -44,16 +46,19 @@
       </Border.Styles>
       <Grid ColumnDefinitions="*,Auto">
         <Border Grid.Column="0" Background="Transparent" PointerPressed="TitleBar_OnPointerPressed">
-          <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="#111827" VerticalAlignment="Center" Margin="12,0"/>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
+            <Image Source="/Assets/avalonia-logo.ico" Width="16" Height="16" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="#111827" VerticalAlignment="Center"/>
+          </StackPanel>
         </Border>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <Button Classes="winbtn" Click="MinimizeButton_Click" ToolTip.Tip="Minimize">
+          <Button Classes="winbtn" Click="MinimizeButton_Click" ToolTip.Tip="{Binding [Minimize], Source={x:Static s:Loc.Instance}}">
             <Grid Width="20" Height="20">
               <Border Width="14" Height="2" CornerRadius="1" Background="#111827"
                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
           </Button>
-          <Button Classes="winbtn close" Click="CloseButton_Click" ToolTip.Tip="Close">
+          <Button Classes="winbtn close" Click="CloseButton_Click" ToolTip.Tip="{Binding [Close], Source={x:Static s:Loc.Instance}}">
             <Grid Width="20" Height="20">
               <Path Data="M64 112c-8.8 0-16 7.2-16 16l0 256c0 8.8 7.2 16 16 16l384 0c8.8 0 16-7.2 16-16l0-256c0-8.8-7.2-16-16-16L64 112zM0 128C0 92.7 28.7 64 64 64l384 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64L64 448c-35.3 0-64-28.7-64-64L0 128zm334.1 49.9c9.4 9.4 9.4 24.6 0 33.9l-44.1 44.1 44.1 44.1c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-44.1-44.1-44.1 44.1c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l44.1-44.1-44.1-44.1c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l44.1 44.1 44.1-44.1c9.4-9.4 24.6-9.4 33.9 0z"
                     Stretch="Uniform" Fill="#111827" Width="20" Height="20"
@@ -86,11 +91,11 @@
             </Style>
           </Border.Styles>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-            <Button Classes="toolbtn" Command="{Binding DiscardCommand}" ToolTip.Tip="Discard">
+            <Button Classes="toolbtn" Command="{Binding DiscardCommand}" ToolTip.Tip="{Binding [Discard], Source={x:Static s:Loc.Instance}}">
               <Path Data="M136.7 5.9C141.1-7.2 153.3-16 167.1-16l113.9 0c13.8 0 26 8.8 30.4 21.9L320 32 416 32c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 96C14.3 96 0 81.7 0 64S14.3 32 32 32l96 0 8.7-26.1zM32 144l384 0 0 304c0 35.3-28.7 64-64 64L96 512c-35.3 0-64-28.7-64-64l0-304zm88 64c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24zm104 0c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24zm104 0c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24z"
                     Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
             </Button>
-            <Button Classes="toolbtn" Command="{Binding SaveAndExitCommand}" IsDefault="True" ToolTip.Tip="Save &amp; Exit">
+            <Button Classes="toolbtn" Command="{Binding SaveAndExitCommand}" IsDefault="True" ToolTip.Tip="{Binding [SaveAndExit], Source={x:Static s:Loc.Instance}}">
               <Path Data="M160 144C151.2 144 144 151.2 144 160L144 480C144 488.8 151.2 496 160 496L480 496C488.8 496 496 488.8 496 480L496 237.3C496 233.1 494.3 229 491.3 226L416 150.6L416 240C416 257.7 401.7 272 384 272L224 272C206.3 272 192 257.7 192 240L192 144L160 144zM240 144L240 224L368 224L368 144L240 144zM96 160C96 124.7 124.7 96 160 96L402.7 96C419.7 96 436 102.7 448 114.7L525.3 192C537.3 204 544 220.3 544 237.3L544 480C544 515.3 515.3 544 480 544L160 544C124.7 544 96 515.3 96 480L96 160zM256 384C256 348.7 284.7 320 320 320C355.3 320 384 348.7 384 384C384 419.3 355.3 448 320 448C284.7 448 256 419.3 256 384z"
                     Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
             </Button>
@@ -98,7 +103,7 @@
         </Border>
 
         <StackPanel Margin="20,20" Spacing="10" VerticalAlignment="Top">
-          <TextBlock Text="⚠️" FontSize="18"/>
+          <Path Data="M256 0c14.7 0 28.2 8.1 35.2 21l216 400c6.7 12.4 6.4 27.4-.8 39.5S486.1 480 472 480L40 480c-14.1 0-27.2-7.4-34.4-19.5s-7.5-27.1-.8-39.5l216-400c7-12.9 20.5-21 35.2-21zm0 352a32 32 0 1 0 0 64 32 32 0 1 0 0-64zm0-192c-18.2 0-32.7 15.5-31.4 33.7l7.4 104c.9 12.5 11.4 22.3 23.9 22.3 12.6 0 23-9.7 23.9-22.3l7.4-104c1.3-18.2-13.1-33.7-31.4-33.7z" Stretch="Uniform" Fill="#111827" Width="22" Height="22" HorizontalAlignment="Left"/>
           <TextBlock Text="{Binding Message}" FontSize="13" Foreground="#374151" TextWrapping="Wrap"/>
         </StackPanel>
       </DockPanel>
@@ -106,6 +111,7 @@
   </Grid>
   </Border>
 </Window>
+
 
 
 

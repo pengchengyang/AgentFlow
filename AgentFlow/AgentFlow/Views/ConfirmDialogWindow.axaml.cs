@@ -5,7 +5,10 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using Avalonia.Animation;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
@@ -20,7 +23,13 @@ public partial class ConfirmDialogWindow : Window
     public ConfirmDialogWindow()
     {
         InitializeComponent();
+        Opacity = 0;
+        Transitions = new Transitions
+        {
+            new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(350) }
+        };
         Opened += OnOpened;
+        Opened += (_, _) => Opacity = 1;
     }
 
     private void OnOpened(object? sender, System.EventArgs e)
@@ -34,5 +43,17 @@ public partial class ConfirmDialogWindow : Window
         if (DataContext is ConfirmDialogViewModel vm)
             vm.RequestClose -= OnRequestClose;
         Close(confirmed);
+    }
+
+    private void MinimizeButton_Click(object? sender, RoutedEventArgs e)
+        => WindowState = WindowState.Minimized;
+
+    private void CloseButton_Click(object? sender, RoutedEventArgs e)
+        => Close();
+
+    private void TitleBar_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
     }
 }

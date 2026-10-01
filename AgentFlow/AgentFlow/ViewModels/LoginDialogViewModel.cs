@@ -75,7 +75,7 @@ public partial class LoginDialogViewModel : ViewModelBase
         }
         else
         {
-            ErrorMessage = "Incorrect password.";
+            ErrorMessage = Loc.Instance["IncorrectPassword"];
             HasError = true;
         }
     }

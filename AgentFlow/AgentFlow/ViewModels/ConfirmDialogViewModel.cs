@@ -8,6 +8,8 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using AgentFlow.Services;
+
 namespace AgentFlow.ViewModels;
 
 /// <summary>
@@ -33,12 +35,12 @@ public partial class ConfirmDialogViewModel : ViewModelBase
     public event EventHandler<bool>? RequestClose;
 
     public ConfirmDialogViewModel(string title, string message,
-        string confirmText = "Confirm", string cancelText = "Cancel")
+        string? confirmText = null, string? cancelText = null)
     {
         Title = title;
         Message = message;
-        ConfirmText = confirmText;
-        CancelText = cancelText;
+        ConfirmText = confirmText ?? Loc.Instance["Confirm"];
+        CancelText = cancelText ?? Loc.Instance["Cancel"];
     }
 
     [RelayCommand]

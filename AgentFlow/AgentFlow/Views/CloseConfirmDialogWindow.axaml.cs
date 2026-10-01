@@ -5,6 +5,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -22,7 +23,13 @@ public partial class CloseConfirmDialogWindow : Window
     public CloseConfirmDialogWindow()
     {
         InitializeComponent();
+        Opacity = 0;
         Opened += OnOpened;
+        Transitions = new Transitions
+        {
+            new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(350) }
+        };
+        Opened += (_, _) => Opacity = 1;
     }
 
     private void OnOpened(object? sender, System.EventArgs e)
@@ -50,3 +57,5 @@ public partial class CloseConfirmDialogWindow : Window
             BeginMoveDrag(e);
     }
 }
+
+

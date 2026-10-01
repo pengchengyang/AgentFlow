@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -22,7 +23,13 @@ public partial class NodeParamDlgWindow : Window
     public NodeParamDlgWindow()
     {
         InitializeComponent();
+        Opacity = 0;
         Opened += OnOpened;
+        Transitions = new Transitions
+        {
+            new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(350) }
+        };
+        Opened += (_, _) => Opacity = 1;
         UpdateMaximizeRestoreIcon();
     }
 
@@ -76,3 +83,5 @@ public partial class NodeParamDlgWindow : Window
             BeginMoveDrag(e);
     }
 }
+
+

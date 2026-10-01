@@ -16,22 +16,24 @@
         <!-- 全局颜色与控件样式 -->
         <StyleInclude Source="avares://AgentFlow/Themes/Controls.axaml" />
 
-        <!-- 全局 Inter 字体 -->
+        <!-- 全局 Noto Sans CJK SC 字体 -->
         <Style Selector="Window">
-            <Setter Property="FontFamily" Value="Inter" />
+            <Setter Property="FontFamily" Value="avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC" />
         </Style>
         <Style Selector="UserControl">
-            <Setter Property="FontFamily" Value="Inter" />
+            <Setter Property="FontFamily" Value="avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC" />
         </Style>
         <Style Selector="TextBlock">
-            <Setter Property="FontFamily" Value="Inter" />
+            <Setter Property="FontFamily" Value="avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC" />
         </Style>
         <Style Selector="TextBox">
-            <Setter Property="FontFamily" Value="Inter" />
+            <Setter Property="FontFamily" Value="avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC" />
         </Style>
         <Style Selector="Button">
-            <Setter Property="FontFamily" Value="Inter" />
+            <Setter Property="FontFamily" Value="avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC" />
         </Style>
     </Application.Styles>
 </Application>
+
+
 

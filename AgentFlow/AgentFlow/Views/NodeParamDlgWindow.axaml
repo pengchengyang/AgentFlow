@@ -3,18 +3,20 @@
         xmlns:vm="clr-namespace:AgentFlow.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:s="clr-namespace:AgentFlow.Services"
         mc:Ignorable="d"
         x:Class="AgentFlow.Views.NodeParamDlgWindow"
         x:DataType="vm:NodeParameterDialogViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="{Binding Title} - 参数配置"
+        Title="{Binding DialogTitle}"
         Width="440" Height="520"
         MinWidth="360" MinHeight="300"
         WindowStartupLocation="CenterOwner"
         SizeToContent="Manual"
-        Background="#F9FAFB"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
         WindowDecorations="None">
-  <Border BorderBrush="#6B7280" BorderThickness="1">
+  <Border CornerRadius="8" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
   <Grid RowDefinitions="34,*">
     <!-- 自定义标题栏 -->
     <Border Grid.Row="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
@@ -44,17 +46,19 @@
       </Border.Styles>
       <Grid ColumnDefinitions="*,Auto">
         <Border Grid.Column="0" Background="Transparent" PointerPressed="TitleBar_OnPointerPressed">
-          <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
-                     Foreground="#6B7280" VerticalAlignment="Center" Margin="12,0"/>
-        </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
+            <Image Source="/Assets/avalonia-logo.ico" Width="16" Height="16" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="#6B7280" VerticalAlignment="Center"/>
+          </StackPanel>
+</Border>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <Button Classes="winbtn" Click="MinimizeButton_Click" ToolTip.Tip="Minimize">
+          <Button Classes="winbtn" Click="MinimizeButton_Click" ToolTip.Tip="{Binding [Minimize], Source={x:Static s:Loc.Instance}}">
             <Grid Width="20" Height="20">
               <Border Width="14" Height="2" CornerRadius="1" Background="#111827"
                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
           </Button>
-          <Button Classes="winbtn" Click="MaxRestoreButton_Click" ToolTip.Tip="Maximize">
+          <Button Classes="winbtn" Click="MaxRestoreButton_Click" ToolTip.Tip="{Binding [Maximize], Source={x:Static s:Loc.Instance}}">
             <Grid Width="22" Height="22">
               <Path x:Name="MaximizeIcon"
                     Data="M48 224l0 160c0 8.8 7.2 16 16 16l384 0c8.8 0 16-7.2 16-16l0-160-416 0zM0 128C0 92.7 28.7 64 64 64l384 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64L64 448c-35.3 0-64-28.7-64-64L0 128z"
@@ -64,7 +68,7 @@
                     Stretch="Uniform" Fill="#111827" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="False"/>
             </Grid>
           </Button>
-          <Button Classes="winbtn close" Click="CloseButton_Click" ToolTip.Tip="Close">
+          <Button Classes="winbtn close" Click="CloseButton_Click" ToolTip.Tip="{Binding [Close], Source={x:Static s:Loc.Instance}}">
             <Grid Width="20" Height="20">
               <Path Data="M64 112c-8.8 0-16 7.2-16 16l0 256c0 8.8 7.2 16 16 16l384 0c8.8 0 16-7.2 16-16l0-256c0-8.8-7.2-16-16-16L64 112zM0 128C0 92.7 28.7 64 64 64l384 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64L64 448c-35.3 0-64-28.7-64-64L0 128zm334.1 49.9c9.4 9.4 9.4 24.6 0 33.9l-44.1 44.1 44.1 44.1c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-44.1-44.1-44.1 44.1c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l44.1-44.1-44.1-44.1c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l44.1 44.1 44.1-44.1c9.4-9.4 24.6-9.4 33.9 0z"
                     Stretch="Uniform" Fill="#111827" Width="20" Height="20"
@@ -80,7 +84,7 @@
         <!-- 标题栏 -->
         <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="20,16">
           <StackPanel Spacing="6">
-            <TextBlock Text="参数配置" FontSize="17" FontWeight="SemiBold" Foreground="#111827"/>
+            <TextBlock Text="{Binding [ParamConfig], Source={x:Static s:Loc.Instance}}" FontSize="17" FontWeight="SemiBold" Foreground="#111827"/>
             <TextBlock Text="{Binding Title}" FontSize="13" Foreground="#6B7280"/>
           </StackPanel>
         </Border>
@@ -106,11 +110,11 @@
             </Style>
           </Border.Styles>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-            <Button Classes="toolbtn" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel">
+            <Button Classes="toolbtn" Command="{Binding CancelCommand}" ToolTip.Tip="{Binding [Cancel], Source={x:Static s:Loc.Instance}}">
               <Path Data="M256 48a208 208 0 1 1 0 416 208 208 0 1 1 0-416zm0 464a256 256 0 1 0 0-512 256 256 0 1 0 0 512zM167 167c-9.4 9.4-9.4 24.6 0 33.9l55 55-55 55c-9.4 9.4-9.4 24.6 0 33.9s24.6 9.4 33.9 0l55-55 55 55c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-55-55 55-55c9.4-9.4 9.4-24.6 0-33.9s-24.6-9.4-33.9 0l-55 55-55-55c-9.4-9.4-24.6-9.4-33.9 0z"
                     Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
             </Button>
-            <Button Classes="toolbtn" Command="{Binding ConfirmCommand}" ToolTip.Tip="Confirm">
+            <Button Classes="toolbtn" Command="{Binding ConfirmCommand}" ToolTip.Tip="{Binding [Confirm], Source={x:Static s:Loc.Instance}}">
               <Path Data="M256 512a256 256 0 1 1 0-512 256 256 0 1 1 0 512zm0-464a208 208 0 1 0 0 416 208 208 0 1 0 0-416zm70.7 121.9c7.8-10.7 22.8-13.1 33.5-5.3 10.7 7.8 13.1 22.8 5.3 33.5L243.4 366.1c-4.1 5.7-10.5 9.3-17.5 9.8-7 .5-13.9-2-18.8-6.9l-55.9-55.9c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l36 36 105.6-145.2z"
                     Stretch="Uniform" Fill="#111827" Width="20" Height="20"/>
             </Button>
@@ -120,7 +124,7 @@
         <!-- 参数列表（按 logic/parameters 分组，树形展示） -->
         <ScrollViewer Padding="20,16">
           <StackPanel Spacing="14">
-            <TextBlock Text="暂无参数" IsVisible="{Binding HasNoParameters}"
+            <TextBlock Text="{Binding [NoParameters], Source={x:Static s:Loc.Instance}}" IsVisible="{Binding HasNoParameters}"
                        Foreground="#9CA3AF" HorizontalAlignment="Center" Margin="0,40,0,0"/>
             <TreeView ItemsSource="{Binding Groups}">
               <TreeView.DataTemplates>
@@ -151,6 +155,9 @@
   </Grid>
   </Border>
 </Window>
+
+
+
 
 
 

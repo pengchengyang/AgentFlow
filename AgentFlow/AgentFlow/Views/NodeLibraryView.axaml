@@ -23,7 +23,7 @@
   </UserControl.Styles>
 
   <!-- 右侧节点库 -->
-  <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1,0,0,0">
+  <Border Background="White" BorderBrush="#C0C4CC" BorderThickness="1,0,0,0">
     <DockPanel Margin="12,14">
       <TextBlock DockPanel.Dock="Top"
                  Text="{Binding [Components], Source={x:Static s:Loc.Instance}}"
@@ -63,3 +63,4 @@
     </DockPanel>
   </Border>
 </UserControl>
+
