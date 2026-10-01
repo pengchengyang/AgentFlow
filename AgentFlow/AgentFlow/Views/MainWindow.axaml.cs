@@ -68,11 +68,11 @@ public partial class MainWindow : Window
 
         e.Cancel = true;
 
-        var dialog = new CloseConfirmDialogViewModel(
+        var dialog = new CloseConfirmDlgViewModel(
             "Unsaved Changes",
             "The current workflow has unsaved changes. What would you like to do?");
 
-        var win = new CloseConfirmDialogWindow { DataContext = dialog };
+        var win = new CloseConfirmDlgWindow { DataContext = dialog };
         int result = await win.ShowDialog<int>(this);
 
         switch (result)

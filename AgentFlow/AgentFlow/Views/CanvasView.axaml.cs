@@ -56,7 +56,11 @@ public sealed class GraphCanvas : Control
     private static readonly Color ColorIn = Color.Parse("#3B82F6");
     private static readonly Color ColorOut = Color.Parse("#8B5CF6");
     private static readonly Color ColorPinBorder = Color.Parse("#D1D5DB");
+    private static readonly Color ColorStar = Color.Parse("#111827");
 
+
+    private static readonly StreamGeometry StarGeometry = StreamGeometry.Parse(
+        "M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z");
 
     private readonly Dictionary<NodeViewModel, NodeLayout> _layouts = new();
 
@@ -222,7 +226,15 @@ public sealed class GraphCanvas : Control
 
         double x = b.X, y = b.Y;
 
-        DrawText(ctx, "◆", new Point(x + PadX, y + 14), node.Accent, 15, FontWeight.SemiBold);
+        // Star icon (star.svg) in its original dark color, drawn as geometry.
+        const double starW = 16;
+        var sb = StarGeometry.Bounds;
+        double starScale = starW / sb.Width;
+        using (ctx.PushTransform(Matrix.CreateScale(starScale, starScale) *
+                            Matrix.CreateTranslation(x + PadX - sb.X * starScale, y + 16 - sb.Y * starScale)))
+        {
+            ctx.DrawGeometry(new SolidColorBrush(ColorStar), null, StarGeometry);
+        }
         DrawText(ctx, node.Title, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
         double instW = TextWidth(node.InstanceId.ToString(), 12);
         DrawText(ctx, node.InstanceId.ToString(), new Point(x + NodeWidth - PadX - instW, y + 17), new SolidColorBrush(ColorMuted), 12);

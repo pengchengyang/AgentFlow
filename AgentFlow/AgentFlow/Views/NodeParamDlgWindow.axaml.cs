@@ -36,7 +36,7 @@ public partial class NodeParamDlgWindow : Window
 
     private void OnOpened(object? sender, System.EventArgs e)
     {
-        if (DataContext is NodeParameterDialogViewModel vm)
+        if (DataContext is NodeParamDlgViewModel vm)
         {
             vm.RequestClose += OnRequestClose;
             vm.RequestApplyConfirm += OnApplyConfirmRequested;
@@ -44,7 +44,7 @@ public partial class NodeParamDlgWindow : Window
     }
     private void OnRequestClose(object? sender, bool result)
     {
-        if (DataContext is NodeParameterDialogViewModel vm)
+        if (DataContext is NodeParamDlgViewModel vm)
             vm.RequestClose -= OnRequestClose;
         Close(result);
     }
@@ -52,7 +52,7 @@ public partial class NodeParamDlgWindow : Window
     /// <summary>Ask whether to apply unsaved zone edits before switching; presentation and lifecycle only.</summary>
     private async void OnApplyConfirmRequested(object? sender, System.EventArgs e)
     {
-        if (DataContext is not NodeParameterDialogViewModel vm) return;
+        if (DataContext is not NodeParamDlgViewModel vm) return;
         var confirm = new ConfirmDialogViewModel(
             Loc.Instance["ConfirmApplyTitle"],
             Loc.Instance["ConfirmApplyMessage"]);

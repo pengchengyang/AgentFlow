@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------
-// <copyright company="Rolling Wireless SARL" file="NodeParameterDialogViewModel.cs">
+// <copyright company="Rolling Wireless SARL" file="NodeParamDlgViewModel.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
 // </copyright>
@@ -28,7 +28,7 @@ namespace AgentFlow.ViewModels;
 /// </para>
 /// Only handles business / state; window presentation and lifecycle are handled by the View layer.
 /// </summary>
-public partial class NodeParameterDialogViewModel : ViewModelBase
+public partial class NodeParamDlgViewModel : ViewModelBase
 {
     /// <summary>Zone used when a parameter does not declare one.</summary>
     private const string DefaultZone = "General";
@@ -99,7 +99,7 @@ public partial class NodeParameterDialogViewModel : ViewModelBase
     private ParameterZoneNode? _pendingZone;
     private bool _isProgrammaticZoneChange;
 
-    public NodeParameterDialogViewModel(NodeViewModel node)
+    public NodeParamDlgViewModel(NodeViewModel node)
     {
         Node = node;
         var zones = new Dictionary<string, ParameterZoneNode>(StringComparer.Ordinal);

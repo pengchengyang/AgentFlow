@@ -363,13 +363,13 @@ public partial class MainViewModel : ViewModelBase
         LoginRequested?.Invoke(this, dialog);
     }
     /// <summary>Raised when a node parameter dialog should be shown (View layer listens to open a window).</summary>
-    public event EventHandler<NodeParameterDialogViewModel>? DialogRequested;
+    public event EventHandler<NodeParamDlgViewModel>? DialogRequested;
     /// <summary>Double-click a node: create the parameter dialog ViewModel and ask the View layer to show it.</summary>
     [RelayCommand]
     private void OpenNodeParameters(NodeViewModel? node)
     {
         if (node is null) return;
-        DialogRequested?.Invoke(this, new NodeParameterDialogViewModel(node));
+        DialogRequested?.Invoke(this, new NodeParamDlgViewModel(node));
     }
     /// <summary>Context-menu Send: execute the given node once and push data downstream.</summary>
     [RelayCommand]

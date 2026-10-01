@@ -77,8 +77,11 @@
             <Button Grid.Column="0" Classes="secondary" Command="{Binding ToggleLogPanelCommand}"
                     FontSize="13" Padding="12,4" Margin="12,0,0,0">
               <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <Path Data="M297.4 73.4C309.9 60.9 330.2 60.9 342.7 73.4L502.7 233.4C515.2 245.9 515.2 266.2 502.7 278.7C490.2 291.2 469.9 291.2 457.4 278.7L320 141.3L182.6 278.6C170.1 291.1 149.8 291.1 137.3 278.6C124.8 266.1 124.8 245.8 137.3 233.3L297.3 73.3z" Stretch="Uniform" Fill="#111827" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding IsLogPanelOpen}"/>
-                <Path Data="M247.1 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L179.2 256 41.9 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z" Stretch="Uniform" Fill="#111827" Width="12" Height="12" VerticalAlignment="Center" IsVisible="{Binding !IsLogPanelOpen}"/>
+                <!-- 日志面板折叠箭头：两个方向共用同一个 12×12 单元格，确保与右侧 “Logs” 文字垂直居中对齐 -->
+                <Grid Width="12" Height="12" VerticalAlignment="Center">
+                  <Path Data="M297.4 73.4C309.9 60.9 330.2 60.9 342.7 73.4L502.7 233.4C515.2 245.9 515.2 266.2 502.7 278.7C490.2 291.2 469.9 291.2 457.4 278.7L320 141.3L182.6 278.6C170.1 291.1 149.8 291.1 137.3 278.6C124.8 266.1 124.8 245.8 137.3 233.3L297.3 73.3z" Stretch="Uniform" Fill="#111827" IsVisible="{Binding IsLogPanelOpen}"/>
+                  <Path Data="M247.1 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L179.2 256 41.9 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z" Stretch="Uniform" Fill="#111827" IsVisible="{Binding !IsLogPanelOpen}"/>
+                </Grid>
                 <TextBlock Text="{Binding [Log], Source={x:Static s:Loc.Instance}}" FontSize="13" VerticalAlignment="Center"/>
               </StackPanel>
             </Button>

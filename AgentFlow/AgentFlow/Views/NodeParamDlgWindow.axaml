@@ -6,7 +6,7 @@
         xmlns:s="clr-namespace:AgentFlow.Services"
         mc:Ignorable="d"
         x:Class="AgentFlow.Views.NodeParamDlgWindow"
-        x:DataType="vm:NodeParameterDialogViewModel"
+        x:DataType="vm:NodeParamDlgViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="{Binding DialogTitle}"
         Width="800" Height="600"
@@ -199,13 +199,16 @@
                     <Setter Property="Background" Value="#F3F4F6"/>
                   </Style>
                   <Style Selector="Border.propRow.selected">
-                    <Setter Property="Background" Value="#3399FF"/>
+                    <Setter Property="Background" Value="#E5E7EB"/>
                   </Style>
                   <Style Selector="Border.propRow.selected TextBlock.propName">
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Foreground" Value="#111827"/>
                   </Style>
                   <Style Selector="Border.propRow.selected TextBlock.propValue">
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Foreground" Value="#111827"/>
+                  </Style>
+                  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+                    <Setter Property="BorderBrush" Value="Black"/>
                   </Style>
                 </ListBox.Styles>
 
@@ -291,12 +294,12 @@
             <Setter Property="Background" Value="#E5E7EB"/>
           </Style>
           <Style Selector="Button.dlgbtn.primary">
-            <Setter Property="Foreground" Value="#2563EB"/>
-            <Setter Property="BorderBrush" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="BorderBrush" Value="Black"/>
           </Style>
           <Style Selector="Button.dlgbtn.primary:pointerover">
             <Setter Property="Background" Value="#EFF6FF"/>
-            <Setter Property="BorderBrush" Value="#2563EB"/>
+            <Setter Property="BorderBrush" Value="Black"/>
           </Style>
         </Border.Styles>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">

@@ -32,7 +32,7 @@ public partial class MainView : UserControl
     }
 
     /// <summary>Open the node parameter dialog above the top-level window. Presentation and window lifecycle only; no business logic.</summary>
-    private async void OnDialogRequested(object? sender, NodeParameterDialogViewModel dialog)
+    private async void OnDialogRequested(object? sender, NodeParamDlgViewModel dialog)
     {
         var win = new NodeParamDlgWindow { DataContext = dialog };
         if (TopLevel.GetTopLevel(this) is Window owner)
