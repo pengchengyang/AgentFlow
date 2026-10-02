@@ -360,8 +360,11 @@ public sealed class EditorGraph
             if (_node.Outputs.TryGetValue(pinName, out var pin))
                 pin.SendSample(value);
         }
+
+        public T? GetService<T>() => default;
     }
 }
+
 
 
 

@@ -202,8 +202,11 @@ public sealed class WorkflowEngine
                 _nodeId, pinName, value, pin.Targets.Count);
             pin.SendSample(value);   // The output pin calls Receive on every connected input pin.
         }
+
+        public T? GetService<T>() => default;
     }
 }
+
 
 
 

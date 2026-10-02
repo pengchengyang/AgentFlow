@@ -22,5 +22,9 @@ public interface INodeContext
 
     /// <summary>Write a value to an output pin (pushed to all connected downstream input pins).</summary>
     void SetOutput(string pinName, Sample? value);
+
+    /// <summary>Resolve a host service (e.g. <see cref="ILLMClient"/>, <see cref="IAgentToolProvider"/>), or null when unavailable.</summary>
+    T? GetService<T>();
 }
+
 

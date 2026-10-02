@@ -21,6 +21,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.SocketServer", "plugin
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.SocketClient", "plugins\Node.SocketClient\Node.SocketClient.csproj", "{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.ReActAgent", "plugins\Node.ReActAgent\Node.ReActAgent.csproj", "{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}"
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -91,6 +92,14 @@ Global
 		{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9}.Release|Any CPU.Build.0 = Release|Any CPU
 		{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9}.Release|x64.ActiveCfg = Release|x64
 		{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9}.Release|x64.Build.0 = Release|x64
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Debug|x64.ActiveCfg = Debug|x64
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Debug|x64.Build.0 = Debug|x64
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Release|x64.ActiveCfg = Release|x64
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -98,5 +107,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{89A828FD-8D63-4FD8-8226-6694443469F2} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
 		{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
+		{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
 	EndGlobalSection
 EndGlobal
