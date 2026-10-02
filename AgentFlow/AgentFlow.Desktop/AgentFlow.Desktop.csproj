@@ -18,14 +18,28 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow\AgentFlow.csproj" />
+    <!-- Build plugin projects as part of this project so their DLLs are always fresh,
+         but do not add them to the app's normal assembly output (they live in plugins/). -->
+    <PluginProjects Include="..\plugins\**\*.csproj" />
+    <ProjectReference Include="@(PluginProjects)" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <!-- Dev build: copy plugin DLLs next to the desktop output so the app finds them. -->
   <Target Name="CopyPlugins" AfterTargets="Build">
     <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
+      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll"
+                  Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
   </Target>
+
+  <!-- Publish: plugins are pure managed DLLs (RID-independent), so just copy them into
+       the publish output's plugins/ folder. This runs for every RID (linux-x64 etc.). -->
+  <Target Name="PublishPlugins" AfterTargets="Publish">
+    <ItemGroup>
+      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll"
+                  Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(PublishDir)plugins" SkipUnchangedFiles="true" />
+  </Target>
 </Project>
-
-
-

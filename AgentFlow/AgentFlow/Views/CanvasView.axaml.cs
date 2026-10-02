@@ -556,16 +556,10 @@ public sealed class GraphCanvas : Control
         }
     }
 
-    /// <summary>Show the right-click context menu for the selected node at the given screen position (Send / Delete). Presentation only; actions are bound to ViewModel commands.</summary>
+    /// <summary>Show the right-click context menu for the selected node at the given screen position (Delete). Presentation only; actions are bound to ViewModel commands.</summary>
     private void ShowNodeContextMenu(NodeViewModel node)
     {
         var menu = new ContextMenu();
-
-        var send = new MenuItem { Header = "Send" };
-        send.Click += (_, _) =>
-        {
-            if (Vm is { } vm) vm.SendNodeCommand.Execute(node);
-        };
 
         var delete = new MenuItem { Header = "Delete" };
         delete.Click += (_, _) =>
@@ -573,7 +567,6 @@ public sealed class GraphCanvas : Control
             if (Vm is { } vm) vm.RemoveNodeCommand.Execute(node);
         };
 
-        menu.Items.Add(send);
         menu.Items.Add(delete);
         this.ContextMenu = menu;
         menu.Placement = PlacementMode.Pointer;
@@ -613,3 +606,5 @@ public sealed class GraphCanvas : Control
             InvalidateVisual();
     }
 }
+
+

@@ -237,7 +237,7 @@ public abstract class BaseNode
                     var obj = new JsonObject
                     {
                         ["name"] = p.Name,
-                        ["type"] = p.Type.AssemblyQualifiedName ?? p.Type.FullName ?? p.Type.Name,
+                        ["type"] = p.Type.FullName ?? p.Type.Name,
                         ["isEditable"] = p.IsEditable,
                         ["zone"] = p.Zone ?? string.Empty,
                         ["group"] = p.Group ?? string.Empty,
@@ -400,5 +400,6 @@ public abstract class BaseNode
     /// </summary>
     public virtual void ReceiveSample(BasePin pin, Sample? value) { }
 }
+
 
 

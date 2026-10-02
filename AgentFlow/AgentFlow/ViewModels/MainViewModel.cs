@@ -361,21 +361,6 @@ public partial class MainViewModel : ViewModelBase
         if (node is null) return;
         DialogRequested?.Invoke(this, new NodeParamDlgViewModel(node));
     }
-    /// <summary>Context-menu Send: execute the given node once and push data downstream.</summary>
-    [RelayCommand]
-    private async Task SendNode(NodeViewModel node)
-    {
-        if (node.Runtime is null) return;
-        try
-        {
-            await _graph.SendAsync(node.Runtime);
-            Logs.Add($"[Send] {node.Title} executed.");
-        }
-        catch (Exception ex)
-        {
-            Logs.Add($"[{L["ErrorPrefix"]}] {ex.Message}");
-        }
-    }
     [RelayCommand]
     private void ToggleLogPanel() => IsLogPanelOpen = !IsLogPanelOpen;
     [RelayCommand]
@@ -638,5 +623,6 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
+
 
 

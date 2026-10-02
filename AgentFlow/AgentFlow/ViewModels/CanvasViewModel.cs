@@ -90,7 +90,6 @@ public partial class CanvasViewModel : ViewModelBase
     public void DisconnectInputPin(PinViewModel input) => _main.DisconnectInputPin(input);
     public void RemoveConnection(ConnectionViewModel connection) => _main.RemoveConnection(connection);
     public void OpenNodeParameters(NodeViewModel node) => _main.OpenNodeParametersCommand.Execute(node);
-    public ICommand SendNodeCommand => _main.SendNodeCommand;
     public ICommand RemoveNodeCommand => _main.RemoveNodeCommand;
 
     // ---- Panning (middle mouse drag) ----
@@ -155,3 +154,4 @@ public partial class CanvasViewModel : ViewModelBase
         _dragNode = null;
     }
 }
+

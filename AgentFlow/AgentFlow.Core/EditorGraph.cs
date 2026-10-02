@@ -307,14 +307,6 @@ public sealed class EditorGraph
         GraphChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Execute an editor node once and push data downstream along the existing wires
-    /// (the context-menu "Send"). Uses the node's wired runtime pins:
-    /// <see cref="INodeContext.GetInput{T}"/> reads the latest value of an input pin,
-    /// and <see cref="INodeContext.SetOutput"/> calls the output pin's Send to push
-    /// data to downstream input pins.
-    /// </summary>
-
     private static void ReleaseNodePinIds(EditorNode node)
     {
         foreach (var pin in node.Inputs.Values)
@@ -329,16 +321,6 @@ public sealed class EditorGraph
             foreach (var pin in node.RuntimeNode.OutputPins)
                 pin.ReleaseId();
         }
-    }
-
-    public async Task SendAsync(EditorNode node, CancellationToken ct = default)
-    {
-        if (node is null) throw new ArgumentNullException(nameof(node));
-        var ctx = new EditorNodeContext(node, _logger);
-        foreach (var pin in node.Inputs.Values)
-            pin.Context = ctx;
-        await node.RuntimeNode.Run(ctx, ct);
-        _logger.LogInformation("EditorGraph: sent node {Id} ({Name})", node.Id, node.Name);
     }
 
     /// <summary>
@@ -358,7 +340,7 @@ public sealed class EditorGraph
         return ctx;
     }
 
-    /// <summary>The node context used by editor-time Send: bound to this node's wired runtime pins.</summary>
+    /// <summary>The node context bound to an editor node's wired runtime pins (used by <see cref="CreateContext"/>).</summary>
     private sealed class EditorNodeContext : INodeContext
     {
         private readonly EditorNode _node;
@@ -380,5 +362,7 @@ public sealed class EditorGraph
         }
     }
 }
+
+
 
 
