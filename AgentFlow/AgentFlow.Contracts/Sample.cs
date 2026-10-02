@@ -38,9 +38,11 @@ public abstract class Sample
     /// <summary>Return the value stored for the requested <paramref name="type"/>, or null if not present.</summary>
     public abstract object? GetValue(DataType type);
 
-    /// <summary>Store <paramref name="value"/> for the given <paramref name="key"/> and assign the key.</summary>
-    public abstract void SetValue(string key, object? value);
+    /// <summary>Store <paramref name="value"/> and assign the optional <paramref name="key"/> identifier.</summary>
+    public abstract void SetValue(object? value, string key = "");
 }
+
+
 
 
 

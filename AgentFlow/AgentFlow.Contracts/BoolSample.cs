@@ -24,13 +24,14 @@ public sealed class BoolSample : Sample
             _ => null,
         };
 
-    public override void SetValue(string key, object? value)
+    public override void SetValue(object? value, string key = "")
     {
         Key = key;
         if (value is bool b)
             BoolValue = b;
     }
 }
+
 
 
 

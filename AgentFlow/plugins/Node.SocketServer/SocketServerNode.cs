@@ -161,9 +161,9 @@ public sealed class SocketServerNode : BaseNode
                 var msg = Encoding.UTF8.GetString(buffer, 0, read);
                 if (msg != null)
                 {
-                    var rp = new StringSample(); rp.SetValue("Received", msg); ReceivedPin.SendSample(rp);
+                    var rp = new StringSample(); rp.SetValue(msg, "Received"); ReceivedPin.SendSample(rp);
                 }
-                var ro = new StringSample(); ro.SetValue("Received", msg); context.SetOutput("Received", ro);
+                var ro = new StringSample(); ro.SetValue(msg, "Received"); context.SetOutput("Received", ro);
                 context.Logger.LogInformation("SocketServer received from {Id}: {Msg}", id, msg);
 
                 var reply = GetReply();
@@ -242,6 +242,7 @@ public sealed class SocketServerNode : BaseNode
         Running = false;
     }
 }
+
 
 
 

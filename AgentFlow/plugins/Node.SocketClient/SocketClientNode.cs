@@ -85,7 +85,9 @@ public sealed class SocketClientNode : BaseNode
         {
             _sendValue = s;
         }
-        var sendSample = new StringSample(); sendSample.SetValue("Received", _sendValue); _outPin.SendSample(sendSample);
+        var sendSample = StringSample.CreateSample();
+        sendSample.SetValue(_sendValue, "Received"); 
+        _outPin.SendSample(sendSample);
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
@@ -158,7 +160,7 @@ public sealed class SocketClientNode : BaseNode
                     if (line is null)
                         break; // server closed the connection
 
-                    var recvSample = new StringSample(); recvSample.SetValue("Received", line); context.SetOutput("Received", recvSample);
+                    var recvSample = new StringSample(); recvSample.SetValue(line, "Received"); context.SetOutput("Received", recvSample);
                     context.Logger.LogInformation("SocketClient received: {Line}", line);
                     readTask = reader.ReadLineAsync(ct).AsTask(); // re-arm the pending read
                 }
@@ -196,6 +198,7 @@ public sealed class SocketClientNode : BaseNode
         Running = false;
     }
 }
+
 
 
 
