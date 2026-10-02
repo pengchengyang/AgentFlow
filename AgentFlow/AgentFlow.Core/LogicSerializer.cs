@@ -50,7 +50,7 @@ public static class LogicSerializer
             {
                 ["name"] = pin.Name,
                 ["direction"] = pin.Direction.ToString(),
-                ["type"] = pin.DataType.AssemblyQualifiedName ?? pin.DataType.FullName ?? pin.DataType.Name,
+                ["type"] = pin.DataType.ToString(),
                 ["id"] = pin.Id
             };
             arr.Add(obj);
@@ -58,3 +58,4 @@ public static class LogicSerializer
         return arr;
     }
 }
+

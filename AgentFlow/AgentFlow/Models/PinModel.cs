@@ -20,7 +20,7 @@ public sealed class PinModel
     public BasePin basePin { get; }
 
     public string Name => basePin.Name;
-    public Type DataType => basePin.DataType;
+    public DataType DataType => basePin.DataType;
     public PinDirection Direction => basePin.Direction;
     public bool Required => basePin.Required;
 
@@ -32,3 +32,5 @@ public sealed class PinModel
         basePin = definition;
     }
 }
+
+

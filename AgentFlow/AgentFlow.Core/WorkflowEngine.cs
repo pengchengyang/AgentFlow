@@ -25,15 +25,13 @@ public sealed class WorkflowEngine
     private readonly NodeRegistry _registry;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
-    private readonly IGuiBridge _guiBridge;
     private WorkflowRun? _prepared;
     private WorkflowGraph? _preparedGraph;
 
-    public WorkflowEngine(NodeRegistry registry, ILoggerFactory loggerFactory, IGuiBridge guiBridge)
+    public WorkflowEngine(NodeRegistry registry, ILoggerFactory loggerFactory)
     {
         _registry = registry;
         _loggerFactory = loggerFactory;
-        _guiBridge = guiBridge;
         _logger = loggerFactory.CreateLogger(nameof(WorkflowEngine));
     }
 
@@ -102,7 +100,7 @@ public sealed class WorkflowEngine
             instances[spec.Id] = node;
             contexts[spec.Id] = new NodeContext(
                 spec.Id, node,
-                _loggerFactory.CreateLogger($"Node:{spec.Id}"), _guiBridge);
+                _loggerFactory.CreateLogger($"Node:{spec.Id}"));
             _logger.LogInformation("Instantiated node {Id} ({Name})", spec.Id, spec.Name);
         }
 
@@ -171,13 +169,11 @@ public sealed class WorkflowEngine
         private readonly Dictionary<string, RuntimeOutputPin> _outputs = new();
 
         public ILogger Logger { get; }
-        public IGuiBridge Gui { get; }
 
-        public NodeContext(string nodeId, BaseNode node, ILogger logger, IGuiBridge gui)
+        public NodeContext(string nodeId, BaseNode node, ILogger logger)
         {
             _nodeId = nodeId;
             Logger = logger;
-            Gui = gui;
 
             foreach (var pin in node.InputPins)
                 _inputs[pin.Name] = new RuntimeInputPin(pin, node, this);
@@ -199,15 +195,17 @@ public sealed class WorkflowEngine
         public T? GetInput<T>(string pinName) =>
             _inputs.TryGetValue(pinName, out var pin) && pin.Value is T t ? t : default;
 
-        public void SetOutput(string pinName, object? value)
+        public void SetOutput(string pinName, Sample? value)
         {
             var pin = GetOutputPin(pinName);
             Logger.LogDebug("Pin {Node}.{Pin} sent {Value} ({Count} downstream)",
                 _nodeId, pinName, value, pin.Targets.Count);
-            pin.Send(value);   // The output pin calls Receive on every connected input pin.
+            pin.SendSample(value);   // The output pin calls Receive on every connected input pin.
         }
     }
 }
+
+
 
 
 

@@ -21,7 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\AgentFlow.Broadcast\AgentFlow.Broadcast.csproj" />
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
   </ItemGroup>
   <Target Name="CopyPlugins" AfterTargets="Build">

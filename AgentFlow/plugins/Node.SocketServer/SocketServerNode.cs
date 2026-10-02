@@ -39,19 +39,19 @@ public sealed class SocketServerNode : BaseNode
     public override string Category => "Network";
 
     /// <summary>Send1 input pin, kept as a property so its parameter value can be saved.</summary>
-    public BasePin Send1Pin { get; } = new("Send1", typeof(string), PinDirection.Input, required: false);
+    public BasePin Send1Pin { get; } = new("Send1", DataType.STRING, PinDirection.Input, required: false);
 
     /// <summary>Send2 input pin, kept as a property so its parameter value can be saved.</summary>
-    public BasePin Send2Pin { get; } = new("Send2", typeof(string), PinDirection.Input, required: false);
+    public BasePin Send2Pin { get; } = new("Send2", DataType.STRING, PinDirection.Input, required: false);
 
     /// <summary>Send3 input pin, kept as a property so its parameter value can be saved.</summary>
-    public BasePin Send3Pin { get; } = new("Send3", typeof(string), PinDirection.Input, required: false);
+    public BasePin Send3Pin { get; } = new("Send3", DataType.STRING, PinDirection.Input, required: false);
 
     /// <summary>Send4 input pin, kept as a property so its parameter value can be saved.</summary>
-    public BasePin Send4Pin { get; } = new("Send4", typeof(string), PinDirection.Input, required: false);
+    public BasePin Send4Pin { get; } = new("Send4", DataType.STRING, PinDirection.Input, required: false);
 
     /// <summary>Received output pin, kept as a property so its parameter value can be saved.</summary>
-    public BasePin ReceivedPin { get; } = new("Received", typeof(string), PinDirection.Output);
+    public BasePin ReceivedPin { get; } = new("Received", DataType.STRING, PinDirection.Output);
 
     public SocketServerNode()
     {
@@ -87,9 +87,9 @@ public sealed class SocketServerNode : BaseNode
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
 
-    public override void Receive(BasePin pin, object? value)
+    public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (value is not string s) return;
+        if (value is not StringSample ss || ss.StringValue is not { } s) return;
         lock (_sendLock)
         {
             if (pin.Id == Send1Pin.Id) _send1 = s;
@@ -161,9 +161,9 @@ public sealed class SocketServerNode : BaseNode
                 var msg = Encoding.UTF8.GetString(buffer, 0, read);
                 if (msg != null)
                 {
-                    ReceivedPin.Send(msg);
+                    var rp = new StringSample(); rp.SetValue("Received", msg); ReceivedPin.SendSample(rp);
                 }
-                context.SetOutput("Received", msg);
+                var ro = new StringSample(); ro.SetValue("Received", msg); context.SetOutput("Received", ro);
                 context.Logger.LogInformation("SocketServer received from {Id}: {Msg}", id, msg);
 
                 var reply = GetReply();
@@ -242,3 +242,6 @@ public sealed class SocketServerNode : BaseNode
         Running = false;
     }
 }
+
+
+

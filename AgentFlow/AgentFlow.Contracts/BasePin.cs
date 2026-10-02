@@ -18,16 +18,12 @@ public enum PinDirection
 /// Pin definition: the contract for a node's input / output port.
 /// <para>
 /// Two usage modes:
-/// 1) Pure metadata (default): <c>new BasePin("In", typeof(double), PinDirection.Input)</c>,
+/// 1) Pure metadata (default): <c>new BasePin("In", DataType.STRING, PinDirection.Input)</c>,
 ///    in which case Send / Receive simply pass through.
-/// 2) Custom behaviour: subclass this and override <see cref="OnReceive" /> / <see cref="OnSend" />,
-///    or use the <see cref="Input{T}(string, Action{object?}?, bool)" /> /
-///    <see cref="Output{T}(string, Action{object?}?, bool)" /> factories to pass lambdas so a
-///    concrete node can add validation, sanitisation, serialisation, logging and other
-///    business logic at the pin level.
+/// 2) Custom behaviour: subclass this and override <see cref="OnReceive" /> / <see cref="OnSend" />.
 /// </para>
-/// Data flow between nodes: an upstream OUTPUT pin calls <see cref="Send"/> which forwards
-/// to the connected INPUT pin's <see cref="Receive"/>. The INPUT pin then runs
+/// Data flow between nodes: an upstream OUTPUT pin calls <see cref="SendSample"/> which forwards
+/// to the connected INPUT pin's <see cref="ReceiveSample"/>. The INPUT pin then runs
 /// <see cref="OnReceive"/> and hands the value to its owning node.
 /// </summary>
 public class BasePin
@@ -36,7 +32,7 @@ public class BasePin
     public string Name { get; }
 
     /// <summary>Data type (used for connection validation).</summary>
-    public Type DataType { get; }
+    public DataType DataType { get; }
 
     /// <summary>Direction: input or output.</summary>
     public PinDirection Direction { get; }
@@ -63,7 +59,7 @@ public class BasePin
 
     /// <summary>
     /// The execution context currently bound to this pin. Used when an input pin hands the
-    /// received value to its owning node via <see cref="BaseNode.Receive"/>.
+    /// received value to its owning node via <see cref="BaseNode.ReceiveSample"/>.
     /// </summary>
     public INodeContext? Context { get; set; }
 
@@ -74,12 +70,12 @@ public class BasePin
     /// </summary>
     public int Id { get; internal set; }
 
-    public BasePin(string name, Type dataType, PinDirection direction, bool required = true)
+    public BasePin(string name, DataType dataType, PinDirection direction, bool required = true)
         : this(name, dataType, direction, required, id: null)
     {
     }
 
-    internal BasePin(string name, Type dataType, PinDirection direction, bool required, int? id)
+    internal BasePin(string name, DataType dataType, PinDirection direction, bool required, int? id)
     {
         Name = name;
         DataType = dataType;
@@ -110,39 +106,39 @@ public class BasePin
     /// event-driven wake-up, etc.
     /// </summary>
     /// <param name="value">The value pushed from upstream (may be null at runtime).</param>
-    public virtual void OnReceive(object? value) { }
+    public virtual void OnReceive(Sample? value) { }
 
     /// <summary>
     /// Called on an OUTPUT pin before data is sent to downstream INPUT pins.
     /// Default no-op; subclasses may override for serialisation, masking, sampling, logging, etc.
     /// </summary>
     /// <param name="value">The value about to be sent downstream.</param>
-    public virtual void OnSend(object? value) { }
+    public virtual void OnSend(Sample? value) { }
 
     /// <summary>
     /// Send data from an OUTPUT pin to its connected INPUT pin.
     /// Default implementation runs <see cref="OnSend"/> and forwards the value to
-    /// <see cref="ConnectedPin"/>.<see cref="Receive(object?)"/>.
+    /// <see cref="ConnectedPin"/>.<see cref="ReceiveSample(Sample?)"/>.
     /// </summary>
-    public virtual void Send(object? value)
+    public virtual void SendSample(Sample? value)
     {
         if (Direction != PinDirection.Output)
             throw new InvalidOperationException($"Pin '{Name}' is not an output pin and cannot Send.");
 
-        if (value is not null && !DataType.IsInstanceOfType(value))
+        if (value is not null && value.Type != DataType)
             throw new InvalidOperationException(
-                $"Output pin {Name} is {DataType.Name}, cannot send {value.GetType().Name}");
+                $"Output pin {Name} is {DataType}, cannot send {value.Type}");
 
         OnSend(value);
-        ConnectedPin?.Receive(value);
+        ConnectedPin?.ReceiveSample(value);
     }
 
     /// <summary>
     /// Receive data on an INPUT pin.
     /// Default implementation runs <see cref="OnReceive"/> and, when this is an input pin,
-    /// hands the value to its owning node via <see cref="BaseNode.Receive"/>.
+    /// hands the value to its owning node via <see cref="BaseNode.ReceiveSample"/>.
     /// </summary>
-    public virtual void Receive(object? value)
+    public virtual void ReceiveSample(Sample? value)
     {
         if (Direction != PinDirection.Input)
             return;
@@ -152,34 +148,8 @@ public class BasePin
         if (Owner is null)
             return;
 
-        Owner.Receive(this, value);
-    }
-
-    // ---- Convenience factories: inject pin behaviour via lambdas without subclassing ----
-
-    /// <summary>Declare an input pin, optionally passing a callback invoked when data arrives.</summary>
-    public static BasePin Input<T>(string name, Action<object?>? onReceive = null, bool required = true)
-        => new DelegatePin(name, typeof(T), PinDirection.Input, required, onReceive, null);
-
-    /// <summary>Declare an output pin, optionally passing a callback invoked before data is sent.</summary>
-    public static BasePin Output<T>(string name, Action<object?>? onSend = null, bool required = true)
-        => new DelegatePin(name, typeof(T), PinDirection.Output, required, null, onSend);
-
-    /// <summary>Internal implementation: wraps lambdas into a BasePin.</summary>
-    private sealed class DelegatePin : BasePin
-    {
-        private readonly Action<object?>? _onReceive;
-        private readonly Action<object?>? _onSend;
-
-        public DelegatePin(string name, Type dataType, PinDirection direction, bool required,
-                          Action<object?>? onReceive, Action<object?>? onSend)
-            : base(name, dataType, direction, required)
-        {
-            _onReceive = onReceive;
-            _onSend = onSend;
-        }
-
-        public override void OnReceive(object? value) => _onReceive?.Invoke(value);
-        public override void OnSend(object? value) => _onSend?.Invoke(value);
+        Owner.ReceiveSample(this, value);
     }
 }
+
+

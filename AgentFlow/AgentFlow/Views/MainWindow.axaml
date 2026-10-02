@@ -44,6 +44,7 @@
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
                 <Image Source="/Assets/avalonia-logo.ico" Width="16" Height="16" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding [AppTitle], Source={x:Static s:Loc.Instance}}" FontSize="13" FontWeight="SemiBold" Foreground="#111827" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Version}" FontSize="13" FontWeight="SemiBold" Foreground="#111827" VerticalAlignment="Center"/>
               </StackPanel>
         </Border>
         <StackPanel Grid.Column="1" Orientation="Horizontal">

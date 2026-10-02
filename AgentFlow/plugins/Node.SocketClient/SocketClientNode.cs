@@ -35,10 +35,10 @@ public sealed class SocketClientNode : BaseNode
     public override string Category => "Network";
 
     /// <summary>Send input pin, kept as a property so its parameter value can be saved.</summary>
-    public BasePin _inPin { get; } = new("Send", typeof(string), PinDirection.Input, required: false);
+    public BasePin _inPin { get; } = new("Send", DataType.STRING, PinDirection.Input, required: false);
 
     /// <summary>Received output pin, kept as a property so its parameter value can be saved.</summary>
-    public BasePin _outPin { get; } = new("Received", typeof(string), PinDirection.Output);
+    public BasePin _outPin { get; } = new("Received", DataType.STRING, PinDirection.Output);
 
     public SocketClientNode()
     {
@@ -79,13 +79,13 @@ public sealed class SocketClientNode : BaseNode
     /// Called when the Send input pin receives a value from an upstream node: enqueue it so the
     /// communication loop writes it to the server (the C# analogue of <c>sendData</c>).
     /// </summary>
-    public override void Receive(BasePin pin, object? value)
+    public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (pin.Id == _inPin.Id && value is string s)
+        if (pin.Id == _inPin.Id && value is StringSample ss && ss.StringValue is { } s)
         {
             _sendValue = s;
         }
-        _outPin.Send(_sendValue);
+        var sendSample = new StringSample(); sendSample.SetValue("Received", _sendValue); _outPin.SendSample(sendSample);
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
@@ -158,7 +158,7 @@ public sealed class SocketClientNode : BaseNode
                     if (line is null)
                         break; // server closed the connection
 
-                    context.SetOutput("Received", line);
+                    var recvSample = new StringSample(); recvSample.SetValue("Received", line); context.SetOutput("Received", recvSample);
                     context.Logger.LogInformation("SocketClient received: {Line}", line);
                     readTask = reader.ReadLineAsync(ct).AsTask(); // re-arm the pending read
                 }
@@ -196,3 +196,6 @@ public sealed class SocketClientNode : BaseNode
         Running = false;
     }
 }
+
+
+

@@ -28,10 +28,10 @@ public abstract class RuntimePin : BasePin
     }
 
     /// <inheritdoc/>
-    public override void OnReceive(object? value) => _definition.OnReceive(value);
+    public override void OnReceive(Sample? value) => _definition.OnReceive(value);
 
     /// <inheritdoc/>
-    public override void OnSend(object? value) => _definition.OnSend(value);
+    public override void OnSend(Sample? value) => _definition.OnSend(value);
 }
 
 /// <summary>
@@ -42,10 +42,10 @@ public abstract class RuntimePin : BasePin
 public sealed class RuntimeInputPin : RuntimePin
 {
     /// <summary>Latest value received via <see cref="Receive"/>.</summary>
-    public object? Value { get; private set; }
+    public Sample? Value { get; private set; }
 
     /// <summary>Optional data-arrival callback (usable for event-driven nodes).</summary>
-    public event Action<object?>? ValueReceived;
+    public event Action<Sample?>? ValueReceived;
 
     public RuntimeInputPin(BasePin definition, BaseNode? owner = null, INodeContext? context = null)
         : base(definition, owner)
@@ -58,11 +58,11 @@ public sealed class RuntimeInputPin : RuntimePin
     /// Stores the latest value, notifies listeners, then lets <see cref="BasePin.Receive"/>
     /// run <see cref="OnReceive"/> and hand the value to the owning node.
     /// </summary>
-    public override void Receive(object? value)
+    public override void ReceiveSample(Sample? value)
     {
         Value = value;
         ValueReceived?.Invoke(value);
-        base.Receive(value);
+        base.ReceiveSample(value);
     }
 }
 
@@ -86,9 +86,9 @@ public sealed class RuntimeOutputPin : RuntimePin
     /// <summary>Establish a connection (called by the engine / editor graph when wiring).</summary>
     public void Connect(RuntimeInputPin input)
     {
-        if (!input.DataType.IsAssignableFrom(DataType))
+        if (input.DataType != DataType)
             throw new InvalidOperationException(
-                $"Pin type mismatch: {DataType.Name} -> {input.DataType.Name} ({Name} -> {input.Name})");
+                $"Pin type mismatch: {DataType} -> {input.DataType} ({Name} -> {input.Name})");
         // One-to-one rule: an output pin connects to exactly one input pin.
         // If it is already connected, simply don't connect (no exception).
         if (_targets.Contains(input) || _targets.Count > 0)
@@ -113,15 +113,17 @@ public sealed class RuntimeOutputPin : RuntimePin
     /// Send data: runs the pin-level OnSend hook, then calls Receive on the single connected
     /// input pin. Connections are one-to-one, so at most one target exists.
     /// </summary>
-    public override void Send(object? value)
+    public override void SendSample(Sample? value)
     {
-        if (value is not null && !DataType.IsInstanceOfType(value))
+        if (value is not null && value.Type != DataType)
             throw new InvalidOperationException(
-                $"Output pin {Name} is {DataType.Name}, cannot send {value.GetType().Name}");
+                $"Output pin {Name} is {DataType}, cannot send {value.Type}");
 
         OnSend(value);
 
         foreach (var target in _targets)
-            target.Receive(value);
+            target.ReceiveSample(value);
     }
 }
+
+

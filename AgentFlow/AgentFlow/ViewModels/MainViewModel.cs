@@ -7,7 +7,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using AgentFlow.Models;
-using AgentFlow.Broadcast;
 using AgentFlow.Core;
 using BaseNode = AgentFlow.Contracts.BaseNode;
 using INodeContext = AgentFlow.Contracts.INodeContext;
@@ -29,7 +28,6 @@ public partial class MainViewModel : ViewModelBase
     private readonly EditorGraph _graph;
     private readonly NodeInstanceManager _nodeManager;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly InProcessGuiBridge _guiBridge = new();
     private CancellationTokenSource? _runCts;
     private int _nodeSpawnIndex;
     private bool _isLoading;
@@ -91,7 +89,7 @@ public partial class MainViewModel : ViewModelBase
         });
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
         _nodeManager = new NodeInstanceManager(_pluginLoader);
-        _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader, _guiBridge);
+        _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader);
         _store = DefaultWorkflowStore ?? new LocalWorkflowStore();
         _graph.GraphChanged += RefreshPinConnections;
         LoadPlugins();
@@ -100,18 +98,10 @@ public partial class MainViewModel : ViewModelBase
         Connections.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); };
         // Restore the previous graph on startup.
         AutoLoad();
-        // Show messages that nodes publish to the external GUI through the reusable broadcast DLL.
-        BroadcastHub.Instance.Register(this);
         // Dedicated view-models (composed per view).
         NodeLibrary = new NodeLibraryViewModel(this);
         LogPanel = new LogPanelViewModel(this);
         Canvas = new CanvasViewModel(this);
-    }
-    [BroadcastHandler("result")]
-    private void OnGuiResult(BroadcastMessage msg)
-    {
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            Logs.Add($"[GuiBridge] topic={msg.Topic} payload={msg.Payload}"));
     }
     // ---------- Language / theme switching ----------
     [RelayCommand]
@@ -130,7 +120,7 @@ public partial class MainViewModel : ViewModelBase
         foreach (var d in _registry.Nodes.OrderBy(n => n.Category).ThenBy(n => n.Name))
         {
             var pins = string.Join(", ", d.Pins.Select(p =>
-                $"{(p.Direction == PinDirection.Input ? "in" : "out")}:{p.Name}:{p.DataType.Name}"));
+                $"{(p.Direction == PinDirection.Input ? "in" : "out")}:{p.Name}:{p.DataType}"));
             _allPaletteItems.Add(new PaletteItem(d.Name, d.DisplayName, d.Category, pins, CategoryColors.Accent(d.Category)));
         }
         OnSearchTextChanged(SearchText);
@@ -288,7 +278,7 @@ public partial class MainViewModel : ViewModelBase
             return L["ErrMustOutToIn"];
         if (ReferenceEquals(source.Node, target.Node))
             return L["ErrSelfConnect"];
-        if (!target.DataType.IsAssignableFrom(source.DataType))
+        if (target.DataType != source.DataType)
             return $"{L["ErrTypeMismatch"]}: {source.TypeName} -> {target.TypeName}";
         // One-to-one rule: an output pin connects to exactly one input pin.
         if (Connections.Any(c => ReferenceEquals(c.Source, source)))
@@ -648,3 +638,5 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
+
+

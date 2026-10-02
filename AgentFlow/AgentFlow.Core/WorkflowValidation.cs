@@ -66,8 +66,8 @@ public static class WorkflowValidation
                 continue;
             }
 
-            if (!toPin.DataType.IsAssignableFrom(fromPin.DataType))
-                errors.Add($"Type mismatch: {conn.FromNode}.{conn.FromPin} ({fromPin.DataType.Name}) -> {conn.ToNode}.{conn.ToPin} ({toPin.DataType.Name}).");
+            if (toPin.DataType != fromPin.DataType)
+                errors.Add($"Type mismatch: {conn.FromNode}.{conn.FromPin} ({fromPin.DataType}) -> {conn.ToNode}.{conn.ToPin} ({toPin.DataType}).");
 
             var targetKey = $"{conn.ToNode}.{conn.ToPin}";
             if (!connectedTargets.Add(targetKey))
@@ -135,5 +135,7 @@ public static class WorkflowValidation
         return order;
     }
 }
+
+
 
 

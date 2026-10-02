@@ -110,7 +110,6 @@ public sealed class EditorGraph
     private readonly NodeRegistry _registry;
     private readonly PluginLoader _pluginLoader;
     private readonly ILogger _logger;
-    private readonly IGuiBridge _gui;
 
     public List<EditorNode> Nodes { get; } = new();
     public List<EditorConnection> Connections { get; } = new();
@@ -118,12 +117,11 @@ public sealed class EditorGraph
     /// <summary>Raised on connect / disconnect / node add-remove / property change so the GUI can refresh visuals such as IsConnected.</summary>
     public event Action? GraphChanged;
 
-    public EditorGraph(NodeRegistry registry, ILoggerFactory loggerFactory, PluginLoader pluginLoader, IGuiBridge gui)
+    public EditorGraph(NodeRegistry registry, ILoggerFactory loggerFactory, PluginLoader pluginLoader)
     {
         _registry = registry;
         _pluginLoader = pluginLoader;
         _logger = loggerFactory.CreateLogger(nameof(EditorGraph));
-        _gui = gui;
     }
 
     /// <summary>Create an editor node instance from a node type. <paramref name="id"/> is preserved so IDs stay stable on load.</summary>
@@ -336,7 +334,7 @@ public sealed class EditorGraph
     public async Task SendAsync(EditorNode node, CancellationToken ct = default)
     {
         if (node is null) throw new ArgumentNullException(nameof(node));
-        var ctx = new EditorNodeContext(node, _logger, _gui);
+        var ctx = new EditorNodeContext(node, _logger);
         foreach (var pin in node.Inputs.Values)
             pin.Context = ctx;
         await node.RuntimeNode.Run(ctx, ct);
@@ -352,7 +350,7 @@ public sealed class EditorGraph
     {
         var node = Nodes.FirstOrDefault(n => ReferenceEquals(n.RuntimeNode, runtimeNode))
             ?? throw new InvalidOperationException($"No editor node for instance #{runtimeNode.InstanceId}.");
-        var ctx = new EditorNodeContext(node, _logger, _gui);
+        var ctx = new EditorNodeContext(node, _logger);
         foreach (var pin in node.Inputs.Values)
             pin.Context = ctx;
         foreach (var pin in node.Outputs.Values)
@@ -365,22 +363,22 @@ public sealed class EditorGraph
     {
         private readonly EditorNode _node;
         public ILogger Logger { get; }
-        public IGuiBridge Gui { get; }
 
-        public EditorNodeContext(EditorNode node, ILogger logger, IGuiBridge gui)
+        public EditorNodeContext(EditorNode node, ILogger logger)
         {
             _node = node;
             Logger = logger;
-            Gui = gui;
         }
 
         public T? GetInput<T>(string pinName) =>
             _node.Inputs.TryGetValue(pinName, out var pin) && pin.Value is T t ? t : default;
 
-        public void SetOutput(string pinName, object? value)
+        public void SetOutput(string pinName, Sample? value)
         {
             if (_node.Outputs.TryGetValue(pinName, out var pin))
-                pin.Send(value);
+                pin.SendSample(value);
         }
     }
 }
+
+

@@ -32,12 +32,7 @@ logger.LogInformation("Registered {Count} node types", registry.Nodes.Count);
 logger.LogInformation("Loading workflow: {Path}", workflowPath);
 var graph = EditorJsonLoader.Load(workflowPath, registry);
 
-var guiBridge = new InProcessGuiBridge();
-// CLI demo: print messages that nodes publish to the external GUI.
-guiBridge.Subscribe("result", msg =>
-    Console.WriteLine($">>> [GuiBridge] topic={msg.Topic}, payload={msg.Payload}"));
-
-var engine = new WorkflowEngine(registry, loggerFactory, guiBridge);
+var engine = new WorkflowEngine(registry, loggerFactory);
 
 // Unified persistent model: start = initialize + run (no auto-stop). The workflow keeps
 // running until the user presses Ctrl+C, which triggers Stop to tear down long-running nodes.

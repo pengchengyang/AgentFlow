@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Models;
+using AgentFlow.Contracts;
 using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -28,8 +29,8 @@ public partial class PinViewModel : ViewModelBase
     public PinModel Pin { get; }
 
     public string Name => Pin.Name;
-    public Type DataType => Pin.DataType;
-    public string TypeName => Pin.DataType.Name;
+    public DataType DataType => Pin.DataType;
+    public string TypeName => Pin.DataType.ToString();
     public bool Required => Pin.Required;
     public bool IsInput => Pin.IsInput;
     public bool IsOutput => Pin.IsOutput;
@@ -48,3 +49,5 @@ public partial class PinViewModel : ViewModelBase
         Pin = pin;
     }
 }
+
+

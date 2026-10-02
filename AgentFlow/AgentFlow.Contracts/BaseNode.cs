@@ -398,5 +398,7 @@ public abstract class BaseNode
     /// The default implementation is a no-op for nodes that only read inputs
     /// inside <see cref="Run"/>.
     /// </summary>
-    public virtual void Receive(BasePin pin, object? value) { }
+    public virtual void ReceiveSample(BasePin pin, Sample? value) { }
 }
+
+

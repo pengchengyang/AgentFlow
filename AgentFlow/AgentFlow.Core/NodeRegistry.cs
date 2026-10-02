@@ -19,7 +19,7 @@ public enum PinDirection
 /// <summary>UI-facing pin descriptor, mirroring the contract pin metadata.</summary>
 public sealed record PinDescriptor(
     string Name,
-    Type DataType,
+    DataType DataType,
     PinDirection Direction,
     bool Required = true);
 
@@ -106,3 +106,5 @@ public sealed class NodeRegistry
         (BaseNode)(Activator.CreateInstance(Get(name).NodeType)
             ?? throw new InvalidOperationException($"Cannot instantiate node: {name}"));
 }
+
+
