@@ -14,13 +14,17 @@
         WindowStartupLocation="CenterOwner"
         SizeToContent="Manual"
         Background="Transparent"
-        TransparencyLevelHint="Transparent"
+        TransparencyLevelHint="AcrylicBlur"
         WindowDecorations="None">
-  <Border CornerRadius="0" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1">
+  <Border CornerRadius="0" BorderBrush="#6B7280" BorderThickness="1">
+    <ExperimentalAcrylicBorder CornerRadius="0">
+    <ExperimentalAcrylicBorder.Material>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#F0F0F0" TintOpacity="0.5" FallbackColor="#F9FAFB" MaterialOpacity="0.55"/>
+    </ExperimentalAcrylicBorder.Material>
     <Grid RowDefinitions="34,*,Auto">
 
       <!-- 自定义标题栏（项目统一风格） -->
-      <Border Grid.Row="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
+      <Border Grid.Row="0" Background="#99FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
         <Border.Styles>
           <Style Selector="Button.winbtn">
             <Setter Property="Width" Value="40"/>
@@ -84,7 +88,7 @@
       <Grid Grid.Row="1" Margin="12" ColumnDefinitions="180,12,*">
 
         <!-- 矩形1：Zone 导航列表 -->
-        <Border Grid.Column="0" Background="White" BorderBrush="#D1D5DB" BorderThickness="1">
+        <Border Grid.Column="0" Background="#99FFFFFF" BorderBrush="#D1D5DB" BorderThickness="1">
           <ListBox ItemsSource="{Binding Zones}"
                    SelectedItem="{Binding SelectedZone, Mode=TwoWay}"
                    Background="Transparent" BorderThickness="0" Padding="0"
@@ -124,7 +128,7 @@
         <!-- 矩形1 与 矩形2 之间的间隔列 -->
 
         <!-- 矩形2：选中 zone 下的 group（可收起）+ 参数行 + 底部描述区 -->
-        <Border Grid.Column="2" Background="White" BorderBrush="#D1D5DB" BorderThickness="1">
+        <Border Grid.Column="2" Background="#99FFFFFF" BorderBrush="#D1D5DB" BorderThickness="1">
           <Grid RowDefinitions="*,Auto">
 
             <!-- 上方：group 列表 + 空状态 -->
@@ -259,7 +263,7 @@
             </Grid>
 
             <!-- 下方：描述区（放入矩形2内部底部） -->
-            <Border Grid.Row="1" Background="#F3F4F6" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0"
+            <Border Grid.Row="1" Background="#99F3F4F6" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0"
                     MinHeight="64" Padding="14,10">
               <StackPanel Spacing="4" VerticalAlignment="Top">
                 <TextBlock Text="{Binding DetailTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#111827"/>
@@ -271,7 +275,7 @@
       </Grid>
 
       <!-- 底部按钮栏 -->
-      <Border Grid.Row="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="14,10">
+      <Border Grid.Row="2" Background="#99FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="14,10">
         <Border.Styles>
           <Style Selector="Button.dlgbtn">
             <Setter Property="MinWidth" Value="90"/>
@@ -316,5 +320,8 @@
         </StackPanel>
       </Border>
     </Grid>
+      </ExperimentalAcrylicBorder>
   </Border>
 </Window>
+
+

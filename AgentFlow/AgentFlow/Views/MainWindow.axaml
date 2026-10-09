@@ -10,7 +10,8 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="{Binding [AppTitle], Source={x:Static s:Loc.Instance}}" WindowState="Maximized"
-        Background="#F5F5F5" WindowDecorations="BorderOnly">
+        TransparencyLevelHint="AcrylicBlur"
+        Background="#EAF5F5F5" WindowDecorations="BorderOnly">
   <Grid RowDefinitions="34,*">
     <!-- 自定义标题栏 -->
     <Border Grid.Row="0" Background="White" BorderBrush="#C0C4CC" BorderThickness="0,0,0,1">
@@ -77,6 +78,7 @@
     <views:MainView Grid.Row="1" DataContext="{Binding Main}" />
   </Grid>
 </Window>
+
 
 
 

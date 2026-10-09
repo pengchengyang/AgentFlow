@@ -44,7 +44,7 @@ public sealed class GraphCanvas : Control
     private const double InputRow = 32;
     private const double OutputRow = 28;
 
-    private static readonly Color ColorBg = Color.Parse("#FFFFFF");
+    private static readonly Color ColorBg = Color.FromArgb(220, 247, 250, 253);
     private static readonly Color ColorDot = Color.Parse("#E4DBCD");
     private static readonly Color ColorTitle = Color.Parse("#111827");
     private static readonly Color ColorName = Color.Parse("#374151");
@@ -57,6 +57,19 @@ public sealed class GraphCanvas : Control
     private static readonly Color ColorOut = Color.Parse("#8B5CF6");
     private static readonly Color ColorPinBorder = Color.Parse("#D1D5DB");
     private static readonly Color ColorStar = Color.Parse("#111827");
+
+    // Frosted-glass (Win7 Aero style) node fill: bright near-white at the top fading to a
+    // cooler, more translucent blue-white at the bottom, so it reads as "glass".
+    private static readonly IBrush NodeGlassBrush = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops =
+        {
+            new GradientStop(Color.FromArgb(235, 255, 255, 255), 0.0),
+            new GradientStop(Color.FromArgb(155, 240, 246, 252), 1.0)
+        }
+    };
 
 
     private static readonly StreamGeometry StarGeometry = StreamGeometry.Parse(
@@ -220,9 +233,13 @@ public sealed class GraphCanvas : Control
         ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(22, 0, 0, 0)), null,
             new RoundedRect(new Rect(b.X, b.Y + 3, b.Width, b.Height), 12, 12));
 
-        ctx.DrawRectangle(Brushes.White,
+                ctx.DrawRectangle(NodeGlassBrush,
             new Pen(new SolidColorBrush(node.IsSelected ? ColorSelected : ColorBorder), node.IsSelected ? 2 : 1),
             new RoundedRect(b, 12, 12));
+
+        // Aero top highlight (thin bright line just inside the rounded top edge).
+        ctx.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(170, 255, 255, 255)), 2),
+            new Point(b.X + 12, b.Y + 1.5), new Point(b.X + b.Width - 12, b.Y + 1.5));
 
         double x = b.X, y = b.Y;
 
@@ -606,5 +623,8 @@ public sealed class GraphCanvas : Control
             InvalidateVisual();
     }
 }
+
+
+
 
 

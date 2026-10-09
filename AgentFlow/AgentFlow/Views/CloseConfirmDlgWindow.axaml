@@ -14,12 +14,16 @@
         WindowStartupLocation="CenterOwner"
         CanResize="False"
         Background="Transparent"
-        TransparencyLevelHint="Transparent"
+        TransparencyLevelHint="AcrylicBlur"
         WindowDecorations="BorderOnly">
-  <Border CornerRadius="0" Background="#F9FAFB" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
+  <Border CornerRadius="0" BorderBrush="#6B7280" BorderThickness="1" Padding="8">
+    <ExperimentalAcrylicBorder CornerRadius="0">
+    <ExperimentalAcrylicBorder.Material>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#F0F0F0" TintOpacity="0.5" FallbackColor="#F9FAFB" MaterialOpacity="0.55"/>
+    </ExperimentalAcrylicBorder.Material>
   <Grid RowDefinitions="34,*">
     <!-- 自定义标题栏（两个按钮：最小化、关闭） -->
-    <Border Grid.Row="0" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
+    <Border Grid.Row="0" Background="#99FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
       <Border.Styles>
         <Style Selector="Button.winbtn">
           <Setter Property="Width" Value="40"/>
@@ -69,9 +73,9 @@
       </Grid>
     </Border>
 
-    <Border Grid.Row="1" Margin="1" Background="#F9FAFB">
+    <Border Grid.Row="1" Margin="1" Background="#99F9FAFB">
       <DockPanel LastChildFill="True">
-        <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="20,14">
+        <Border DockPanel.Dock="Bottom" Background="#99FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="20,14">
           <Border.Styles>
             <Style Selector="Button.toolbtn">
               <Setter Property="Width" Value="40"/>
@@ -109,8 +113,11 @@
       </DockPanel>
     </Border>
   </Grid>
+      </ExperimentalAcrylicBorder>
   </Border>
 </Window>
+
+
 
 
 
