@@ -305,6 +305,7 @@ public sealed class EditorGraph
         // Let the PluginLoader container be the single source of node instances: clear them here too.
         _pluginLoader.ClearInstances();
         GraphChanged?.Invoke();
+        _logger.LogInformation("EditorGraph: cleared graph");
     }
 
     private static void ReleaseNodePinIds(EditorNode node)

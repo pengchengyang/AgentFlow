@@ -6,12 +6,14 @@
 // -----------------------------------------------------------------------
 
 using System.Collections.Specialized;
+using System.Linq;
 using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using AgentFlow.Services;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
@@ -81,6 +83,9 @@ public sealed class GraphCanvas : Control
     {
         Focusable = true;
         ClipToBounds = true;
+        DragDrop.SetAllowDrop(this, true);
+        DragDrop.AddDragOverHandler(this, OnCanvasDragOver);
+        DragDrop.AddDropHandler(this, OnCanvasDrop);
         DataContextChanged += (_, _) =>
         {
             if (DataContext is CanvasViewModel vm)
@@ -419,6 +424,26 @@ public sealed class GraphCanvas : Control
 
     // ================= Interaction (input only; business logic in CanvasViewModel) =================
 
+    private void OnCanvasDragOver(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = e.DataTransfer.Items.Any(i => i.Formats.Contains(DragFormats.PaletteItem))
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnCanvasDrop(object? sender, DragEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var item = e.DataTransfer.Items
+            .FirstOrDefault(i => i.Formats.Contains(DragFormats.PaletteItem))
+            ?.TryGetRaw(DragFormats.PaletteItem) as PaletteItem;
+        if (item is null) return;
+        var world = ScreenToWorld(e.GetPosition(this));
+        vm.AddNodeAt(item, world);
+        e.Handled = true;
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -623,8 +648,3 @@ public sealed class GraphCanvas : Control
             InvalidateVisual();
     }
 }
-
-
-
-
-

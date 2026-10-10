@@ -15,8 +15,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AgentFlow.Cli", "AgentFlow.
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "plugins", "plugins", "{4A77872D-FF2F-4D54-8D09-5C057487114B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentFlow.Web", "AgentFlow.Web\AgentFlow.Web.csproj", "{02F3CA00-A369-46CC-938A-8A0A445F9D08}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.SocketServer", "plugins\Node.SocketServer\Node.SocketServer.csproj", "{89A828FD-8D63-4FD8-8226-6694443469F2}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.SocketClient", "plugins\Node.SocketClient\Node.SocketClient.csproj", "{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9}"
@@ -70,12 +68,6 @@ Global
 		{34DF79B2-B0D8-4282-AF32-AD6E8B0A5733}.Release|Any CPU.Build.0 = Release|Any CPU
 		{34DF79B2-B0D8-4282-AF32-AD6E8B0A5733}.Release|x64.ActiveCfg = Release|x64
 		{34DF79B2-B0D8-4282-AF32-AD6E8B0A5733}.Release|x64.Build.0 = Release|x64
-																		{02F3CA00-A369-46CC-938A-8A0A445F9D08}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{02F3CA00-A369-46CC-938A-8A0A445F9D08}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{02F3CA00-A369-46CC-938A-8A0A445F9D08}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{02F3CA00-A369-46CC-938A-8A0A445F9D08}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{02F3CA00-A369-46CC-938A-8A0A445F9D08}.Release|Any CPU.Build.0 = Release|Any CPU
-		{02F3CA00-A369-46CC-938A-8A0A445F9D08}.Release|x64.ActiveCfg = Release|Any CPU
 		{89A828FD-8D63-4FD8-8226-6694443469F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{89A828FD-8D63-4FD8-8226-6694443469F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{89A828FD-8D63-4FD8-8226-6694443469F2}.Debug|x64.ActiveCfg = Debug|x64

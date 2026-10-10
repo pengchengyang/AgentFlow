@@ -13,7 +13,7 @@ using AgentFlow.Services;
 namespace AgentFlow.Views;
 
 /// <summary>
-/// Right-side node library: click a node to add it, or press-and-drag it onto the canvas.
+/// Right-side node library: double-click a node to add it, or press-and-drag it onto the canvas.
 /// Shares <see cref="DragFormats.PaletteItem"/> with <see cref="CanvasView"/>.
 /// </summary>
 public partial class NodeLibraryView : UserControl
@@ -21,7 +21,6 @@ public partial class NodeLibraryView : UserControl
     private const double DragThreshold = 4.0;
     private PointerPressedEventArgs? _pendingPress;
     private PaletteItem? _pendingItem;
-    private bool _dragStarted;
 
     public NodeLibraryView()
     {
@@ -34,7 +33,6 @@ public partial class NodeLibraryView : UserControl
         {
             _pendingPress = e;
             _pendingItem = item;
-            _dragStarted = false;
         }
     }
 
@@ -48,8 +46,6 @@ public partial class NodeLibraryView : UserControl
         var delta = current - origin;
         if (Math.Sqrt(delta.X * delta.X + delta.Y * delta.Y) < DragThreshold)
             return;
-
-        _dragStarted = true;
         var press = _pendingPress;
         var item = _pendingItem;
         _pendingPress = null;
@@ -61,13 +57,18 @@ public partial class NodeLibraryView : UserControl
 
     private void OnItemPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        // A plain click (no drag) adds the node at the default location.
-        if (!_dragStarted && _pendingItem is not null && DataContext is NodeLibraryViewModel vm)
-            vm.AddNodeCommand.Execute(_pendingItem);
+        // Release only clears pending state; node creation now happens on double-click.
+        _pendingPress = null;
+        _pendingItem = null;
+    }
+
+    private void OnItemDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Control { DataContext: PaletteItem item } && DataContext is NodeLibraryViewModel vm)
+            vm.AddNodeCommand.Execute(item);
 
         _pendingPress = null;
         _pendingItem = null;
-        _dragStarted = false;
     }
 }
 

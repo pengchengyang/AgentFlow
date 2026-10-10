@@ -91,6 +91,7 @@ public partial class CanvasViewModel : ViewModelBase
     public void RemoveConnection(ConnectionViewModel connection) => _main.RemoveConnection(connection);
     public void OpenNodeParameters(NodeViewModel node) => _main.OpenNodeParametersCommand.Execute(node);
     public ICommand RemoveNodeCommand => _main.RemoveNodeCommand;
+    public void AddNodeAt(PaletteItem item, Point world) => _main.AddNodeAt(item, world);
 
     // ---- Panning (middle mouse drag) ----
     public void BeginPan(Point pointer)

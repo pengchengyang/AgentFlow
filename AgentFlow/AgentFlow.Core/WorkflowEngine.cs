@@ -56,6 +56,7 @@ public sealed class WorkflowEngine
     /// </summary>
     public async Task StartAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
+        _logger.LogInformation("WorkflowEngine: start ({NodeCount} nodes).", graph.Nodes.Count);
         var run = Prepare(graph);
         await run.Manager.StartAsync(run.GetContext, ct);
     }
@@ -64,6 +65,7 @@ public sealed class WorkflowEngine
     /// <summary>Stop every node in the workflow, reverse order (uses <see cref="NodeInstanceManager"/>).</summary>
     public async Task StopAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
+        _logger.LogInformation("WorkflowEngine: stop.");
         var run = Prepare(graph);
         await run.Manager.StopAsync(run.GetContext, ct);
     }

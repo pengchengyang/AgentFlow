@@ -28,6 +28,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly EditorGraph _graph;
     private readonly NodeInstanceManager _nodeManager;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger _logger;
     private CancellationTokenSource? _runCts;
     private int _nodeSpawnIndex;
     private bool _isLoading;
@@ -86,7 +87,9 @@ public partial class MainViewModel : ViewModelBase
         {
             b.SetMinimumLevel(LogLevel.Debug);
             b.AddProvider(new UiLoggerProvider(Logs));
+            b.AddProvider(new RollingLoggerProvider());
         });
+        _logger = _loggerFactory.CreateLogger(nameof(MainViewModel));
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
         _nodeManager = new NodeInstanceManager(_pluginLoader);
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader);
@@ -142,6 +145,7 @@ public partial class MainViewModel : ViewModelBase
         _nodeSpawnIndex++;
         HookSelection(node);
         Nodes.Add(node);
+        _logger.LogInformation("Added node {Name} #{InstanceId} at ({X:0.##},{Y:0.##})", node.Name, node.Id, graphLocation.X, graphLocation.Y);
     }
     public void ToggleSelection(NodeViewModel node)
     {
@@ -201,7 +205,7 @@ public partial class MainViewModel : ViewModelBase
             SyncGraphState();
             await _store.SaveAsync(GraphSerializer.Serialize(_graph));
         }
-        catch { /* best-effort persistence */ }
+        catch (Exception ex) { _logger.LogError(ex, "Auto-save failed: {Message}", ex.Message); }
     }
     /// <summary>Reload the graph from disk if it exists.</summary>
     private async void AutoLoad()
@@ -219,6 +223,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             Logs.Add($"[{L["LoadFailed"]}] {ex.Message}");
+            _logger.LogError(ex, "Auto-load failed: {Message}", ex.Message);
         }
         finally
         {
@@ -261,6 +266,7 @@ public partial class MainViewModel : ViewModelBase
     {
         _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
         Connections.Add(new ConnectionViewModel(source, target));
+        _logger.LogInformation("Connected {From}.{FromPin} -> {To}.{ToPin}", source.Node.Name, source.Name, target.Node.Name, target.Name);
     }
     /// <summary>Remove the connection in the Core layer and delete the visual wire.</summary>
     private void Teardown(ConnectionViewModel connection)
@@ -271,6 +277,7 @@ public partial class MainViewModel : ViewModelBase
         if (conn is not null)
             _graph.Disconnect(conn);
         Connections.Remove(connection);
+        _logger.LogInformation("Disconnected {From}.{FromPin} -> {To}.{ToPin}", connection.Source.Node.Name, connection.Source.Name, connection.Target.Node.Name, connection.Target.Name);
     }
     private string? ValidateConnection(PinViewModel source, PinViewModel target)
     {
@@ -325,13 +332,18 @@ public partial class MainViewModel : ViewModelBase
             .ToList();
         foreach (var c in related) Connections.Remove(c);
         Nodes.Remove(node);
+        _logger.LogInformation("Removed node #{InstanceId} ({Name})", node.Id, node.Name);
     }
     /// <summary>Whether the current user is logged in as Admin (Admin-only features gate on this).</summary>
     [ObservableProperty]
     private bool _isAdmin = true; // Dev: default account is Admin so admin-only UI is available on open.
     /// <summary>Bottom-right lock icon: unlocked (🔓) for Admin, locked (🔒) for all other accounts.</summary>
     public string LockIcon => IsAdmin ? "🔓" : "🔒";
-    partial void OnIsAdminChanged(bool value) => OnPropertyChanged(nameof(LockIcon));
+    partial void OnIsAdminChanged(bool value)
+    {
+        OnPropertyChanged(nameof(LockIcon));
+        _logger.LogInformation("Login state changed: {Role}", value ? "Admin" : "User");
+    }
     /// <summary>Whether the right node-library Sidebar is visible (Admin only).</summary>
     [ObservableProperty]
     private bool _isSidebarVisible = true; // Dev: default to open.
@@ -383,6 +395,7 @@ public partial class MainViewModel : ViewModelBase
             SelectedNode = null;
             _graph.Clear();
             Logs.Add("Canvas cleared.");
+            _logger.LogInformation("Canvas cleared.");
         };
         ClearRequested?.Invoke(this, dialog);
     }
@@ -487,6 +500,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
         StatusText = L["Running"];
+        _logger.LogInformation("Run started ({NodeCount} nodes).", Nodes.Count);
         _runCts = new CancellationTokenSource();
         // Yield to the UI thread so the Stop icon renders before the run starts.
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
@@ -502,15 +516,18 @@ public partial class MainViewModel : ViewModelBase
                 await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
             await Task.Run(() => _nodeManager.StartAsync(node => contexts[node], _runCts.Token));
             StatusText = L["RunCompleted"];
+            _logger.LogInformation("Run completed.");
         }
         catch (OperationCanceledException)
         {
             StatusText = L["RunCancelled"];
+            _logger.LogWarning("Run cancelled.");
         }
         catch (Exception ex)
         {
             StatusText = L["RunFailed"];
             Logs.Add($"[{L["ErrorPrefix"]}] {ex.Message}");
+            _logger.LogError(ex, "Run failed: {Message}", ex.Message);
         }
         finally
         {
@@ -522,6 +539,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task Stop()
     {
+        _logger.LogInformation("Stop requested.");
         _runCts?.Cancel();
         try
         {
@@ -562,6 +580,7 @@ public partial class MainViewModel : ViewModelBase
         await _store.SaveAsync(GraphSerializer.Serialize(_graph));
         IsDirty = false;
         StatusText = $"{L["SavedTo"]}: {_store.Description}";
+        _logger.LogInformation("Saved graph to {Target}", _store.Description);
     }
     /// <summary>Raised when the user clicks the Save-As button; the View layer opens a file picker.</summary>
     public event EventHandler<string>? SaveAsRequested;
@@ -583,6 +602,7 @@ public partial class MainViewModel : ViewModelBase
         CurrentFilePath = path;
         IsDirty = false;
         StatusText = $"{L["SavedTo"]}: {path}";
+        _logger.LogInformation("Saved graph to {Path}", path);
     }
     /// <summary>Raised when the user clicks the Open button; the View layer opens a file picker.</summary>
     public event EventHandler? OpenRequested;
@@ -600,6 +620,7 @@ public partial class MainViewModel : ViewModelBase
         CurrentFilePath = path;
         IsDirty = false;
         StatusText = $"{L["LoadedFrom"]}: {path}";
+        _logger.LogInformation("Loaded graph from {Path} ({NodeCount} nodes)", path, Nodes.Count);
     }
     [RelayCommand]
     private void Load()
