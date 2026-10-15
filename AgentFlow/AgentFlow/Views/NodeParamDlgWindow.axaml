@@ -14,21 +14,19 @@
         WindowStartupLocation="CenterOwner"
         SizeToContent="Manual"
         Background="Transparent"
-        TransparencyLevelHint="AcrylicBlur"
         WindowDecorations="None">
-  <Border CornerRadius="0" BorderBrush="#6B7280" BorderThickness="1">
-    <ExperimentalAcrylicBorder CornerRadius="0">
-    <ExperimentalAcrylicBorder.Material>
-        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#F0F0F0" TintOpacity="0.5" FallbackColor="#F9FAFB" MaterialOpacity="0.55"/>
-    </ExperimentalAcrylicBorder.Material>
-    <Grid RowDefinitions="34,*,Auto">
+  <Border CornerRadius="0" Background="#FFFFFF"
+          BorderBrush="#CBD5E1" BorderThickness="1"
+          Padding="1"
+          BoxShadow="0 20 60 0 #260F172A">
+    <Grid RowDefinitions="Auto,*,Auto">
 
-      <!-- 自定义标题栏（项目统一风格） -->
-      <Border Grid.Row="0" Background="#99FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
+      <!-- 自定义标题栏 -->
+      <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#F1F5F9" BorderThickness="0,0,0,1" Padding="0,10,0,10">
         <Border.Styles>
           <Style Selector="Button.winbtn">
-            <Setter Property="Width" Value="40"/>
-            <Setter Property="Height" Value="34"/>
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="30"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -36,47 +34,80 @@
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
           </Style>
-          <Style Selector="Button.winbtn:pointerover">
-            <Setter Property="Background" Value="#F3F4F6"/>
+          <!-- 最小化：浅青底 -->
+          <Style Selector="Button.winbtn.min">
+            <Setter Property="Background" Value="#D1FAE5"/>
           </Style>
-          <Style Selector="Button.winbtn:pressed">
-            <Setter Property="Background" Value="#E5E7EB"/>
+          <Style Selector="Button.winbtn.min:pointerover">
+            <Setter Property="Background" Value="#A7F3D0"/>
+          </Style>
+          <Style Selector="Button.winbtn.min Border">
+            <Setter Property="Background" Value="#059669"/>
+          </Style>
+          <!-- 最大化：浅紫底 -->
+          <Style Selector="Button.winbtn.max">
+            <Setter Property="Background" Value="#EDE9FE"/>
+          </Style>
+          <Style Selector="Button.winbtn.max:pointerover">
+            <Setter Property="Background" Value="#DDD6FE"/>
+          </Style>
+          <Style Selector="Button.winbtn.max Path">
+            <Setter Property="Fill" Value="#7C3AED"/>
+          </Style>
+          <!-- 关闭：浅红底 -->
+          <Style Selector="Button.winbtn.close">
+            <Setter Property="Background" Value="#FEE2E2"/>
           </Style>
           <Style Selector="Button.winbtn.close:pointerover">
-            <Setter Property="Background" Value="#E81123"/>
+            <Setter Property="Background" Value="#FECACA"/>
           </Style>
-          <Style Selector="Button.winbtn.close:pointerover Path">
-            <Setter Property="Fill" Value="White"/>
+          <Style Selector="Button.winbtn.close Path">
+            <Setter Property="Fill" Value="#DC2626"/>
           </Style>
         </Border.Styles>
-        <Grid ColumnDefinitions="*,Auto">
+        <Grid ColumnDefinitions="*,Auto" Margin="16,0,12,0">
           <Border Grid.Column="0" Background="Transparent" PointerPressed="TitleBar_OnPointerPressed">
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
-              <Image Source="/Assets/avalonia-logo.ico" Width="16" Height="16" VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding Caption}" FontSize="13" FontWeight="SemiBold" Foreground="#374151" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Border Width="30" Height="30" CornerRadius="8">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                    <GradientStop Color="#7C3AED" Offset="0"/>
+                    <GradientStop Color="#A78BFA" Offset="1"/>
+                  </LinearGradientBrush>
+                </Border.Background>
+                <Path Data="M288 64C323.3 64 352 85.5 352 112c0 10.4-4.4 20-12 27.9-6.6 6.9-12 15.3-12 24.9 0 15 12.2 27.2 27.2 27.2h44.8c26.5 0 48 21.5 48 48v44.8c0 15 12.2 27.2 27.2 27.2 9.5 0 18-5.4 24.8-12 7.9-7.5 17.6-12 28-12 26.5 0 48 23.7 48 48 0 35.3-21.5 64-48 64-10.4 0-20-4.4-28-12-6.6-6.6-15-12-24.8-12-15 0-27.2 12.2-27.2 27.2V528c0 26.5-21.5 48-48 48h-56.8c-12.8 0-23.2-10.4-23.2-23.2 0-9.2 5.8-17.3 13.2-22.8C344.8 521.3 352 509.3 352 496c0-26.5-28.7-48-64-48-35.3 0-64 21.5-64 48 0 13.3 7.2 25.3 18.8 34 7.4 5.5 13.2 13.6 13.2 22.8 0 12.8-10.4 23.2-23.2 23.2H112C85.5 576 64 554.5 64 528V407.2c0-12.8 10.4-23.2 23.2-23.2 9.2 0 17.3 5.8 22.8 13.2C118.7 408.8 130.7 416 144 416c26.5 0 48-21.5 48-48 0-35.3-21.5-64-48-64-13.3 0-25.3 7.2-34 18.8-5.5 7.4-13.6 13.2-22.8 13.2-12.8 0-23.2-10.4-23.2-23.2V240c0-26.5 21.5-48 48-48h108.8C235.8 192 248 179.8 248 164.8c0-9.5-5.4-18-12-24.9C228.5 132 224 122.4 224 112c0-26.5 28.7-48 64-48z"
+                      Stretch="Uniform" Fill="White" Width="16" Height="16"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="{Binding Caption}" FontSize="13" FontWeight="SemiBold"
+                           Foreground="#0F172A"/>
+                <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
+                           Foreground="#94A3B8" Margin="0,1,0,0"/>
+              </StackPanel>
             </StackPanel>
           </Border>
-          <StackPanel Grid.Column="1" Orientation="Horizontal">
-            <Button Classes="winbtn" Click="MinimizeButton_Click" ToolTip.Tip="{Binding [Minimize], Source={x:Static s:Loc.Instance}}">
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Classes="winbtn min" Click="MinimizeButton_Click" ToolTip.Tip="{Binding [Minimize], Source={x:Static s:Loc.Instance}}">
               <Grid Width="20" Height="20">
-                <Border Width="14" Height="2" CornerRadius="1" Background="#111827"
+                <Border Width="14" Height="2" CornerRadius="1"
                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Grid>
             </Button>
-            <Button Classes="winbtn" Click="MaxRestoreButton_Click" ToolTip.Tip="{Binding [Maximize], Source={x:Static s:Loc.Instance}}">
-              <Grid Width="22" Height="22">
+            <Button Classes="winbtn max" Click="MaxRestoreButton_Click" ToolTip.Tip="{Binding [Maximize], Source={x:Static s:Loc.Instance}}">
+              <Grid Width="20" Height="20">
                 <Path x:Name="MaximizeIcon"
                       Data="M48 224l0 160c0 8.8 7.2 16 16 16l384 0c8.8 0 16-7.2 16-16l0-160-416 0zM0 128C0 92.7 28.7 64 64 64l384 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64L64 448c-35.3 0-64-28.7-64-64L0 128z"
-                      Stretch="Uniform" Fill="#111827" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 <Path x:Name="RestoreIcon"
                       Data="M512 80L224 80c-8.8 0-16 7.2-16 16l0 16-48 0 0-16c0-35.3 28.7-64 64-64l288 0c35.3 0 64 28.7 64 64l0 192c0 35.3-28.7 64-64 64l-48 0 0-48 48 0c8.8 0 16-7.2 16-16l0-192c0-8.8-7.2-16-16-16zM368 288l-320 0 0 128c0 8.8 7.2 16 16 16l288 0c8.8 0 16-7.2 16-16l0-128zM64 160l288 0c35.3 0 64 28.7 64 64l0 192c0 35.3-28.7 64-64 64L64 480c-35.3 0-64-28.7-64-64L0 224c0-35.3 28.7-64 64-64z"
-                      Stretch="Uniform" Fill="#111827" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="False"/>
+                      Stretch="Uniform" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="False"/>
               </Grid>
             </Button>
             <Button Classes="winbtn close" Click="CloseButton_Click" ToolTip.Tip="{Binding [Close], Source={x:Static s:Loc.Instance}}">
               <Grid Width="20" Height="20">
                 <Path Data="M64 112c-8.8 0-16 7.2-16 16l0 256c0 8.8 7.2 16 16 16l384 0c8.8 0 16-7.2 16-16l0-256c0-8.8-7.2-16-16-16L64 112zM0 128C0 92.7 28.7 64 64 64l384 0c35.3 0 64 28.7 64 64l0 256c0 35.3-28.7 64-64 64L64 448c-35.3 0-64-28.7-64-64L0 128zm334.1 49.9c9.4 9.4 9.4 24.6 0 33.9l-44.1 44.1 44.1 44.1c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-44.1-44.1-44.1 44.1c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l44.1-44.1-44.1-44.1c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l44.1 44.1 44.1-44.1c9.4-9.4 24.6-9.4 33.9 0z"
-                      Stretch="Uniform" Fill="#111827" Width="20" Height="20"
+                      Stretch="Uniform" Width="14" Height="14"
                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Grid>
             </Button>
@@ -84,54 +115,53 @@
         </Grid>
       </Border>
 
-      <!-- 主体：矩形1(Zone) + 间隔 + 矩形2(Group + 底部描述区) -->
-      <Grid Grid.Row="1" Margin="12" ColumnDefinitions="180,12,*">
+      <!-- 主体：Zone 导航 + 参数区 -->
+      <Grid Grid.Row="1" Margin="0" ColumnDefinitions="180,*">
 
-        <!-- 矩形1：Zone 导航列表 -->
-        <Border Grid.Column="0" Background="#99FFFFFF" BorderBrush="#D1D5DB" BorderThickness="1">
+        <!-- Zone 导航 -->
+        <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#F1F5F9" BorderThickness="0,0,1,0">
           <ListBox ItemsSource="{Binding Zones}"
                    SelectedItem="{Binding SelectedZone, Mode=TwoWay}"
-                   Background="Transparent" BorderThickness="0" Padding="0"
+                   Background="Transparent" BorderThickness="0" Padding="10,14"
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListBox.Styles>
               <Style Selector="ListBoxItem">
                 <Setter Property="Padding" Value="0"/>
                 <Setter Property="HorizontalContentAlignment" Value="Left"/>
-                <Setter Property="MinHeight" Value="0"/>
-                <Setter Property="CornerRadius" Value="0"/>
+                <Setter Property="MinHeight" Value="36"/>
+                <Setter Property="CornerRadius" Value="8"/>
                 <Setter Property="Focusable" Value="False"/>
+                <Setter Property="Margin" Value="0,0,0,2"/>
               </Style>
               <Style Selector="ListBoxItem /template/ ContentPresenter">
                 <Setter Property="Background" Value="Transparent"/>
-                <Setter Property="CornerRadius" Value="0"/>
-                <Setter Property="Padding" Value="0"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Padding" Value="12,0"/>
               </Style>
               <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                <Setter Property="Background" Value="#F3F4F6"/>
+                <Setter Property="Background" Value="#F1F5F9"/>
               </Style>
               <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                <Setter Property="Background" Value="#E5E7EB"/>
+                <Setter Property="Background" Value="#EDE9FE"/>
               </Style>
               <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
-                <Setter Property="Background" Value="#E5E7EB"/>
+                <Setter Property="Background" Value="#EDE9FE"/>
               </Style>
             </ListBox.Styles>
             <ListBox.ItemTemplate>
               <DataTemplate DataType="{x:Type vm:ParameterZoneNode}" x:DataType="vm:ParameterZoneNode">
-                <TextBlock Text="{Binding Name}" Margin="14,7"
-                           FontSize="12" Foreground="#374151" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Text="{Binding Name}" Margin="0"
+                           FontSize="12.5" FontWeight="SemiBold"
+                           Foreground="#5B21B6" VerticalAlignment="Center"/>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
         </Border>
 
-        <!-- 矩形1 与 矩形2 之间的间隔列 -->
-
-        <!-- 矩形2：选中 zone 下的 group（可收起）+ 参数行 + 底部描述区 -->
-        <Border Grid.Column="2" Background="#99FFFFFF" BorderBrush="#D1D5DB" BorderThickness="1">
+        <!-- 参数区 -->
+        <Border Grid.Column="1" Background="#FFFFFF">
           <Grid RowDefinitions="*,Auto">
 
-            <!-- 上方：group 列表 + 空状态 -->
             <Grid Grid.Row="0">
               <TextBlock Text="{Binding [NoParameters], Source={x:Static s:Loc.Instance}}"
                          IsVisible="{Binding HasNoParameters}"
@@ -140,7 +170,7 @@
 
               <ListBox ItemsSource="{Binding VisibleItems}"
                        SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-                       Background="Transparent" BorderThickness="0" Padding="0"
+                       Background="Transparent" BorderThickness="0" Padding="20,20,20,10"
                        ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.Styles>
                   <Style Selector="ListBoxItem">
@@ -160,15 +190,12 @@
                   <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
                     <Setter Property="Background" Value="Transparent"/>
                   </Style>
-                  <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Transparent"/>
-                  </Style>
 
                   <Style Selector="Border.groupHeader">
-                    <Setter Property="Background" Value="#F3F4F6"/>
-                    <Setter Property="BorderBrush" Value="#E5E7EB"/>
+                    <Setter Property="Background" Value="#FFFFFF"/>
+                    <Setter Property="BorderBrush" Value="#F1F5F9"/>
                     <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                    <Setter Property="Padding" Value="10,7"/>
+                    <Setter Property="Padding" Value="0,10,0,10"/>
                   </Style>
                   <Style Selector="Button.groupToggle">
                     <Setter Property="Background" Value="Transparent"/>
@@ -179,40 +206,34 @@
                     <Setter Property="HorizontalContentAlignment" Value="Left"/>
                     <Setter Property="Cursor" Value="Hand"/>
                   </Style>
-                  <Style Selector="Button.groupToggle:pointerover">
-                    <Setter Property="Background" Value="Transparent"/>
-                  </Style>
-                  <Style Selector="Button.groupToggle:pressed">
-                    <Setter Property="Background" Value="Transparent"/>
-                  </Style>
                   <Style Selector="Button.groupToggle /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Transparent"/>
-                  </Style>
-                  <Style Selector="Button.groupToggle:pointerover /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Transparent"/>
-                  </Style>
-                  <Style Selector="Button.groupToggle:pressed /template/ ContentPresenter">
                     <Setter Property="Background" Value="Transparent"/>
                   </Style>
 
                   <Style Selector="Border.propRow">
                     <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="MinHeight" Value="28"/>
+                    <Setter Property="MinHeight" Value="32"/>
                   </Style>
                   <Style Selector="Border.propRow.hover">
-                    <Setter Property="Background" Value="#F3F4F6"/>
+                    <Setter Property="Background" Value="#FAFAFC"/>
                   </Style>
                   <Style Selector="Border.propRow.selected">
-                    <Setter Property="Background" Value="#E5E7EB"/>
+                    <Setter Property="Background" Value="#F5F3FF"/>
                   </Style>
-                  <Style Selector="Border.propRow.selected TextBlock.propName">
-                    <Setter Property="Foreground" Value="#111827"/>
+                  <Style Selector="TextBox">
+                    <Setter Property="CornerRadius" Value="8"/>
+                    <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="Background" Value="#FFFFFF"/>
+                    <Setter Property="Padding" Value="10,6"/>
+                    <Setter Property="FontSize" Value="12.5"/>
                   </Style>
-                  <Style Selector="Border.propRow.selected TextBlock.propValue">
-                    <Setter Property="Foreground" Value="#111827"/>
+                  <Style Selector="TextBox:focus">
+                    <Setter Property="BorderBrush" Value="#7C3AED"/>
+                    <Setter Property="BorderThickness" Value="1.5"/>
                   </Style>
                   <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                    <Setter Property="BorderBrush" Value="Black"/>
+                    <Setter Property="BorderBrush" Value="#7C3AED"/>
                   </Style>
                 </ListBox.Styles>
 
@@ -220,15 +241,15 @@
                   <DataTemplate DataType="{x:Type vm:ParameterGroupNode}" x:DataType="vm:ParameterGroupNode">
                     <Border Classes="groupHeader">
                       <Button Classes="groupToggle" Command="{Binding ToggleCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
                           <Path Data="M297.4 438.6C309.9 451.1 330.2 451.1 342.7 438.6L502.7 278.6C515.2 266.1 515.2 245.8 502.7 233.3C490.2 220.8 469.9 220.8 457.4 233.3L320 370.7L182.6 233.4C170.1 220.9 149.8 220.9 137.3 233.4C124.8 245.9 124.8 266.2 137.3 278.7L297.3 438.7z"
-                                            Stretch="Uniform" Fill="#6B7280" Width="14" Height="14"
-                                            VerticalAlignment="Center" Margin="0,2,0,0" IsVisible="{Binding IsExpanded}"/>
+                                Stretch="Uniform" Fill="#7C3AED" Width="10" Height="10"
+                                VerticalAlignment="Center" IsVisible="{Binding IsExpanded}"/>
                           <Path Data="M247.1 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L179.2 256 41.9 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"
-                                            Stretch="Uniform" Fill="#6B7280" Width="14" Height="14"
-                                            VerticalAlignment="Center" IsVisible="{Binding !IsExpanded}"/>
-                          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
-                                     Foreground="#111827" VerticalAlignment="Center"/>
+                                Stretch="Uniform" Fill="#94A3B8" Width="8" Height="12"
+                                VerticalAlignment="Center" IsVisible="{Binding !IsExpanded}"/>
+                          <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                     Foreground="#0F172A" VerticalAlignment="Center"/>
                         </StackPanel>
                       </Button>
                     </Border>
@@ -238,21 +259,20 @@
                     <Border Classes="propRow"
                             Classes.selected="{Binding $parent[ListBoxItem].IsSelected}"
                             Classes.hover="{Binding $parent[ListBoxItem].IsPointerOver}">
-                      <Grid ColumnDefinitions="180,*">
+                      <Grid ColumnDefinitions="110,*">
                         <TextBlock Classes="propName" Grid.Column="0"
-                                   Text="{Binding Label}" Margin="24,0,8,0"
-                                   FontSize="12" Foreground="#374151"
+                                   Text="{Binding Label}" Margin="0,0,16,0"
+                                   FontSize="12" Foreground="#64748B"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         <Panel Grid.Column="1">
                           <TextBox Text="{Binding Value, Mode=TwoWay}"
                                    IsVisible="{Binding IsEditable}"
-                                   FontSize="12" Padding="6,2" Margin="0,2,8,2"
                                    HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                    VerticalContentAlignment="Center"/>
                           <TextBlock Classes="propValue" Text="{Binding Value}"
                                      IsVisible="{Binding !IsEditable}"
-                                     FontSize="12" Foreground="#6B7280"
-                                     Margin="6,0,8,0"
+                                     FontSize="12.5" Foreground="#0F172A"
+                                     Margin="0,0,8,0"
                                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         </Panel>
                       </Grid>
@@ -262,66 +282,65 @@
               </ListBox>
             </Grid>
 
-            <!-- 下方：描述区（放入矩形2内部底部） -->
-            <Border Grid.Row="1" Background="#99F3F4F6" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0"
-                    MinHeight="64" Padding="14,10">
+            <!-- 描述区 -->
+            <Border Grid.Row="1" Background="#FAFAFC" BorderBrush="#F1F5F9" BorderThickness="0,1,0,0"
+                    MinHeight="60" Padding="20,12">
               <StackPanel Spacing="4" VerticalAlignment="Top">
-                <TextBlock Text="{Binding DetailTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#111827"/>
-                <TextBlock Text="{Binding DetailDescription}" FontSize="12" Foreground="#6B7280" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding DetailTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                <TextBlock Text="{Binding DetailDescription}" FontSize="12" Foreground="#64748B" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </Grid>
         </Border>
       </Grid>
 
-      <!-- 底部按钮栏 -->
-      <Border Grid.Row="2" Background="#99FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="14,10">
+      <!-- 底部按钮 -->
+      <Border Grid.Row="2" Background="#FAFAFC" BorderBrush="#F1F5F9" BorderThickness="0,1,0,0" Padding="20,14">
         <Border.Styles>
           <Style Selector="Button.dlgbtn">
-            <Setter Property="MinWidth" Value="90"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Padding" Value="16,0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Foreground" Value="#374151"/>
-            <Setter Property="BorderBrush" Value="#D1D5DB"/>
+            <Setter Property="MinWidth" Value="88"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="20,0"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
           </Style>
           <Style Selector="Button.dlgbtn:pointerover">
-            <Setter Property="Background" Value="#F3F4F6"/>
-            <Setter Property="BorderBrush" Value="#9CA3AF"/>
+            <Setter Property="Background" Value="#F8FAFC"/>
           </Style>
-          <Style Selector="Button.dlgbtn:pressed">
-            <Setter Property="Background" Value="#E5E7EB"/>
+          <Style Selector="Button.dlgbtn:disabled">
+            <Setter Property="Background" Value="#F1F5F9"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="BorderBrush" Value="#F1F5F9"/>
           </Style>
           <Style Selector="Button.dlgbtn.primary">
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="BorderBrush" Value="Black"/>
+            <Setter Property="Background" Value="#7C3AED"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
           </Style>
           <Style Selector="Button.dlgbtn.primary:pointerover">
-            <Setter Property="Background" Value="#EFF6FF"/>
-            <Setter Property="BorderBrush" Value="Black"/>
+            <Setter Property="Background" Value="#6D28D9"/>
           </Style>
         </Border.Styles>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-          <Button Classes="dlgbtn primary"
-                  Content="{Binding [OK], Source={x:Static s:Loc.Instance}}"
-                  Command="{Binding ConfirmCommand}"/>
-          <Button Classes="dlgbtn"
-                  Content="{Binding [Cancel], Source={x:Static s:Loc.Instance}}"
-                  Command="{Binding CancelCommand}"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
           <Button Classes="dlgbtn"
                   Content="{Binding [Apply], Source={x:Static s:Loc.Instance}}"
                   Command="{Binding ApplyCommand}"
                   IsEnabled="{Binding CanApply}"/>
+          <Button Classes="dlgbtn"
+                  Content="{Binding [Cancel], Source={x:Static s:Loc.Instance}}"
+                  Command="{Binding CancelCommand}"/>
+          <Button Classes="dlgbtn primary"
+                  Content="{Binding [OK], Source={x:Static s:Loc.Instance}}"
+                  Command="{Binding ConfirmCommand}"/>
         </StackPanel>
       </Border>
     </Grid>
-      </ExperimentalAcrylicBorder>
   </Border>
 </Window>
-
-

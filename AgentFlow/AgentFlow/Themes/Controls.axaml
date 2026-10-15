@@ -19,14 +19,14 @@
         <Setter Property="Background" Value="{DynamicResource BrushBrandActive}" />
     </Style>
     <Style Selector="Button.primary:disabled">
-        <Setter Property="Background" Value="#C4B5FD" />
-        <Setter Property="Foreground" Value="#FFFFFF" />
+        <Setter Property="Background" Value="{DynamicResource BrushBrand300}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrushTextInverse}" />
     </Style>
 
     <!-- ============ 次按钮（白底灰边） ============ -->
     <Style Selector="Button.secondary">
         <Setter Property="Background" Value="{DynamicResource BrushCard}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="8" />
@@ -37,23 +37,23 @@
     </Style>
     <Style Selector="Button.secondary:pointerover">
         <Setter Property="Background" Value="{DynamicResource BrushSurface}" />
-        <Setter Property="BorderBrush" Value="#D1D5DB" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BrushBorderStrong}" />
     </Style>
     <Style Selector="Button.secondary:pressed">
-        <Setter Property="Background" Value="#E5E7EB" />
+        <Setter Property="Background" Value="{DynamicResource BrushSurfacePressed}" />
     </Style>
 
     <!-- ============ 文字小按钮（语言/主题等） ============ -->
     <Style Selector="Button.ghost">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="6" />
         <Setter Property="Padding" Value="10,6" />
     </Style>
     <Style Selector="Button.ghost:pointerover">
         <Setter Property="Background" Value="{DynamicResource BrushSurface}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}" />
     </Style>
 
     <!-- ============ 输入框 / 搜索框 ============ -->
@@ -63,8 +63,8 @@
         <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Background" Value="{DynamicResource BrushCard}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="PlaceholderForeground" Value="{DynamicResource TextTertiary}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}" />
+        <Setter Property="PlaceholderForeground" Value="{DynamicResource BrushTextTertiary}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBox:focus">
@@ -79,4 +79,173 @@
         <Setter Property="BorderThickness" Value="1" />
     </Style>
 
+    <!-- ============ 标题栏工具按钮（设计稿：36×36 / 圆角 10 / 无边框） ============ -->
+    <Style Selector="Button.toolbtn">
+        <Setter Property="Width" Value="26" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.toolbtn:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushSurface}" />
+    </Style>
+    <Style Selector="Button.toolbtn:pressed">
+        <Setter Property="Background" Value="{DynamicResource BrushSurfacePressed}" />
+    </Style>
+    <Style Selector="Button.toolbtn:disabled">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Opacity" Value="0.35" />
+    </Style>
+
+    <!-- 主操作：紫色实心（设计稿的播放按钮） -->
+    <Style Selector="Button.toolbtn.run">
+        <Setter Property="Background" Value="#16A34A" />
+    </Style>
+    <Style Selector="Button.toolbtn.run:pointerover">
+        <Setter Property="Background" Value="#15803D" />
+    </Style>
+    <Style Selector="Button.toolbtn.run:pressed">
+        <Setter Property="Background" Value="#166534" />
+    </Style>
+    <Style Selector="Button.toolbtn.run:disabled">
+        <Setter Property="Background" Value="#86EFAC" />
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.toolbtn.run Path">
+        <Setter Property="Fill" Value="{DynamicResource BrushTextInverse}" />
+    </Style>
+
+    <!-- ============ 浅色功能按钮（Open / Save / Clear / Reset / Login） ============ -->
+    <Style Selector="Button.toolbtn.open">
+        <Setter Property="Background" Value="{DynamicResource BrushOpenBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.open:pointerover">
+        <Setter Property="Background" Value="#BFE0F9" />
+    </Style>
+    <Style Selector="Button.toolbtn.open:pressed">
+        <Setter Property="Background" Value="#9ED0F3" />
+    </Style>
+    <Style Selector="Button.toolbtn.save">
+        <Setter Property="Background" Value="{DynamicResource BrushSaveBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.save:pointerover">
+        <Setter Property="Background" Value="#CBD6FC" />
+    </Style>
+    <Style Selector="Button.toolbtn.save:pressed">
+        <Setter Property="Background" Value="#B3C2F9" />
+    </Style>
+    <Style Selector="Button.toolbtn.clear">
+        <Setter Property="Background" Value="{DynamicResource BrushClearBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.clear:pointerover">
+        <Setter Property="Background" Value="#FFD3D8" />
+    </Style>
+    <Style Selector="Button.toolbtn.clear:pressed">
+        <Setter Property="Background" Value="#FFB9C1" />
+    </Style>
+    <Style Selector="Button.toolbtn.reset">
+        <Setter Property="Background" Value="{DynamicResource BrushResetBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.reset:pointerover">
+        <Setter Property="Background" Value="#FCE9AE" />
+    </Style>
+    <Style Selector="Button.toolbtn.reset:pressed">
+        <Setter Property="Background" Value="#FADC8C" />
+    </Style>
+    <Style Selector="Button.toolbtn.login">
+        <Setter Property="Background" Value="{DynamicResource BrushLoginBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.login:pointerover">
+        <Setter Property="Background" Value="#E2D8F8" />
+    </Style>
+    <Style Selector="Button.toolbtn.login:pressed">
+        <Setter Property="Background" Value="#D6C6F5" />
+    </Style>
+    <!-- 停止：深色实心（设计稿的黑色方块按钮） -->
+    <Style Selector="Button.toolbtn.dark">
+        <Setter Property="Background" Value="#111827" />
+    </Style>
+    <Style Selector="Button.toolbtn.dark:pointerover">
+        <Setter Property="Background" Value="#1F2937" />
+    </Style>
+    <Style Selector="Button.toolbtn.dark:pressed">
+        <Setter Property="Background" Value="#0B1220" />
+    </Style>
+    <Style Selector="Button.toolbtn.dark:disabled">
+        <Setter Property="Background" Value="#9CA3AF" />
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.toolbtn.dark Path">
+        <Setter Property="Fill" Value="{DynamicResource BrushTextInverse}" />
+    </Style>
+
+    <!-- ============ 窗口按钮（最小化 / 最大化 / 关闭） ============ -->
+    <Style Selector="Button.winbtn">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.winbtn:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushSurface}" />
+    </Style>
+    <Style Selector="Button.winbtn:pressed">
+        <Setter Property="Background" Value="{DynamicResource BrushSurfacePressed}" />
+    </Style>
+    <Style Selector="Button.winbtn.close:pointerover">
+        <Setter Property="Background" Value="#E81123" />
+    </Style>
+    <Style Selector="Button.winbtn.close:pointerover Path">
+        <Setter Property="Fill" Value="White" />
+    </Style>
+
+    <!-- 窗口按钮浅色着色（最小化 / 最大化 / 关闭） -->
+    <Style Selector="Button.winbtn.min">
+        <Setter Property="Background" Value="#CFFAFE" />
+    </Style>
+    <Style Selector="Button.winbtn.min:pointerover">
+        <Setter Property="Background" Value="#A5F3FC" />
+    </Style>
+    <Style Selector="Button.winbtn.min:pressed">
+        <Setter Property="Background" Value="#67E8F9" />
+    </Style>
+    <Style Selector="Button.winbtn.min Border">
+        <Setter Property="Background" Value="#0E7490" />
+    </Style>
+
+    <Style Selector="Button.winbtn.max">
+        <Setter Property="Background" Value="#E0E7FF" />
+    </Style>
+    <Style Selector="Button.winbtn.max:pointerover">
+        <Setter Property="Background" Value="#C7D2FE" />
+    </Style>
+    <Style Selector="Button.winbtn.max:pressed">
+        <Setter Property="Background" Value="#A5B4FC" />
+    </Style>
+    <Style Selector="Button.winbtn.max Path">
+        <Setter Property="Fill" Value="#4338CA" />
+    </Style>
+
+    <Style Selector="Button.winbtn.close">
+        <Setter Property="Background" Value="#FEE2E2" />
+    </Style>
+    <Style Selector="Button.winbtn.close:pressed">
+        <Setter Property="Background" Value="#FCA5A5" />
+    </Style>
+    <Style Selector="Button.winbtn.close Path">
+        <Setter Property="Fill" Value="#B91C1C" />
+    </Style>
+
 </Styles>
+
+
+
+

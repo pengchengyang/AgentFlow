@@ -76,8 +76,8 @@ public partial class MainViewModel : ViewModelBase
         {
             if (string.IsNullOrWhiteSpace(value)
                 || item.Name.Contains(value, StringComparison.OrdinalIgnoreCase)
-                || item.DisplayName.Contains(value, StringComparison.OrdinalIgnoreCase)
-                || item.Category.Contains(value, StringComparison.OrdinalIgnoreCase))
+                || (item.DisplayName?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (item.Category?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
                 PaletteItems.Add(item);
         }
     }
@@ -120,11 +120,11 @@ public partial class MainViewModel : ViewModelBase
     {
         var pluginDir = Path.Combine(AppContext.BaseDirectory, "plugins");
         _pluginLoader.LoadFromDirectory(pluginDir, _registry);
-        foreach (var d in _registry.Nodes.OrderBy(n => n.Category).ThenBy(n => n.Name))
+        foreach (var d in _registry.Nodes.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase))
         {
             var pins = string.Join(", ", d.Pins.Select(p =>
                 $"{(p.Direction == PinDirection.Input ? "in" : "out")}:{p.Name}:{p.DataType}"));
-            _allPaletteItems.Add(new PaletteItem(d.Name, d.DisplayName, d.Category, pins, CategoryColors.Accent(d.Category)));
+            _allPaletteItems.Add(new PaletteItem(d.Name, d.DisplayName, d.Category, pins, CategoryColors.AccentByInitial(d.Name)));
         }
         OnSearchTextChanged(SearchText);
         StatusText = L.Fmt("NodesLoaded", _registry.Nodes.Count);

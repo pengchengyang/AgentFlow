@@ -10,30 +10,92 @@ using AgentFlow.Contracts;
 using AgentFlow.Core;
 using AgentFlow.Models;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgentFlow.ViewModels;
 public static class CategoryColors
 {
-    private static readonly Dictionary<string, Color> Map = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> ResourceKeys = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Input"] = Color.Parse("#3B82F6"),   // Blue
-        ["Logic"] = Color.Parse("#8B5CF6"),   // Purple
-        ["Output"] = Color.Parse("#10B981"),  // Green
-        ["Flow"] = Color.Parse("#0D9488"),    // Teal
-        ["General"] = Color.Parse("#64748B"), // Gray
+        ["Input"] = "BrushCatInput",
+        ["Logic"] = "BrushCatLogic",
+        ["Output"] = "BrushCatOutput",
+        ["Flow"] = "BrushCatFlow",
+        ["General"] = "BrushCatGeneral",
+        ["Amplifier"] = "BrushCatAmplifier",
+        ["AI"] = "BrushCatLogic",        // ReActAgent 等 AI 节点归到紫色逻辑类
+        ["Network"] = "BrushCatFlow",   // Socket 等网络节点归到青色流类
     };
 
-    public static SolidColorBrush Accent(string category) =>
-        new(Map.TryGetValue(category, out var c) ? c : Map["General"]);
+    private static readonly Dictionary<string, Color> Fallback = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Input"] = Color.Parse("#0EA5E9"),
+        ["Logic"] = Color.Parse("#8B5CF6"),
+        ["Output"] = Color.Parse("#F43F5E"),
+        ["Flow"] = Color.Parse("#0D9488"),
+        ["General"] = Color.Parse("#64748B"),
+        ["Amplifier"] = Color.Parse("#F59E0B"),
+        ["AI"] = Color.Parse("#8B5CF6"),
+        ["Network"] = Color.Parse("#0D9488"),
+    };
 
-    /// <summary>Light header tint (accent at 14% opacity).</summary>
-    public static SolidColorBrush AccentTint(string category) =>
-        new(Map.TryGetValue(category, out var c) ? c : Map["General"], 0.14);
+    /// <summary>Resolve a color by resource key, falling back to the hardcoded default if the resource is absent.</summary>
+    private static Color Resolve(string resourceKey, Color fallback)
+    {
+        if (Application.Current?.TryFindResource(resourceKey, out var value) == true &&
+            value is Color c)
+            return c;
+        return fallback;
+    }
+
+    private static Color ColorFor(string category)
+    {
+        var key = ResourceKeys.TryGetValue(category, out var k) ? k : "BrushCatGeneral";
+        var fb = Fallback.TryGetValue(category, out var c) ? c : Fallback["General"];
+        return Resolve(key, fb);
+    }
+
+    public static SolidColorBrush Accent(string category) => new(ColorFor(category));
+
+    /// <summary>Light header tint (accent at 18% opacity).</summary>
+    public static SolidColorBrush AccentTint(string category) => new(ColorFor(category), 0.18);
+
+    /// <summary>Component-list icon color, one per initial letter (A..Z).</summary>
+    private static readonly Dictionary<char, string> LetterColors = new()
+    {
+        ['A'] = "#0EA5E9", ['B'] = "#8B5CF6", ['C'] = "#F43F5E", ['D'] = "#0D9488",
+        ['E'] = "#F59E0B", ['F'] = "#6366F1", ['G'] = "#10B981", ['H'] = "#EC4899",
+        ['I'] = "#14B8A6", ['J'] = "#F97316", ['K'] = "#3B82F6", ['L'] = "#EF4444",
+        ['M'] = "#22C55E", ['N'] = "#A855F7", ['O'] = "#06B6D4", ['P'] = "#84CC16",
+        ['Q'] = "#E11D48", ['R'] = "#2563EB", ['S'] = "#7C3AED", ['T'] = "#DC2626",
+        ['U'] = "#059669", ['V'] = "#D946EF", ['W'] = "#0891B2", ['X'] = "#CA8A04",
+        ['Y'] = "#4F46E5", ['Z'] = "#EA580C",
+    };
+
+    private static Color ColorForLetter(char letter)
+    {
+        var upper = char.ToUpperInvariant(letter);
+        return LetterColors.TryGetValue(upper, out var hex) ? Color.Parse(hex) : Color.Parse("#64748B");
+    }
+
+    /// <summary>Take the first letter of the name, matching the UI icon.</summary>
+    private static char InitialLetter(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return '\0';
+        foreach (var ch in name)
+            if (char.IsLetter(ch))
+                return char.ToUpperInvariant(ch);
+        return '\0';
+    }
+
+    /// <summary>Icon accent for a node name, colored by its initial letter.</summary>
+    public static SolidColorBrush AccentByInitial(string name) => new(ColorForLetter(InitialLetter(name)));
+
+    /// <summary>Header tint matching the initial-letter icon color (18% opacity), so the canvas card matches the sidebar icon.</summary>
+    public static SolidColorBrush AccentTintByInitial(string name) => new(ColorForLetter(InitialLetter(name)), 0.18);
 }
-
-/// <summary>Node parameter (an auto-generated editor row in the property panel).</summary>
 public partial class ParameterViewModel : ViewModelBase
 {
     /// <summary>The contract-layer parameter declaration (non-UI data).</summary>
@@ -147,8 +209,9 @@ public partial class NodeViewModel : ViewModelBase
     {
         Model = model;
         DisplayName = model.Node.DisplayName ?? "";
-        Accent = CategoryColors.Accent(model.Category);
-        AccentTint = CategoryColors.AccentTint(model.Category);
+        // Match the sidebar icon color: accent/tint/pins all follow the node-name initial letter, not the category.
+        Accent = CategoryColors.AccentByInitial(Title);
+        AccentTint = CategoryColors.AccentTintByInitial(Title);
 
         foreach (var pin in model.Inputs)
             Inputs.Add(new PinViewModel(this, pin));
@@ -189,3 +252,4 @@ public partial class NodeViewModel : ViewModelBase
         RefreshSectionFlags();
     }
 }
+

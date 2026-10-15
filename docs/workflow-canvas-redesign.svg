@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="760" viewBox="0 0 1240 760" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.10"/></filter>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#7c3aed" flood-opacity="0.35"/></filter>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><circle cx="5" cy="5" r="3" fill="#7c3aed"/></marker>
+  </defs>
+
+  <rect width="1240" height="760" fill="#f6f8fb"/>
+  <text x="40" y="46" font-size="26" font-weight="700" fill="#0f172a">Workflow Canvas 配色建议（浅色 · 现代）</text>
+  <text x="40" y="70" font-size="14" fill="#64748b">参考 xyflow / ReactFlow / n8n 主流风格：浅灰画布 + 白色卡片 + 品牌色选中 + 分类色端口与连线</text>
+
+  <!-- ================= 画布示意 ================= -->
+  <rect x="40" y="90" width="700" height="600" rx="16" fill="#F1F5F9" stroke="#E2E8F0" stroke-width="1"/>
+  <!-- 点阵 -->
+  <g fill="#CBD5E1">
+    <circle cx="70" cy="120" r="1.6"/><circle cx="110" cy="120" r="1.6"/><circle cx="150" cy="120" r="1.6"/><circle cx="190" cy="120" r="1.6"/><circle cx="230" cy="120" r="1.6"/><circle cx="270" cy="120" r="1.6"/><circle cx="310" cy="120" r="1.6"/><circle cx="350" cy="120" r="1.6"/><circle cx="390" cy="120" r="1.6"/><circle cx="430" cy="120" r="1.6"/><circle cx="470" cy="120" r="1.6"/><circle cx="510" cy="120" r="1.6"/><circle cx="550" cy="120" r="1.6"/><circle cx="590" cy="120" r="1.6"/><circle cx="630" cy="120" r="1.6"/><circle cx="670" cy="120" r="1.6"/>
+    <circle cx="70" cy="160" r="1.6"/><circle cx="110" cy="160" r="1.6"/><circle cx="150" cy="160" r="1.6"/><circle cx="190" cy="160" r="1.6"/><circle cx="230" cy="160" r="1.6"/><circle cx="270" cy="160" r="1.6"/><circle cx="310" cy="160" r="1.6"/><circle cx="350" cy="160" r="1.6"/><circle cx="390" cy="160" r="1.6"/><circle cx="430" cy="160" r="1.6"/><circle cx="470" cy="160" r="1.6"/><circle cx="510" cy="160" r="1.6"/><circle cx="550" cy="160" r="1.6"/><circle cx="590" cy="160" r="1.6"/><circle cx="630" cy="160" r="1.6"/><circle cx="670" cy="160" r="1.6"/>
+    <circle cx="70" cy="200" r="1.6"/><circle cx="110" cy="200" r="1.6"/><circle cx="150" cy="200" r="1.6"/><circle cx="190" cy="200" r="1.6"/><circle cx="230" cy="200" r="1.6"/><circle cx="270" cy="200" r="1.6"/><circle cx="310" cy="200" r="1.6"/><circle cx="350" cy="200" r="1.6"/><circle cx="390" cy="200" r="1.6"/><circle cx="430" cy="200" r="1.6"/><circle cx="470" cy="200" r="1.6"/><circle cx="510" cy="200" r="1.6"/><circle cx="550" cy="200" r="1.6"/><circle cx="590" cy="200" r="1.6"/><circle cx="630" cy="200" r="1.6"/><circle cx="670" cy="200" r="1.6"/>
+    <circle cx="70" cy="240" r="1.6"/><circle cx="110" cy="240" r="1.6"/><circle cx="150" cy="240" r="1.6"/><circle cx="190" cy="240" r="1.6"/><circle cx="230" cy="240" r="1.6"/><circle cx="270" cy="240" r="1.6"/><circle cx="310" cy="240" r="1.6"/><circle cx="350" cy="240" r="1.6"/><circle cx="390" cy="240" r="1.6"/><circle cx="430" cy="240" r="1.6"/><circle cx="470" cy="240" r="1.6"/><circle cx="510" cy="240" r="1.6"/><circle cx="550" cy="240" r="1.6"/><circle cx="590" cy="240" r="1.6"/><circle cx="630" cy="240" r="1.6"/><circle cx="670" cy="240" r="1.6"/>
+    <circle cx="70" cy="280" r="1.6"/><circle cx="110" cy="280" r="1.6"/><circle cx="150" cy="280" r="1.6"/><circle cx="190" cy="280" r="1.6"/><circle cx="230" cy="280" r="1.6"/><circle cx="270" cy="280" r="1.6"/><circle cx="310" cy="280" r="1.6"/><circle cx="350" cy="280" r="1.6"/><circle cx="390" cy="280" r="1.6"/><circle cx="430" cy="280" r="1.6"/><circle cx="470" cy="280" r="1.6"/><circle cx="510" cy="280" r="1.6"/><circle cx="550" cy="280" r="1.6"/><circle cx="590" cy="280" r="1.6"/><circle cx="630" cy="280" r="1.6"/><circle cx="670" cy="280" r="1.6"/>
+    <circle cx="70" cy="320" r="1.6"/><circle cx="110" cy="320" r="1.6"/><circle cx="150" cy="320" r="1.6"/><circle cx="190" cy="320" r="1.6"/><circle cx="230" cy="320" r="1.6"/><circle cx="270" cy="320" r="1.6"/><circle cx="310" cy="320" r="1.6"/><circle cx="350" cy="320" r="1.6"/><circle cx="390" cy="320" r="1.6"/><circle cx="430" cy="320" r="1.6"/><circle cx="470" cy="320" r="1.6"/><circle cx="510" cy="320" r="1.6"/><circle cx="550" cy="320" r="1.6"/><circle cx="590" cy="320" r="1.6"/><circle cx="630" cy="320" r="1.6"/><circle cx="670" cy="320" r="1.6"/>
+    <circle cx="70" cy="360" r="1.6"/><circle cx="110" cy="360" r="1.6"/><circle cx="150" cy="360" r="1.6"/><circle cx="190" cy="360" r="1.6"/><circle cx="230" cy="360" r="1.6"/><circle cx="270" cy="360" r="1.6"/><circle cx="310" cy="360" r="1.6"/><circle cx="350" cy="360" r="1.6"/><circle cx="390" cy="360" r="1.6"/><circle cx="430" cy="360" r="1.6"/><circle cx="470" cy="360" r="1.6"/><circle cx="510" cy="360" r="1.6"/><circle cx="550" cy="360" r="1.6"/><circle cx="590" cy="360" r="1.6"/><circle cx="630" cy="360" r="1.6"/><circle cx="670" cy="360" r="1.6"/>
+    <circle cx="70" cy="400" r="1.6"/><circle cx="110" cy="400" r="1.6"/><circle cx="150" cy="400" r="1.6"/><circle cx="190" cy="400" r="1.6"/><circle cx="230" cy="400" r="1.6"/><circle cx="270" cy="400" r="1.6"/><circle cx="310" cy="400" r="1.6"/><circle cx="350" cy="400" r="1.6"/><circle cx="390" cy="400" r="1.6"/><circle cx="430" cy="400" r="1.6"/><circle cx="470" cy="400" r="1.6"/><circle cx="510" cy="400" r="1.6"/><circle cx="550" cy="400" r="1.6"/><circle cx="590" cy="400" r="1.6"/><circle cx="630" cy="400" r="1.6"/><circle cx="670" cy="400" r="1.6"/>
+    <circle cx="70" cy="440" r="1.6"/><circle cx="110" cy="440" r="1.6"/><circle cx="150" cy="440" r="1.6"/><circle cx="190" cy="440" r="1.6"/><circle cx="230" cy="440" r="1.6"/><circle cx="270" cy="440" r="1.6"/><circle cx="310" cy="440" r="1.6"/><circle cx="350" cy="440" r="1.6"/><circle cx="390" cy="440" r="1.6"/><circle cx="430" cy="440" r="1.6"/><circle cx="470" cy="440" r="1.6"/><circle cx="510" cy="440" r="1.6"/><circle cx="550" cy="440" r="1.6"/><circle cx="590" cy="440" r="1.6"/><circle cx="630" cy="440" r="1.6"/><circle cx="670" cy="440" r="1.6"/>
+  </g>
+
+  <!-- 连线 1（默认态：浅灰蓝） -->
+  <path d="M245 200 C 285 200, 295 255, 335 255" fill="none" stroke="#A8B3C2" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- 连线 2（选中/高亮态：品牌紫 + 端点） -->
+  <path d="M545 255 C 585 255, 595 200, 635 200" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="545" cy="255" r="4.5" fill="#7c3aed"/>
+  <circle cx="635" cy="200" r="4.5" fill="#7c3aed"/>
+
+  <!-- 节点 1：Data Source（未选中，天蓝分类） -->
+  <g filter="url(#soft)">
+    <rect x="75" y="150" width="170" height="100" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="75" y="150" width="170" height="34" rx="12" fill="#EFF6FF"/>
+    <rect x="75" y="176" width="170" height="8" fill="#EFF6FF"/>
+    <circle cx="100" cy="167" r="9" fill="#0EA5E9"/>
+    <text x="100" y="171" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">D</text>
+    <text x="118" y="171" font-size="13" font-weight="600" fill="#0F172A">Data Source</text>
+    <text x="90" y="210" font-size="10.5" fill="#64748B">string · 1 output</text>
+    <!-- 输出端口（右侧，天蓝实心） -->
+    <circle cx="245" cy="200" r="5" fill="#0EA5E9" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+
+  <!-- 节点 2：String Processor（选中态：品牌紫描边 + 外发光） -->
+  <g filter="url(#glow)">
+    <rect x="335" y="205" width="210" height="100" rx="12" fill="#FFFFFF" stroke="#7c3aed" stroke-width="2"/>
+    <rect x="335" y="205" width="210" height="34" rx="12" fill="#F5F3FF"/>
+    <rect x="335" y="231" width="210" height="8" fill="#F5F3FF"/>
+    <circle cx="360" cy="222" r="9" fill="#8B5CF6"/>
+    <text x="360" y="226" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">P</text>
+    <text x="378" y="226" font-size="13" font-weight="600" fill="#0F172A">String Processor</text>
+    <text x="350" y="266" font-size="10.5" fill="#64748B">in: string · out: string</text>
+    <!-- 输入端口（左，已连接紫色） -->
+    <circle cx="335" cy="255" r="5" fill="#7c3aed" stroke="#FFFFFF" stroke-width="2"/>
+    <!-- 输出端口（右，紫） -->
+    <circle cx="545" cy="255" r="5" fill="#8B5CF6" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+
+  <!-- 节点 3：Log Output（未选中，玫红分类） -->
+  <g filter="url(#soft)">
+    <rect x="635" y="150" width="170" height="100" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+    <rect x="635" y="150" width="170" height="34" rx="12" fill="#FFF1F2"/>
+    <rect x="635" y="176" width="170" height="8" fill="#FFF1F2"/>
+    <circle cx="660" cy="167" r="9" fill="#F43F5E"/>
+    <text x="660" y="171" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">L</text>
+    <text x="678" y="171" font-size="13" font-weight="600" fill="#0F172A">Log Output</text>
+    <text x="650" y="210" font-size="10.5" fill="#64748B">in: string</text>
+    <!-- 输入端口（左，已连接玫红） -->
+    <circle cx="635" cy="200" r="5" fill="#F43F5E" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+
+  <!-- 图例说明 -->
+  <text x="70" y="520" font-size="13" font-weight="700" fill="#0F172A">说明</text>
+  <circle cx="78" cy="544" r="5" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/><text x="92" y="548" font-size="12" fill="#334155">节点卡片 · 白底 · 圆角12 · 细边框 · 柔和投影</text>
+  <circle cx="78" cy="570" r="5" fill="#7c3aed"/><text x="92" y="574" font-size="12" fill="#334155">选中态 · 品牌紫描边 + 外发光</text>
+  <path d="M70 594 L150 594" stroke="#A8B3C2" stroke-width="2.2"/><text x="92" y="598" font-size="12" fill="#334155">连线默认 · 浅灰蓝 #A8B3C2</text>
+  <path d="M70 618 L150 618" stroke="#7c3aed" stroke-width="3"/><text x="92" y="622" font-size="12" fill="#334155">连线选中 · 品牌紫 #7C3AED</text>
+  <circle cx="78" cy="642" r="5" fill="#0EA5E9"/><text x="92" y="646" font-size="12" fill="#334155">分类色端口（输入=天蓝 / 处理=紫 / 输出=玫红）</text>
+
+  <!-- ================= 色板 ================= -->
+  <rect x="780" y="90" width="420" height="600" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+  <text x="810" y="126" font-size="16" font-weight="700" fill="#0F172A">配色建议色板</text>
+
+  <g font-size="12" fill="#334155">
+    <!-- 画布 -->
+    <rect x="810" y="148" width="40" height="26" rx="6" fill="#F6F8FB" stroke="#E2E8F0"/><text x="864" y="166" font-weight="600" fill="#0F172A">画布背景</text><text x="864" y="181" fill="#94A3B8">#F6F8FB · 点阵 #DCE3EC</text>
+    <!-- 卡片 -->
+    <rect x="810" y="205" width="40" height="26" rx="6" fill="#FFFFFF" stroke="#E2E8F0"/><text x="864" y="223" font-weight="600" fill="#0F172A">节点卡片</text><text x="864" y="238" fill="#94A3B8">#FFFFFF · 边框 #E2E8F0</text>
+    <!-- 品牌紫 -->
+    <rect x="810" y="262" width="40" height="26" rx="6" fill="#7C3AED"/><text x="864" y="280" font-weight="600" fill="#0F172A">品牌 / 选中</text><text x="864" y="295" fill="#94A3B8">#7C3AED · 悬停 #6D28D9</text>
+    <!-- 连线 -->
+    <rect x="810" y="319" width="40" height="26" rx="6" fill="#A8B3C2"/><text x="864" y="337" font-weight="600" fill="#0F172A">连线默认</text><text x="864" y="352" fill="#94A3B8">#A8B3C2</text>
+    <!-- 输入 -->
+    <rect x="810" y="376" width="40" height="26" rx="6" fill="#0EA5E9"/><text x="864" y="394" font-weight="600" fill="#0F172A">输入 / 数据源</text><text x="864" y="409" fill="#94A3B8">#0EA5E9</text>
+    <!-- 处理 -->
+    <rect x="810" y="433" width="40" height="26" rx="6" fill="#8B5CF6"/><text x="864" y="451" font-weight="600" fill="#0F172A">处理 / 逻辑</text><text x="864" y="466" fill="#94A3B8">#8B5CF6</text>
+    <!-- 输出 -->
+    <rect x="810" y="490" width="40" height="26" rx="6" fill="#F43F5E"/><text x="864" y="508" font-weight="600" fill="#0F172A">输出 / 日志</text><text x="864" y="523" fill="#94A3B8">#F43F5E</text>
+    <!-- 通用 -->
+    <rect x="810" y="547" width="40" height="26" rx="6" fill="#10B981"/><text x="864" y="565" font-weight="600" fill="#0F172A">通用 / 成功</text><text x="864" y="580" fill="#94A3B8">#10B981</text>
+    <!-- 文字 -->
+    <rect x="810" y="604" width="40" height="26" rx="6" fill="#0F172A"/><text x="864" y="622" font-weight="600" fill="#0F172A">主文字</text><text x="864" y="637" fill="#94A3B8">#0F172A · 次要 #64748B · 弱 #94A3B8</text>
+  </g>
+</svg>

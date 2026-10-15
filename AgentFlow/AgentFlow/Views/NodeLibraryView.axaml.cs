@@ -21,6 +21,7 @@ public partial class NodeLibraryView : UserControl
     private const double DragThreshold = 4.0;
     private PointerPressedEventArgs? _pendingPress;
     private PaletteItem? _pendingItem;
+    private Border? _selectedBorder;
 
     public NodeLibraryView()
     {
@@ -29,6 +30,23 @@ public partial class NodeLibraryView : UserControl
 
     private void OnItemPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        // 单击切换选中态：再点当前选中项则取消，否则选中新项并还原旧项。
+        if (sender is Border border)
+        {
+            if (_selectedBorder == border)
+            {
+                border.Classes.Remove("selected");
+                _selectedBorder = null;
+            }
+            else
+            {
+                if (_selectedBorder != null)
+                    _selectedBorder.Classes.Remove("selected");
+                border.Classes.Add("selected");
+                _selectedBorder = border;
+            }
+        }
+
         if (sender is Control { DataContext: PaletteItem item })
         {
             _pendingPress = e;

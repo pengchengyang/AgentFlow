@@ -36,44 +36,40 @@ public partial class CanvasView : UserControl
 /// </summary>
 public sealed class GraphCanvas : Control
 {
-    // ---- Layout constants ----
-    private const double NodeWidth = 280;
-    private const double PadX = 16;
-    private const double HeaderRowName = 42;
-    private const double HeaderRowUuid = 58;
-    private const double HeaderRowDependsOn = 74;
-    private const double HeaderLineHeight = 19; // text height + gap below the last header row
-    private const double InputRow = 32;
+    // ---- Layout constants (design: compact 240px card with a single title row) ----
+    private const double NodeWidth = 240;
+    private const double PadX = 14;
+    private const double HeaderHeight = 36;   // title row only: title + "#instance" on the right
+    private const double InputRow = 28;
     private const double OutputRow = 28;
 
-    private static readonly Color ColorBg = Color.FromArgb(220, 247, 250, 253);
-    private static readonly Color ColorDot = Color.Parse("#E4DBCD");
-    private static readonly Color ColorTitle = Color.Parse("#111827");
-    private static readonly Color ColorName = Color.Parse("#374151");
-    private static readonly Color ColorMuted = Color.Parse("#6B7280");
-    private static readonly Color ColorBorder = Color.Parse("#94A3B8");
-    private static readonly Color ColorDivider = Color.Parse("#F3F4F6");
-    private static readonly Color ColorSelected = Color.Parse("#F59E0B");
-    private static readonly Color ColorLine = Color.Parse("#3F3F46");
-    private static readonly Color ColorIn = Color.Parse("#3B82F6");
-    private static readonly Color ColorOut = Color.Parse("#8B5CF6");
-    private static readonly Color ColorPinBorder = Color.Parse("#D1D5DB");
-    private static readonly Color ColorStar = Color.Parse("#111827");
-
-    // Frosted-glass (Win7 Aero style) node fill: bright near-white at the top fading to a
-    // cooler, more translucent blue-white at the bottom, so it reads as "glass".
-    private static readonly IBrush NodeGlassBrush = new LinearGradientBrush
+    // ---- Theme colors: resolved once from Colors.axaml resources (fall back to defaults) ----
+    private static Color R(string key, Color fallback)
     {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-        GradientStops =
-        {
-            new GradientStop(Color.FromArgb(235, 255, 255, 255), 0.0),
-            new GradientStop(Color.FromArgb(155, 240, 246, 252), 1.0)
-        }
-    };
+        if (Application.Current?.TryFindResource(key, out var v) == true && v is Color c)
+            return c;
+        return fallback;
+    }
+
+    private static readonly Color ColorBg = R("CanvasBg", Color.Parse("#F6F8FB"));
+    private static readonly Color ColorTitle = R("NodeTitle", Color.Parse("#0F172A"));
+    private static readonly Color ColorName = R("NodeName", Color.Parse("#64748B"));
+    private static readonly Color ColorMuted = R("NodeMuted", Color.Parse("#94A3B8"));
+    private static readonly Color ColorBorder = R("NodeBorder", Color.Parse("#E2E8F0"));
+    private static readonly Color ColorDivider = R("NodeDivider", Color.Parse("#F1F2F5"));
+    private static readonly Color ColorSelected = R("NodeSelected", Color.Parse("#7C3AED"));
+    private static readonly Color ColorLine = R("ConnLine", Color.Parse("#A8B3C2"));
+    private static readonly Color ColorIn = R("PinInput", Color.Parse("#0EA5E9"));
+    private static readonly Color ColorOut = R("PinOutput", Color.Parse("#8B5CF6"));
+    private static readonly Color ColorPinBorder = R("PinBorder", Color.Parse("#CBD5E1"));
+    private static readonly Color ColorShadow = R("NodeShadow", Color.Parse("#33243266"));
+    private static readonly Color ColorGlow = Color.Parse("#EDE9FE");
+    private static readonly Color ColorSelectedBorder = Color.Parse("#8B5CF6");
 
 
+    // App font stack (Inter for Latin, Noto CJK fallback) — mirrors the global App.axaml font so the
+    // self-drawn canvas text matches the rest of the UI instead of using FontFamily.Default.
+    private static readonly FontFamily AppFont = new("avares://AgentFlow/Assets/Fonts/Inter-Regular.otf#Inter, avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC");
     private static readonly StreamGeometry StarGeometry = StreamGeometry.Parse(
         "M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z");
 
@@ -113,12 +109,8 @@ public sealed class GraphCanvas : Control
 
     }
 
-    /// <summary>Header divider Y (relative to node top): below the last header text row.</summary>
-    private static double ComputeHeaderBottom(NodeViewModel node)
-    {
-        double lastRow = node.DependsOn > 0 ? HeaderRowDependsOn : HeaderRowUuid;
-        return lastRow + HeaderLineHeight;
-    }
+    /// <summary>Header height (relative to node top). The design card shows only the title row.</summary>
+    private static double ComputeHeaderBottom(NodeViewModel node) => HeaderHeight;
 
     private NodeLayout ComputeLayout(NodeViewModel node)
     {
@@ -128,11 +120,13 @@ public sealed class GraphCanvas : Control
         int nIn = node.Inputs.Count;
         int nOut = node.Outputs.Count;
         int rows = Math.Max(nIn, nOut);
-        double topPad = 6;
+        double topPad = 4;
+        double metaRows = 2;   // Name + DependsOn lines between header and pin rows
+        double metaH = 18;
         double content = rows * InputRow;
         double headerBottom = ComputeHeaderBottom(node);
         l.HeaderBottom = headerBottom;
-        double bodyStart = headerBottom + topPad;
+        double bodyStart = headerBottom + topPad + metaRows * metaH;
 
         // Left inputs: vertically centered within the body span based on input count.
         if (nIn > 0)
@@ -158,7 +152,7 @@ public sealed class GraphCanvas : Control
             }
         }
 
-        double y = bodyStart + content + 12;
+        double y = bodyStart + content + 10;
         l.Height = y;
         l.Body = new Rect(loc.X, loc.Y, NodeWidth, y);
         _layouts[node] = l;
@@ -183,14 +177,14 @@ public sealed class GraphCanvas : Control
 
         using (ctx.PushTransform(ViewTransform()))
         {
-            // Dot grid removed; keep everything else unchanged.
             RefreshLayouts();
 
             foreach (var conn in vm.Connections)
                 DrawBezier(ctx, conn.Source.Anchor, conn.Target.Anchor, conn.IsSelected);
 
             if (vm.IsConnecting && vm.ConnectSource is not null)
-                DrawBezier(ctx, vm.ConnectSource.Anchor, vm.Pointer, false, dashed: true);
+                DrawBezier(ctx, vm.ConnectSource.Anchor, vm.Pointer, false, dashed: true,
+                    accent: vm.ConnectSource.Node.Accent.Color);
 
             foreach (var n in BottomFirstNodes(vm))
                 DrawNode(ctx, n);
@@ -212,87 +206,123 @@ public sealed class GraphCanvas : Control
         return new Point((p.X - vm.PanX) / vm.Zoom, (p.Y - vm.PanY) / vm.Zoom);
     }
 
-    private void DrawDots(DrawingContext ctx)
-    {
-        var vm = Vm;
-        if (vm is null) return;
-        var brush = new SolidColorBrush(ColorDot);
-        double spacing = 20;
-        // Keep on-screen spacing roughly constant while zooming so dot density stays stable
-        // and the render loop stays bounded even at low zoom (smooth wheel-zoom).
-        while (spacing * vm.Zoom < 14) spacing *= 2;
-        double ox = Math.Floor((0 - vm.PanX) / vm.Zoom / spacing) * spacing;
-        double oy = Math.Floor((0 - vm.PanY) / vm.Zoom / spacing) * spacing;
-        double w = Bounds.Width / vm.Zoom;
-        double h = Bounds.Height / vm.Zoom;
-        for (double x = ox; x < w; x += spacing)
-            for (double y = oy; y < h; y += spacing)
-                ctx.DrawEllipse(brush, null, new Point(x, y), 1, 1);
-    }
-
     private void DrawNode(DrawingContext ctx, NodeViewModel node)
     {
         var l = _layouts[node];
         var b = l.Body;
 
-        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(22, 0, 0, 0)), null,
-            new RoundedRect(new Rect(b.X, b.Y + 3, b.Width, b.Height), 12, 12));
+        const double radius = 16;
 
-                ctx.DrawRectangle(NodeGlassBrush,
-            new Pen(new SolidColorBrush(node.IsSelected ? ColorSelected : ColorBorder), node.IsSelected ? 2 : 1),
-            new RoundedRect(b, 12, 12));
+        // Soft, diffused drop shadow (airy design: two offset layers).
+        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(0x0A, 0x0F, 0x17, 0x2A)), null,
+            new RoundedRect(new Rect(b.X, b.Y + 6, b.Width, b.Height), radius, radius));
+        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(0x14, 0x0F, 0x17, 0x2A)), null,
+            new RoundedRect(new Rect(b.X, b.Y + 3, b.Width, b.Height), radius, radius));
 
-        // Aero top highlight (thin bright line just inside the rounded top edge).
-        ctx.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(170, 255, 255, 255)), 2),
-            new Point(b.X + 12, b.Y + 1.5), new Point(b.X + b.Width - 12, b.Y + 1.5));
+        // Selected glow: soft amber halo behind the card (ResetBg #FEF3C7).
+        if (node.IsSelected)
+        {
+            var glow = new Rect(b.X - 4, b.Y - 4, b.Width + 8, b.Height + 8);
+            ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(0x3D, ColorGlow.R, ColorGlow.G, ColorGlow.B)),
+                null, new RoundedRect(glow, radius + 4, radius + 4));
+        }
+
+        // White card: thin gray border normally, purple ring when selected.
+        ctx.DrawRectangle(Brushes.White,
+            new Pen(new SolidColorBrush(node.IsSelected ? ColorSelectedBorder : ColorBorder), node.IsSelected ? 1.4 : 1.0),
+            new RoundedRect(b, radius, radius));
 
         double x = b.X, y = b.Y;
 
-        // Star icon (star.svg) in its original dark color, drawn as geometry.
-        const double starW = 16;
-        var sb = StarGeometry.Bounds;
-        double starScale = starW / sb.Width;
-        using (ctx.PushTransform(Matrix.CreateScale(starScale, starScale) *
-                            Matrix.CreateTranslation(x + PadX - sb.X * starScale, y + 16 - sb.Y * starScale)))
+        // Header tint band: category color at low opacity, only the top corners rounded.
+        var hgeo = new StreamGeometry();
+        using (var g = hgeo.Open())
         {
-            ctx.DrawGeometry(new SolidColorBrush(ColorStar), null, StarGeometry);
+            g.BeginFigure(new Point(x, y + HeaderHeight), true);
+            g.LineTo(new Point(x, y + radius));
+            g.ArcTo(new Point(x + radius, y), new Size(radius, radius), 0, false, SweepDirection.Clockwise);
+            g.LineTo(new Point(x + NodeWidth - radius, y));
+            g.ArcTo(new Point(x + NodeWidth, y + radius), new Size(radius, radius), 0, false, SweepDirection.Clockwise);
+            g.LineTo(new Point(x + NodeWidth, y + HeaderHeight));
+            g.EndFigure(true);
         }
-        DrawText(ctx, node.Title, new Point(x + PadX + 22, y + 15), new SolidColorBrush(ColorTitle), 14, FontWeight.SemiBold);
-        double instW = TextWidth(node.InstanceId.ToString(), 12);
-        DrawText(ctx, node.InstanceId.ToString(), new Point(x + NodeWidth - PadX - instW, y + 17), new SolidColorBrush(ColorMuted), 12);
-        DrawText(ctx, node.Name, new Point(x + PadX, y + 42), new SolidColorBrush(ColorName), 12);
-        DrawText(ctx, node.Uuid, new Point(x + PadX, y + 58), new SolidColorBrush(ColorMuted), 11);
-        if (node.DependsOn > 0)
-            DrawText(ctx, $"DependsOn {node.DependsOn}", new Point(x + PadX, y + 74), new SolidColorBrush(ColorName), 11);
-        ctx.DrawLine(new Pen(new SolidColorBrush(ColorDivider)),
-            new Point(x + PadX, y + l.HeaderBottom), new Point(x + NodeWidth - PadX, y + l.HeaderBottom));
+        ctx.DrawGeometry(node.AccentTint, null, hgeo);
 
+        // Circular badge: solid accent color + white initial letter of the node Name.
+        const double badgeR = 11;
+        var badgeCenter = new Point(x + PadX + badgeR, y + HeaderHeight / 2);
+        ctx.DrawEllipse(node.Accent, null, badgeCenter, badgeR, badgeR);
+        string letter = FirstLetter(node.Name);
+        double lw = TextWidth(letter, 11, FontWeight.Bold);
+        DrawText(ctx, letter, new Point(badgeCenter.X - lw / 2, badgeCenter.Y - 7),
+            Brushes.White, 11, FontWeight.Bold);
+
+        // Title (right of the badge) = DisplayName (fallback to Name); "#instance" tag on the right.
+        DrawText(ctx, node.Title, new Point(badgeCenter.X + badgeR + 8, y + 12.5),
+            new SolidColorBrush(ColorTitle), 11, FontWeight.SemiBold);
+        var idText = $"#{node.InstanceId}";
+        double idW = TextWidth(idText, 9);
+        DrawText(ctx, idText, new Point(x + NodeWidth - PadX - idW, y + 15),
+            new SolidColorBrush(ColorMuted), 9);
+
+        // Meta rows below the header tint: Name (type id) and DependsOn.
+        DrawText(ctx, node.Name, new Point(x + PadX, y + HeaderHeight + 6),
+            new SolidColorBrush(ColorName), 10);
+        DrawText(ctx, $"DependsOn: {node.DependsOn}", new Point(x + PadX, y + HeaderHeight + 24),
+            new SolidColorBrush(ColorMuted), 10);
+
+        // Pin rows: hollow / filled dot in the node's category color, straight on the card edge.
         for (int i = 0; i < node.Inputs.Count; i++)
         {
             var pin = node.Inputs[i];
-            DrawPinDot(ctx, pin.Anchor, pin.IsConnected, ColorIn);
-            DrawText(ctx, pin.Name, new Point(x + 18, pin.Anchor.Y - 8), new SolidColorBrush(ColorTitle), 12);
+            DrawPinDot(ctx, pin.Anchor, pin.IsConnected, node.Accent.Color);
+            DrawText(ctx, pin.Name, new Point(x + 14, pin.Anchor.Y - 6), new SolidColorBrush(ColorName), 10);
         }
-
 
         for (int i = 0; i < node.Outputs.Count; i++)
         {
             var pin = node.Outputs[i];
-            DrawPinDot(ctx, pin.Anchor, pin.IsConnected, ColorOut);
-            double w = TextWidth(pin.Name, 12);
-            DrawText(ctx, pin.Name, new Point(pin.Anchor.X - w - 10, pin.Anchor.Y - 8), new SolidColorBrush(ColorTitle), 12);
+            DrawPinDot(ctx, pin.Anchor, pin.IsConnected, node.Accent.Color);
+            double w = TextWidth(pin.Name, 10);
+            DrawText(ctx, pin.Name, new Point(pin.Anchor.X - w - 12, pin.Anchor.Y - 6), new SolidColorBrush(ColorName), 10);
         }
     }
 
+    /// <summary>First alphabetic letter of the node title, uppercased (for the circular header badge).</summary>
+    private static string FirstLetter(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return "?";
+        foreach (var ch in title)
+            if (char.IsLetter(ch)) return char.ToUpperInvariant(ch).ToString();
+        return "?";
+    }
+
+    /// <summary>Linear-interpolate <paramref name="c"/> toward <paramref name="target"/> by <paramref name="t"/> (0..1).</summary>
+    private static Color Mix(Color c, Color target, double t)
+    {
+        double Inv(double a, double b) => a + (b - a) * t;
+        return Color.FromArgb(
+            (byte)Inv(c.A, target.A),
+            (byte)Inv(c.R, target.R),
+            (byte)Inv(c.G, target.G),
+            (byte)Inv(c.B, target.B));
+    }
     private static void DrawPinDot(DrawingContext ctx, Point c, bool connected, Color accent)
     {
         if (connected)
-            ctx.DrawEllipse(new SolidColorBrush(accent), null, c, 6, 6);
+        {
+            // Soft accent halo behind the solid dot.
+            ctx.DrawEllipse(new SolidColorBrush(Color.FromArgb(0x33, accent.R, accent.G, accent.B)), null, c, 7.5, 7.5);
+            ctx.DrawEllipse(new SolidColorBrush(accent), null, c, 5, 5);
+        }
         else
-            ctx.DrawEllipse(Brushes.White, new Pen(new SolidColorBrush(ColorPinBorder), 1.5), c, 5, 5);
+        {
+            ctx.DrawEllipse(new SolidColorBrush(Color.FromArgb(0x22, accent.R, accent.G, accent.B)), null, c, 7, 7);
+            ctx.DrawEllipse(Brushes.White, new Pen(new SolidColorBrush(Mix(accent, Colors.White, 0.35)), 1.2), c, 4, 4);
+        }
     }
 
-    private void DrawBezier(DrawingContext ctx, Point start, Point end, bool selected, bool dashed = false)
+    private void DrawBezier(DrawingContext ctx, Point start, Point end, bool selected, bool dashed = false, Color? accent = null)
     {
         var (p1, p2) = BezierControlPoints(start, end);
         var geo = new StreamGeometry();
@@ -302,7 +332,10 @@ public sealed class GraphCanvas : Control
             g.CubicBezierTo(p1, p2, end);
             g.EndFigure(false);
         }
-        var pen = new Pen(new SolidColorBrush(selected ? ColorSelected : ColorLine), selected ? 2.6 : 1.8);
+        // Palette: default gray-blue (#A8B3C2), selected brand purple (#7C3AED);
+        // the dashed connect-preview line keeps its source accent so the user sees where it originates.
+        var color = selected ? ColorSelected : (accent ?? ColorLine);
+        var pen = new Pen(new SolidColorBrush(color), selected ? 2.0 : 1.5);
         if (dashed)
             pen.DashStyle = new DashStyle(new double[] { 4, 3 }, 0);
         ctx.DrawGeometry(null, pen, geo);
@@ -349,14 +382,14 @@ public sealed class GraphCanvas : Control
     private void DrawText(DrawingContext ctx, string text, Point pos, IBrush brush, double size, FontWeight weight = FontWeight.Normal)
     {
         var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface(FontFamily.Default, FontStyle.Normal, weight), size, brush);
+            new Typeface(AppFont, FontStyle.Normal, weight), size, brush);
         ctx.DrawText(ft, pos);
     }
 
     private double TextWidth(string text, double size, FontWeight weight = FontWeight.Normal)
     {
         var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface(FontFamily.Default, FontStyle.Normal, weight), size, Brushes.Black);
+            new Typeface(AppFont, FontStyle.Normal, weight), size, Brushes.Black);
         return ft.Width;
     }
 
@@ -477,6 +510,58 @@ public sealed class GraphCanvas : Control
             return;
         }
 
+        // When nodes overlap, only the topmost node under the cursor is reachable:
+        // check its own pins first, then treat the click as its body (bring-to-front,
+        // select, drag). Never fall through to a cross-node pin search here, which
+        // could pick a lower overlapping node's pin instead of the visible top node.
+        var topNodeAtPos = HitTestNode(pos);
+        if (topNodeAtPos is not null)
+        {
+            if (_layouts.TryGetValue(topNodeAtPos, out var topLayout))
+            {
+                for (int i = 0; i < topLayout.OutputHits.Count; i++)
+                    if (topLayout.OutputHits[i].Contains(pos))
+                    {
+                        vm.BeginConnect(topNodeAtPos.Outputs[i], pos);
+                        e.Pointer.Capture(this);
+                        e.Handled = true;
+                        return;
+                    }
+                for (int i = 0; i < topLayout.InputHits.Count; i++)
+                    if (topLayout.InputHits[i].Contains(pos))
+                    {
+                        vm.SelectOnly(topNodeAtPos);
+                        if (topNodeAtPos.Inputs[i].IsConnected)
+                            vm.DisconnectInputPin(topNodeAtPos.Inputs[i]);
+                        e.Handled = true;
+                        return;
+                    }
+            }
+
+            // Body of the topmost node: raise it, select it, then drag / open params.
+            vm.BringToFront(topNodeAtPos);
+            // Ctrl+Left-click: toggle this node's selection while keeping others; plain left-click: single-select.
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                vm.ToggleSelection(topNodeAtPos);
+            else
+                vm.SelectOnly(topNodeAtPos);
+            // Double-click a node: request the parameter dialog (business logic in the ViewModel).
+            if (e.ClickCount >= 2)
+            {
+                vm.OpenNodeParameters(topNodeAtPos);
+                e.Handled = true;
+                return;
+            }
+
+            vm.BeginDrag(topNodeAtPos, pos);
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
+        // No node body under the cursor: a pin dot may still be reachable where it
+        // overhangs just outside the card edge, so fall back to a global (top-first)
+        // pin search.
         if (HitTestOutputPin(pos) is { } outPin)
         {
             vm.BeginConnect(outPin, pos);
@@ -493,29 +578,6 @@ public sealed class GraphCanvas : Control
             e.Handled = true;
             return;
         }
-
-        if (HitTestNode(pos) is { } node)
-        {
-            vm.BringToFront(node);
-            // Ctrl+Left-click: toggle this node's selection while keeping others; plain left-click: single-select.
-            if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
-                vm.ToggleSelection(node);
-            else
-                vm.SelectOnly(node);
-            // Double-click a node: request the parameter dialog (business logic in the ViewModel).
-            if (e.ClickCount >= 2)
-            {
-                vm.OpenNodeParameters(node);
-                e.Handled = true;
-                return;
-            }
-
-            vm.BeginDrag(node, pos);
-            e.Pointer.Capture(this);
-            e.Handled = true;
-            return;
-        }
-
         if (HitTestConnection(pos) is { } conn)
         {
             vm.RemoveConnection(conn);
@@ -648,3 +710,6 @@ public sealed class GraphCanvas : Control
             InvalidateVisual();
     }
 }
+
+
+

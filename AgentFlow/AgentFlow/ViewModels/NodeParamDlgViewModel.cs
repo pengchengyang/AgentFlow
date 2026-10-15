@@ -45,8 +45,11 @@ public partial class NodeParamDlgViewModel : ViewModelBase
     /// <summary>Localized dialog title (node name + "Parameter Configuration").</summary>
     public string DialogTitle => $"{Title} - {Loc.Instance["ParamConfig"]}";
 
-    /// <summary>Title-bar caption, e.g. "Configuration -- Mutiplexer(ID:2001)".</summary>
-    public string Caption => $"{Loc.Instance["Configuration"]} -- {Title}(ID:{Node.InstanceId})";
+    /// <summary>Title-bar caption: main title.</summary>
+    public string Caption => Loc.Instance["Configuration"];
+
+    /// <summary>Title-bar subtitle: node name · instance id.</summary>
+    public string Subtitle => $"{Title} · #{Node.InstanceId}";
 
     /// <summary>Zones shown in the left-hand navigation list.</summary>
     public ObservableCollection<ParameterZoneNode> Zones { get; } = new();

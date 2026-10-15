@@ -24,7 +24,7 @@ public sealed class Loc : ObservableObject
         ["Components"] = ("Components", "组件"),
         ["Properties"] = ("Properties", "Properties"),
         ["Parameters"] = ("Parameters", "参数"),
-        ["Log"] = ("Logs", "日志"),
+        ["Log"] = ("Log", "日志"),
         ["DeleteNode"] = ("Delete", "删除节点"),
         ["Search"] = ("Search nodes...", "搜索节点..."),
         ["Ready"] = ("Ready", "就绪"),

@@ -36,6 +36,10 @@ public partial class MainWindow : Window
         bool maximized = WindowState == WindowState.Maximized;
         MaximizeIcon.IsVisible = !maximized;
         RestoreIcon.IsVisible = maximized;
+
+        // Rounded floating frame only while windowed; a maximized window fills the screen.
+        if (RootBorder is not null)
+            RootBorder.CornerRadius = maximized ? new CornerRadius(0) : new CornerRadius(16);
     }
 
     private void MinimizeButton_Click(object? sender, RoutedEventArgs e)
