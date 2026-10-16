@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <AvaloniaResource Include="Themes\Colors.Light.axaml" />
+    <AvaloniaResource Include="Themes\Colors.Dark.axaml" />
   </ItemGroup>
 
   <ItemGroup>

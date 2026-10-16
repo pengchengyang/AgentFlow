@@ -82,7 +82,7 @@
               <Path Data="M224 248a120 120 0 1 0 0-240 120 120 0 1 0 0 240zm-29.7 56C95.8 304 16 383.8 16 482.3 16 498.7 29.3 512 45.7 512l356.6 0c16.4 0 29.7-13.3 29.7-29.7 0-98.5-79.8-178.3-178.3-178.3l-59.4 0z" Stretch="Uniform" Width="12" Height="12" Fill="{DynamicResource BrushLoginFg}"/>
             </Button>
             <!-- Theme toggle -->
-            <Button Classes="toolbtn theme"
+            <Button Classes="toolbtn theme" Command="{Binding Main.ToggleThemeCommand}"
                     ToolTip.Tip="Toggle Theme">
               <Path Data="M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"
                     Stretch="Uniform" Width="12" Height="12" Stroke="{DynamicResource BrushThemeBtnFg}" StrokeThickness="2" Fill="Transparent"/>

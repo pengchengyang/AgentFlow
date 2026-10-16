@@ -17,8 +17,8 @@
         Background="Transparent"
         TransparencyLevelHint="AcrylicBlur"
         WindowDecorations="BorderOnly">
-  <Border CornerRadius="0" Background="#FFFFFF"
-          BorderBrush="#CBD5E1" BorderThickness="1"
+  <Border CornerRadius="0" Background="{DynamicResource BrushCard}"
+          BorderBrush="{DynamicResource BrushBorderStrong}" BorderThickness="1"
           Padding="2"
           BoxShadow="0 20 60 0 #260F172A">
     <ExperimentalAcrylicBorder CornerRadius="0">
@@ -27,7 +27,7 @@
     </ExperimentalAcrylicBorder.Material>
   <Grid RowDefinitions="34,*">
     <!-- 自定义标题栏（两个按钮：最小化、关闭） -->
-    <Border Grid.Row="0" Background="#99FFFFFF" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1">
+    <Border Grid.Row="0" Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1">
       <Border.Styles>
         <Style Selector="Button.winbtn">
           <Setter Property="Width" Value="32"/>
@@ -104,10 +104,10 @@
       </Grid>
     </Border>
 
-    <Border Grid.Row="1" Margin="0" Background="#FFFFFF">
+    <Border Grid.Row="1" Margin="0" Background="{DynamicResource BrushCard}">
       <DockPanel LastChildFill="True">
         <!-- 标题栏 -->
-        <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1" Padding="20,18">
+        <Border DockPanel.Dock="Top" Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1" Padding="20,18">
           <StackPanel Spacing="6">
             <Border Background="#FFE4E6" CornerRadius="6" Padding="9,9"
                   HorizontalAlignment="Left" VerticalAlignment="Top">
@@ -122,7 +122,7 @@
         </Border>
 
         <!-- 底部按钮 -->
-        <Border DockPanel.Dock="Bottom" Background="#FAFAFC" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0" Padding="20,14">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0" Padding="20,14">
           <Border.Styles>
             <Style Selector="Button.toolbtn">
               <Setter Property="Width" Value="40"/>

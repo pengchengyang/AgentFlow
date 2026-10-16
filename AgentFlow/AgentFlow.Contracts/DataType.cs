@@ -15,6 +15,7 @@ public enum DataType
     INT64,
     BOOL,
     DECIMAL,
+    FLOAT,
     DOUBLE,
     BIN,
 }

@@ -6,7 +6,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceInclude Source="avares://AgentFlow/Themes/Colors.axaml" />
+                <ResourceInclude Source="avares://AgentFlow/Themes/Colors.Light.axaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

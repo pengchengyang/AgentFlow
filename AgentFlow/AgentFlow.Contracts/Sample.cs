@@ -33,6 +33,7 @@ public abstract class Sample
     public bool? BoolValue;
     public decimal? DecimalValue;
     public double? DoubleValue;
+    public float? FloatValue;
     public byte[]? BinValue;
 
     /// <summary>Return the value stored for the requested <paramref name="type"/>, or null if not present.</summary>

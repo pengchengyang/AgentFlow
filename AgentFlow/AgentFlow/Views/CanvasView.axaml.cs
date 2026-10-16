@@ -209,7 +209,8 @@ public sealed class GraphCanvas : Control
     public override void Render(DrawingContext ctx)
     {
         base.Render(ctx);
-        ctx.DrawRectangle(new SolidColorBrush(ColorBg), null, new Rect(0, 0, Bounds.Width, Bounds.Height));
+        var bg = R("CanvasBg", Color.Parse("#F6F8FB"));
+        ctx.DrawRectangle(new SolidColorBrush(bg), null, new Rect(0, 0, Bounds.Width, Bounds.Height));
         var vm = Vm;
         if (vm is null) return;
 

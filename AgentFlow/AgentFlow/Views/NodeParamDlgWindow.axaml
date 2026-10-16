@@ -15,14 +15,14 @@
         SizeToContent="Manual"
         Background="Transparent"
         WindowDecorations="None">
-  <Border CornerRadius="0" Background="#FFFFFF"
-          BorderBrush="#CBD5E1" BorderThickness="1"
+  <Border CornerRadius="0" Background="{DynamicResource BrushCard}"
+          BorderBrush="{DynamicResource BrushBorderStrong}" BorderThickness="1"
           Padding="1"
           BoxShadow="0 20 60 0 #260F172A">
     <Grid RowDefinitions="Auto,*,Auto">
 
       <!-- 自定义标题栏 -->
-      <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#F1F5F9" BorderThickness="0,0,0,1" Padding="0,10,0,10">
+      <Border Grid.Row="0" Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1" Padding="0,10,0,10">
         <Border.Styles>
           <Style Selector="Button.winbtn">
             <Setter Property="Width" Value="34"/>
@@ -81,9 +81,9 @@
               </Border>
               <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="{Binding Caption}" FontSize="13" FontWeight="SemiBold"
-                           Foreground="#0F172A"/>
+                           Foreground="{DynamicResource BrushTextPrimary}"/>
                 <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
-                           Foreground="#94A3B8" Margin="0,1,0,0"/>
+                           Foreground="{DynamicResource BrushTextTertiary}" Margin="0,1,0,0"/>
               </StackPanel>
             </StackPanel>
           </Border>
@@ -152,7 +152,7 @@
               <DataTemplate DataType="{x:Type vm:ParameterZoneNode}" x:DataType="vm:ParameterZoneNode">
                 <TextBlock Text="{Binding Name}" Margin="0"
                            FontSize="12.5" FontWeight="SemiBold"
-                           Foreground="#5B21B6" VerticalAlignment="Center"
+                           Foreground="{DynamicResource BrushTextPrimary}" VerticalAlignment="Center"
                            HorizontalAlignment="Center"/>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -160,13 +160,13 @@
         </Border>
 
         <!-- 参数区 -->
-        <Border Grid.Column="1" Background="#FFFFFF">
+        <Border Grid.Column="1" Background="{DynamicResource BrushCard}">
           <Grid RowDefinitions="*,Auto">
 
             <Grid Grid.Row="0">
               <TextBlock Text="{Binding [NoParameters], Source={x:Static s:Loc.Instance}}"
                          IsVisible="{Binding HasNoParameters}"
-                         Foreground="#9CA3AF" FontSize="12"
+                         Foreground="{DynamicResource BrushTextTertiary}" FontSize="12"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
               <ListBox ItemsSource="{Binding VisibleItems}"
@@ -250,7 +250,7 @@
                                 Stretch="Uniform" Fill="#94A3B8" Width="8" Height="12"
                                 VerticalAlignment="Center" IsVisible="{Binding !IsExpanded}"/>
                           <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
-                                     Foreground="#0F172A" VerticalAlignment="Center"/>
+                                     Foreground="{DynamicResource BrushTextPrimary}" VerticalAlignment="Center"/>
                         </StackPanel>
                       </Button>
                     </Border>
@@ -263,7 +263,7 @@
                       <Grid ColumnDefinitions="110,*">
                         <TextBlock Classes="propName" Grid.Column="0"
                                    Text="{Binding Label}" Margin="0,0,16,0"
-                                   FontSize="12" Foreground="#64748B"
+                                   FontSize="12" Foreground="{DynamicResource BrushTextSecondary}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         <Panel Grid.Column="1">
                           <TextBox Text="{Binding Value, Mode=TwoWay}"
@@ -272,7 +272,7 @@
                                    VerticalContentAlignment="Center"/>
                           <TextBlock Classes="propValue" Text="{Binding Value}"
                                      IsVisible="{Binding !IsEditable}"
-                                     FontSize="12.5" Foreground="#0F172A"
+                                     FontSize="12.5" Foreground="{DynamicResource BrushTextPrimary}"
                                      Margin="0,0,8,0"
                                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         </Panel>
@@ -284,11 +284,11 @@
             </Grid>
 
             <!-- 描述区 -->
-            <Border Grid.Row="1" Background="#FAFAFC" BorderBrush="#F1F5F9" BorderThickness="0,1,0,0"
+            <Border Grid.Row="1" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0"
                     MinHeight="60" Padding="20,12">
               <StackPanel Spacing="4" VerticalAlignment="Top">
-                <TextBlock Text="{Binding DetailTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
-                <TextBlock Text="{Binding DetailDescription}" FontSize="12" Foreground="#64748B" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding DetailTitle}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource BrushTextPrimary}"/>
+                <TextBlock Text="{Binding DetailDescription}" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </Grid>
@@ -296,28 +296,37 @@
       </Grid>
 
       <!-- 底部按钮 -->
-      <Border Grid.Row="2" Background="#FAFAFC" BorderBrush="#F1F5F9" BorderThickness="0,1,0,0" Padding="20,14">
+      <Border Grid.Row="2" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0" Padding="20,14">
         <Border.Styles>
           <Style Selector="Button.dlgbtn">
             <Setter Property="MinWidth" Value="88"/>
             <Setter Property="Height" Value="34"/>
             <Setter Property="Padding" Value="20,0"/>
             <Setter Property="FontSize" Value="12.5"/>
-            <Setter Property="Background" Value="{DynamicResource BrushDlgButtonBg}"/>
-            <Setter Property="Foreground" Value="{DynamicResource BrushDlgSecondaryText}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BrushDlgGroupBorder}"/>
+            <Setter Property="Background" Value="{DynamicResource BrushSurface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
           </Style>
           <Style Selector="Button.dlgbtn:pointerover">
-            <Setter Property="Background" Value="{DynamicResource BrushDlgButtonHoverBg}"/>
+            <Setter Property="Background" Value="{DynamicResource BrushSurfaceHover}"/>
           </Style>
           <Style Selector="Button.dlgbtn:disabled">
-            <Setter Property="Background" Value="{DynamicResource BrushDlgButtonPressedBg}"/>
-            <Setter Property="Foreground" Value="{DynamicResource BrushDlgMutedText}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BrushDlgButtonPressedBg}"/>
+            <Setter Property="Background" Value="{DynamicResource BrushSurfacePressed}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextTertiary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}"/>
+          </Style>
+          <!-- Cancel 按钮:用对话框专用资源,跟 Apply/OK 区分 -->
+          <Style Selector="Button.dlgbtn.cancel">
+            <Setter Property="Background" Value="{DynamicResource BrushDlgButtonBg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushDlgSecondaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushDlgGroupBorder}"/>
+          </Style>
+          <Style Selector="Button.dlgbtn.cancel:pointerover">
+            <Setter Property="Background" Value="{DynamicResource BrushDlgButtonHoverBg}"/>
           </Style>
           <Style Selector="Button.dlgbtn.primary">
             <Setter Property="Background" Value="{DynamicResource BrushDlgPrimaryBtnBg}"/>
@@ -330,11 +339,11 @@
           </Style>
         </Border.Styles>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-          <Button Classes="dlgbtn"
+          <Button Classes="dlgbtn primary"
                   Content="{Binding [Apply], Source={x:Static s:Loc.Instance}}"
                   Command="{Binding ApplyCommand}"
                   IsEnabled="{Binding CanApply}"/>
-          <Button Classes="dlgbtn"
+          <Button Classes="dlgbtn cancel"
                   Content="{Binding [Cancel], Source={x:Static s:Loc.Instance}}"
                   Command="{Binding CancelCommand}"/>
           <Button Classes="dlgbtn primary"

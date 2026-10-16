@@ -178,8 +178,8 @@ public partial class MainViewModel : ViewModelBase
                 Dot1Opacity = _dotStep == 0 ? 1.0 : 0.25;
                 Dot2Opacity = _dotStep == 1 ? 1.0 : 0.25;
                 Dot3Opacity = _dotStep == 2 ? 1.0 : 0.25;
-                // Glow pulse: blur radius alternates between 4 and 8.
-                PulseBlur = (_dotStep % 2 == 0) ? 8 : 4;
+                // Glow pulse: blur radius alternates between 2 and 16 for more visible breathing.
+                PulseBlur = (_dotStep % 2 == 0) ? 16 : 2;
             }
             else
             {
@@ -197,9 +197,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ToggleTheme()
     {
-        IsDarkTheme = !IsDarkTheme;
-        if (Avalonia.Application.Current is { } app)
-            app.RequestedThemeVariant = IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
+        App.ToggleTheme();
     }
     private void LoadPlugins()
     {

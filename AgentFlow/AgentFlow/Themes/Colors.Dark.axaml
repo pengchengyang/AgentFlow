@@ -2,77 +2,76 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ================================================================
-         AgentFlow 浅色主题（Light Theme）资源
-         色值一比一取自设计稿：Violet 品牌强调色 + 节点类型色 + 柔和蓝灰表面。
-         所有界面颜色都从这里取，改一处即可全局换肤。
+         AgentFlow 深色主题（Dark Theme）资源
+         与浅色主题结构完全一致，只换色值。
          ================================================================ -->
 
-    <!-- ============ 品牌主色（Violet，取自设计稿 Run 按钮 / logo 渐变） ============ -->
-    <Color x:Key="Brand50">#F5F3FF</Color>
-    <Color x:Key="Brand100">#EDE9FE</Color>
-    <Color x:Key="Brand200">#DDD6FE</Color>
-    <Color x:Key="Brand300">#B9A6FD</Color>
-    <Color x:Key="Brand400">#9E86FB</Color>
-    <Color x:Key="Brand500">#7C5CFA</Color>
-    <Color x:Key="Brand600">#6D4AE8</Color>
-    <Color x:Key="Brand700">#5B3BC9</Color>
-    <Color x:Key="BrandViolet">#8B5CF6</Color>
-    <Color x:Key="BrandDeep">#6D28D9</Color>
-    <Color x:Key="BrandSoft">#F5F3FF</Color>
+    <!-- ============ 品牌主色（Violet，深色主题下提亮） ============ -->
+    <Color x:Key="Brand50">#1E1B4B</Color>
+    <Color x:Key="Brand100">#2E1065</Color>
+    <Color x:Key="Brand200">#4C1D95</Color>
+    <Color x:Key="Brand300">#6D28D9</Color>
+    <Color x:Key="Brand400">#7C3AED</Color>
+    <Color x:Key="Brand500">#8B5CF6</Color>
+    <Color x:Key="Brand600">#A78BFA</Color>
+    <Color x:Key="Brand700">#C4B5FD</Color>
+    <Color x:Key="BrandViolet">#A78BFA</Color>
+    <Color x:Key="BrandDeep">#8B5CF6</Color>
+    <Color x:Key="BrandSoft">#2E1065</Color>
 
-    <!-- ============ Avalonia 官方品牌蓝（logo 用，取自原 avalonia-logo.ico） ============ -->
-    <Color x:Key="AvaloniaBlue">#0065FF</Color>
+    <!-- ============ Avalonia 官方品牌蓝（logo 用） ============ -->
+    <Color x:Key="AvaloniaBlue">#60A5FA</Color>
 
-    <!-- ============ 节点分类色（设计稿节点类型色） ============ -->
-    <Color x:Key="CatInput">#3B82F6</Color>   <!-- Blue，String Source -->
-    <Color x:Key="CatLogic">#8B5CF6</Color>   <!-- Violet，String To Upper -->
-    <Color x:Key="CatOutput">#F43F5E</Color>  <!-- Rose，Log -->
-    <Color x:Key="CatFlow">#0D9488</Color>    <!-- Teal -->
-    <Color x:Key="CatGeneral">#64748B</Color> <!-- Slate -->
-    <Color x:Key="CatAmplifier">#F59E0B</Color> <!-- Amber，Amplifier -->
+    <!-- ============ 节点分类色（深色主题下提亮） ============ -->
+    <Color x:Key="CatInput">#60A5FA</Color>
+    <Color x:Key="CatLogic">#A78BFA</Color>
+    <Color x:Key="CatOutput">#FB7185</Color>
+    <Color x:Key="CatFlow">#2DD4BF</Color>
+    <Color x:Key="CatGeneral">#94A3B8</Color>
+    <Color x:Key="CatAmplifier">#FBBF24</Color>
 
     <!-- ============ 文字色 ============ -->
-    <Color x:Key="TextPrimary">#111827</Color>
-    <Color x:Key="TextSecondary">#6B7280</Color>
-    <Color x:Key="TextTertiary">#9CA3AF</Color>
+    <Color x:Key="TextPrimary">#F9FAFB</Color>
+    <Color x:Key="TextSecondary">#D1D5DB</Color>
+    <Color x:Key="TextTertiary">#94A3B8</Color>
     <Color x:Key="TextInverse">#FFFFFF</Color>
     <Color x:Key="TextOnBrand">#FFFFFF</Color>
 
     <!-- ============ 背景 / 边框 ============ -->
-    <Color x:Key="CanvasBg">#F5F6FC</Color>
-    <Color x:Key="CanvasDot">#E3E7EE</Color>
-    <Color x:Key="CardBg">#FFFFFF</Color>
-    <Color x:Key="SurfaceBg">#F3F4F6</Color>
-    <Color x:Key="SurfaceHover">#F1F2F5</Color>
-    <Color x:Key="SurfacePressed">#E8EAEE</Color>
-    <Color x:Key="BorderLight">#E5E7EB</Color>
-    <Color x:Key="BorderStrong">#D1D5DB</Color>
-    <Color x:Key="BorderFocus">#7C5CFA</Color>
-    <Color x:Key="TitleBarBg">#FFFFFF</Color>
-    <Color x:Key="PillBg">#F3F4F6</Color>
-    <Color x:Key="ShadowNode">#1A0F172A</Color>
+    <Color x:Key="CanvasBg">#0F172A</Color>
+    <Color x:Key="CanvasDot">#1E293B</Color>
+    <Color x:Key="CardBg">#1E293B</Color>
+    <Color x:Key="SurfaceBg">#1E293B</Color>
+    <Color x:Key="SurfaceHover">#334155</Color>
+    <Color x:Key="SurfacePressed">#475569</Color>
+    <Color x:Key="BorderLight">#334155</Color>
+    <Color x:Key="BorderStrong">#475569</Color>
+    <Color x:Key="BorderFocus">#A78BFA</Color>
+    <Color x:Key="TitleBarBg">#1E293B</Color>
+    <Color x:Key="PillBg">#334155</Color>
+    <Color x:Key="ShadowNode">#40000000</Color>
 
-    <!-- ============ 语义色 ============ -->
-    <Color x:Key="Danger">#F04438</Color>
-    <Color x:Key="DangerBg">#FEF3F2</Color>
-    <Color x:Key="Success">#12B76A</Color>
-    <Color x:Key="SuccessBg">#ECFDF3</Color>
-    <Color x:Key="Warning">#F59E0B</Color>
-    <Color x:Key="WarningBg">#FFFAEB</Color>
+    <!-- ============ 语义色（深色主题下提亮） ============ -->
+    <Color x:Key="Danger">#F87171</Color>
+    <Color x:Key="DangerBg">#7F1D1D</Color>
+    <Color x:Key="Success">#34D399</Color>
+    <Color x:Key="SuccessBg">#064E3B</Color>
+    <Color x:Key="Warning">#FBBF24</Color>
+    <Color x:Key="WarningBg">#78350F</Color>
 
     <!-- ============ 画布 / 节点绘制色 ============ -->
-    <Color x:Key="NodeCardBg">#FFFFFF</Color>
-    <Color x:Key="NodeBorder">#E2E8F0</Color>
-    <Color x:Key="NodeSelected">#7C3AED</Color>
-    <Color x:Key="NodeShadow">#1A0F172A</Color>
-    <Color x:Key="NodeTitle">#0F172A</Color>
-    <Color x:Key="NodeName">#475569</Color>
-    <Color x:Key="NodeMuted">#94A3B8</Color>
-    <Color x:Key="NodeDivider">#F1F2F5</Color>
-    <Color x:Key="ConnLine">#A8B3C2</Color>
-    <Color x:Key="PinInput">#0EA5E9</Color>
-    <Color x:Key="PinOutput">#8B5CF6</Color>
-    <Color x:Key="PinBorder">#E2E8F0</Color>
+    <Color x:Key="NodeCardBg">#1E293B</Color>
+    <Color x:Key="NodeBorder">#334155</Color>
+    <Color x:Key="NodeSelected">#A78BFA</Color>
+    <Color x:Key="NodeShadow">#40000000</Color>
+    <Color x:Key="NodeTitle">#F1F5F9</Color>
+    <Color x:Key="NodeName">#CBD5E1</Color>
+    <Color x:Key="NodeMuted">#64748B</Color>
+    <Color x:Key="NodeDivider">#334155</Color>
+    <Color x:Key="ConnLine">#475569</Color>
+    <Color x:Key="PinInput">#60A5FA</Color>
+    <Color x:Key="PinOutput">#A78BFA</Color>
+    <Color x:Key="PinBorder">#334155</Color>
 
     <!-- ============ 画刷（供 XAML / 代码直接引用） ============ -->
     <SolidColorBrush x:Key="BrushBrand" Color="{StaticResource Brand500}" />
@@ -138,12 +137,12 @@
     <SolidColorBrush x:Key="BrushPinBorder" Color="{StaticResource PinBorder}" />
 
 
-    <!-- ============ 工具栏浅色功能按钮（设计稿：浅底 + 同色系图标） ============ -->
-    <Color x:Key="OpenBg">#E0F2FE</Color>      <Color x:Key="OpenFg">#0284C7</Color>
-    <Color x:Key="SaveBg">#E0E7FF</Color>      <Color x:Key="SaveFg">#4F46E5</Color>
-    <Color x:Key="ClearBg">#FFE4E6</Color>     <Color x:Key="ClearFg">#E11D48</Color>
-    <Color x:Key="ResetBg">#FEF3C7</Color>     <Color x:Key="ResetFg">#D97706</Color>
-    <Color x:Key="LoginBg">#EDE9FE</Color>     <Color x:Key="LoginFg">#7C3AED</Color>
+    <!-- ============ 工具栏浅色功能按钮 ============ -->
+    <Color x:Key="OpenBg">#082F49</Color>      <Color x:Key="OpenFg">#7DD3FC</Color>
+    <Color x:Key="SaveBg">#1E1B4B</Color>      <Color x:Key="SaveFg">#A5B4FC</Color>
+    <Color x:Key="ClearBg">#4C0519</Color>     <Color x:Key="ClearFg">#FDA4AF</Color>
+    <Color x:Key="ResetBg">#451A03</Color>     <Color x:Key="ResetFg">#FCD34D</Color>
+    <Color x:Key="LoginBg">#2E1065</Color>     <Color x:Key="LoginFg">#C4B5FD</Color>
 
     <SolidColorBrush x:Key="BrushOpenBg" Color="{StaticResource OpenBg}" />
     <SolidColorBrush x:Key="BrushOpenFg" Color="{StaticResource OpenFg}" />
@@ -157,9 +156,9 @@
     <SolidColorBrush x:Key="BrushLoginFg" Color="{StaticResource LoginFg}" />
 
     <!-- ============ 窗口按钮（最小化 / 最大化 / 关闭） ============ -->
-    <Color x:Key="MinBtnBg">#D1FAE5</Color>      <Color x:Key="MinBtnHoverBg">#A7F3D0</Color>    <Color x:Key="MinBtnPressedBg">#6EE7B7</Color>    <Color x:Key="MinBtnFg">#059669</Color>
-    <Color x:Key="MaxBtnBg">#EDE9FE</Color>      <Color x:Key="MaxBtnHoverBg">#DDD6FE</Color>    <Color x:Key="MaxBtnPressedBg">#C4B5FD</Color>    <Color x:Key="MaxBtnFg">#7C3AED</Color>
-    <Color x:Key="CloseBtnBg">#FEE2E2</Color>    <Color x:Key="CloseBtnHoverBg">#FECACA</Color>  <Color x:Key="CloseBtnPressedBg">#FCA5A5</Color>   <Color x:Key="CloseBtnFg">#DC2626</Color>
+    <Color x:Key="MinBtnBg">#064E3B</Color>      <Color x:Key="MinBtnHoverBg">#065F46</Color>    <Color x:Key="MinBtnPressedBg">#047857</Color>    <Color x:Key="MinBtnFg">#34D399</Color>
+    <Color x:Key="MaxBtnBg">#2E1065</Color>      <Color x:Key="MaxBtnHoverBg">#4C1D95</Color>    <Color x:Key="MaxBtnPressedBg">#6D28D9</Color>    <Color x:Key="MaxBtnFg">#C4B5FD</Color>
+    <Color x:Key="CloseBtnBg">#4C0519</Color>    <Color x:Key="CloseBtnHoverBg">#881337</Color>  <Color x:Key="CloseBtnPressedBg">#9F1239</Color>   <Color x:Key="CloseBtnFg">#FB7185</Color>
 
     <SolidColorBrush x:Key="BrushMinBtnBg" Color="{StaticResource MinBtnBg}" />
     <SolidColorBrush x:Key="BrushMinBtnHoverBg" Color="{StaticResource MinBtnHoverBg}" />
@@ -175,19 +174,19 @@
     <SolidColorBrush x:Key="BrushCloseBtnFg" Color="{StaticResource CloseBtnFg}" />
 
     <!-- ============ 对话框 / 面板专用色 ============ -->
-    <Color x:Key="DlgSidebarBg">#F8FAFC</Color>
-    <Color x:Key="DlgSidebarItemBg">#F1F5F9</Color>
-    <Color x:Key="DlgSidebarItemActiveBg">#EDE9FE</Color>
-    <Color x:Key="DlgContentBg">#FFFFFF</Color>
-    <Color x:Key="DlgGroupBg">#FAFAFC</Color>
-    <Color x:Key="DlgGroupHoverBg">#F5F3FF</Color>
-    <Color x:Key="DlgGroupBorder">#E2E8F0</Color>
-    <Color x:Key="DlgGroupSelectedBorder">#7C3AED</Color>
-    <Color x:Key="DlgSecondaryText">#334155</Color>
+    <Color x:Key="DlgSidebarBg">#0B1220</Color>
+    <Color x:Key="DlgSidebarItemBg">#334155</Color>
+    <Color x:Key="DlgSidebarItemActiveBg">#2E1065</Color>
+    <Color x:Key="DlgContentBg">#1E293B</Color>
+    <Color x:Key="DlgGroupBg">#0F172A</Color>
+    <Color x:Key="DlgGroupHoverBg">#2E1065</Color>
+    <Color x:Key="DlgGroupBorder">#334155</Color>
+    <Color x:Key="DlgGroupSelectedBorder">#A78BFA</Color>
+    <Color x:Key="DlgSecondaryText">#E2E8F0</Color>
     <Color x:Key="DlgMutedText">#94A3B8</Color>
-    <Color x:Key="DlgButtonBg">#FFFFFF</Color>
-    <Color x:Key="DlgButtonHoverBg">#F8FAFC</Color>
-    <Color x:Key="DlgButtonPressedBg">#F1F5F9</Color>
+    <Color x:Key="DlgButtonBg">#334155</Color>
+    <Color x:Key="DlgButtonHoverBg">#475569</Color>
+    <Color x:Key="DlgButtonPressedBg">#64748B</Color>
     <Color x:Key="DlgPrimaryBtnBg">#7C3AED</Color>
     <Color x:Key="DlgPrimaryBtnHoverBg">#6D28D9</Color>
 
@@ -211,9 +210,9 @@
     <Color x:Key="StopBtnBg">#DC2626</Color>
     <Color x:Key="StopBtnHoverBg">#B91C1C</Color>
     <Color x:Key="StopBtnPressedBg">#991B1B</Color>
-    <Color x:Key="StopBtnDisabledBg">#F1F5F9</Color>
+    <Color x:Key="StopBtnDisabledBg">#334155</Color>
     <Color x:Key="StopBtnFg">#FFFFFF</Color>
-    <Color x:Key="StopBtnDisabledFg">#94A3B8</Color>
+    <Color x:Key="StopBtnDisabledFg">#64748B</Color>
 
     <SolidColorBrush x:Key="BrushStopBtnBg" Color="{StaticResource StopBtnBg}" />
     <SolidColorBrush x:Key="BrushStopBtnHoverBg" Color="{StaticResource StopBtnHoverBg}" />
@@ -223,10 +222,10 @@
     <SolidColorBrush x:Key="BrushStopBtnDisabledFg" Color="{StaticResource StopBtnDisabledFg}" />
 
     <!-- ============ 主题切换按钮 ============ -->
-    <Color x:Key="ThemeBtnBg">#FEF3C7</Color>
-    <Color x:Key="ThemeBtnHoverBg">#FDE68A</Color>
-    <Color x:Key="ThemeBtnPressedBg">#FCD34D</Color>
-    <Color x:Key="ThemeBtnFg">#D97706</Color>
+    <Color x:Key="ThemeBtnBg">#451A03</Color>
+    <Color x:Key="ThemeBtnHoverBg">#78350F</Color>
+    <Color x:Key="ThemeBtnPressedBg">#92400E</Color>
+    <Color x:Key="ThemeBtnFg">#FBBF24</Color>
 
     <SolidColorBrush x:Key="BrushThemeBtnBg" Color="{StaticResource ThemeBtnBg}" />
     <SolidColorBrush x:Key="BrushThemeBtnHoverBg" Color="{StaticResource ThemeBtnHoverBg}" />
