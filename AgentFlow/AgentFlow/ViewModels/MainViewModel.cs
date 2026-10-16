@@ -43,7 +43,6 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ConnectionViewModel> Connections { get; } = new();
     public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
-    public ObservableCollection<UiLogEntry> Logs { get; } = new();
     // ---- Dedicated view-models (1 view <-> 1 view-model) ----
     public NodeLibraryViewModel NodeLibrary { get; }
     public LogPanelViewModel LogPanel { get; }
@@ -108,50 +107,8 @@ public partial class MainViewModel : ViewModelBase
     }
     public MainViewModel()
     {
-        _loggerFactory = LoggerFactory.Create(b =>
-        {
-            b.SetMinimumLevel(LogLevel.Trace);
-            b.AddProvider(new RollingLoggerProvider());
-        });
+        _loggerFactory = AppLog.CreateLoggerFactory();
         _logger = _loggerFactory.CreateLogger(nameof(MainViewModel));
-
-        // Subscribe to Rolling.Logging events to mirror logs into the UI panel.
-        // All UI updates are marshalled via Dispatcher.UIThread.Post.
-        LogEvents.OnLogEmitted += (level, category, message, ex) =>
-        {
-            var shortLevel = level switch
-            {
-                LogLevel.Trace => "TRACE",
-                LogLevel.Debug => "DEBUG",
-                LogLevel.Information => "INFO",
-                LogLevel.Warning => "WARN",
-                LogLevel.Error => "ERROR",
-                LogLevel.Critical => "ERROR",
-                _ => "INFO",
-            };
-            Dispatcher.UIThread.Post(() =>
-            {
-                Logs.Add(new UiLogEntry
-                {
-                    Timestamp = DateTimeOffset.Now,
-                    Level = shortLevel,
-                    Source = category,
-                    Message = UiLogEntry.Flatten(message),
-                    RawMessage = message,
-                });
-                if (ex is not null)
-                    Logs.Add(new UiLogEntry
-                    {
-                        Timestamp = DateTimeOffset.Now,
-                        Level = "ERROR",
-                        Source = category,
-                        Message = UiLogEntry.Flatten(ex.ToString()),
-                        RawMessage = ex.ToString(),
-                    });
-                if (Logs.Count > 500) Logs.RemoveAt(0);
-            });
-        };
-
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
         _nodeManager = new NodeInstanceManager(_pluginLoader);
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader);
@@ -463,23 +420,17 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Helper: append a structured log entry to the UI panel (thread-safe).</summary>
     private void Log(string message, string level = "INFO", string source = "Main")
-    {
-        Dispatcher.UIThread.Post(() =>
+        => UiLogStore.Add(new UiLogEntry
         {
-            Logs.Add(new UiLogEntry
-            {
-                Timestamp = DateTimeOffset.Now,
-                Level = level,
-                Source = source,
-                Message = UiLogEntry.Flatten(message),
-                RawMessage = message,
-            });
-            if (Logs.Count > 500) Logs.RemoveAt(0);
+            Timestamp = DateTimeOffset.Now,
+            Level = level,
+            Source = source,
+            Message = UiLogEntry.Flatten(message),
+            RawMessage = message,
         });
-    }
 
     [RelayCommand]
-    private void ClearLog() => Logs.Clear();
+    private void ClearLog() => UiLogStore.Clear();
     /// <summary>Raised when the clear-canvas confirmation dialog should be shown (View layer listens to open a window).</summary>
     public event EventHandler<ConfirmDialogViewModel>? ClearRequested;
     /// <summary>Clear the whole canvas: show a confirmation first; only on confirm delete all nodes and wires and clear the Core layer (including the PluginLoader instance container).</summary>

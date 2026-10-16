@@ -7,7 +7,6 @@
 
 using AgentFlow.Core;
 using Microsoft.Extensions.Logging;
-using Rolling.Logging;
 
 // AgentFlow.Cli - headless runner entry point.
 // Usage: AgentFlow.Cli <workflow.json> [pluginDir]
@@ -18,13 +17,10 @@ using Rolling.Logging;
 var workflowPath = args.Length > 0 ? args[0] : "sample.workflow.json";
 var pluginDir = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "plugins");
 
-RollingLog.Configure(o => o.LogFilePath = "./Logs/Rolling-Cli-.log");
+// One log file for the whole CLI process (Core + all plugins).
+AppLog.ConfigureHost("Cli");
 
-using var loggerFactory = LoggerFactory.Create(builder =>
-{
-    builder.SetMinimumLevel(LogLevel.Trace);
-    builder.AddProvider(new RollingLoggerProvider());
-});
+using var loggerFactory = AppLog.CreateLoggerFactory();
 var logger = loggerFactory.CreateLogger("AgentFlow.Cli");
 
 logger.LogInformation("Loading plugins from: {Dir}", pluginDir);
@@ -66,5 +62,5 @@ finally
 {
     await engine.StopAsync(graph);
     logger.LogInformation("Workflow stopped.");
-    RollingLogger.Close();
+    AppLog.Close();
 }

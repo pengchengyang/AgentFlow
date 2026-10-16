@@ -35,7 +35,7 @@ public sealed partial class LogPanelViewModel : ViewModelBase
             else if (e.PropertyName == nameof(MainViewModel.IsLogPanelExpanded))
                 OnPropertyChanged(nameof(IsLogPanelExpanded));
         };
-        _main.Logs.CollectionChanged += (_, _) => RefreshFilter();
+        UiLogStore.Entries.CollectionChanged += (_, _) => RefreshFilter();
     }
 
     public ObservableCollection<UiLogEntry> FilteredLogs { get; } = new();
@@ -82,7 +82,7 @@ public sealed partial class LogPanelViewModel : ViewModelBase
     {
         FilteredLogs.Clear();
         var showAll = SelectedLevels.Contains("ALL");
-        foreach (var entry in _main.Logs)
+        foreach (var entry in UiLogStore.Entries)
         {
             if (!showAll && !SelectedLevels.Contains(entry.Level)) continue;
             if (!string.IsNullOrWhiteSpace(SearchText)

@@ -9,7 +9,8 @@ using System;
 
 using Avalonia;
 using AgentFlow.Core;
-using Rolling.Logging;
+using AgentFlow.Services;
+using Serilog;
 
 namespace AgentFlow.Desktop;
 
@@ -21,7 +22,9 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        RollingLog.Configure(o => o.LogFilePath = "./Logs/Rolling-Desktop-.log");
+        // One log file for the whole Desktop process (UI + Core + all plugins), plus the
+        // UI panel sink that mirrors every log line into the on-screen log panel.
+        AppLog.ConfigureHost("Desktop", cfg => cfg.WriteTo.Sink(new UiLogSink()));
 
         try
         {
@@ -29,7 +32,7 @@ class Program
         }
         finally
         {
-            RollingLogger.Close();
+            AppLog.Close();
         }
     }
 

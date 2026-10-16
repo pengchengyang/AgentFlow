@@ -45,7 +45,7 @@
           </StackPanel>
           <TextBox Classes="logsearch" PlaceholderText="Search..."
                    Text="{Binding SearchText, Mode=TwoWay}" FontSize="11"
-                   VerticalAlignment="Center" Width="140" Height="20" MinHeight="0" Padding="6,0"/>
+                   VerticalAlignment="Center" Width="140" Height="26" MinHeight="0" Padding="6,0"/>
           <Button Classes="ghost" Content="Clear" FontSize="11" Padding="8,2"
                   Command="{Binding ClearLogCommand}"/>
         </StackPanel>
