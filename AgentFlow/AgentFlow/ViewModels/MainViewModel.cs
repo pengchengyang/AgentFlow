@@ -558,6 +558,8 @@ public partial class MainViewModel : ViewModelBase
     private void NotifyRunningState()
     {
         OnPropertyChanged(nameof(IsRunning));
+        // Keep each node's header spin indicator in sync with the underlying runtime state.
+        foreach (var n in Nodes) n.NotifyRunningChanged();
     }
     /// <summary>Build a node context for the given runtime instance so NodeInstanceManager can run it.</summary>
     private INodeContext GetNodeContext(BaseNode node) => _graph.CreateContext(node);

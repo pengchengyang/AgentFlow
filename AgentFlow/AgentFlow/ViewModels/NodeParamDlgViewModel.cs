@@ -280,6 +280,7 @@ public partial class NodeParamDlgViewModel : ViewModelBase
         // The node's Title / DisplayName may have changed, so refresh the dialog's own title-bar text.
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Caption));
+        OnPropertyChanged(nameof(Subtitle));
         OnPropertyChanged(nameof(DialogTitle));
     }
 

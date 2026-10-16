@@ -452,3 +452,11 @@ $RECYCLE.BIN/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+
+# ============ 本地 vendored 二进制：Rolling.Logging（编译必需，csproj 以 HintPath 引用 SeriLog.Bin）============
+# 放行 SeriLog.Bin 下的 Debug/Release 输出目录，让 Rolling.Logging.dll 能被提交，
+# 否则在新机器拉取后因缺少该 DLL 导致编译失败。pdb/nupkg 仍被上述规则忽略。
+!SeriLog.Bin/Debug/
+!SeriLog.Bin/Debug/netstandard2.0/
+!SeriLog.Bin/Release/
+!SeriLog.Bin/Release/netstandard2.0/

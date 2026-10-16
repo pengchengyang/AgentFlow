@@ -127,7 +127,7 @@
             <ListBox.Styles>
               <Style Selector="ListBoxItem">
                 <Setter Property="Padding" Value="0"/>
-                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                 <Setter Property="MinHeight" Value="36"/>
                 <Setter Property="CornerRadius" Value="8"/>
                 <Setter Property="Focusable" Value="False"/>
@@ -152,7 +152,8 @@
               <DataTemplate DataType="{x:Type vm:ParameterZoneNode}" x:DataType="vm:ParameterZoneNode">
                 <TextBlock Text="{Binding Name}" Margin="0"
                            FontSize="12.5" FontWeight="SemiBold"
-                           Foreground="#5B21B6" VerticalAlignment="Center"/>
+                           Foreground="#5B21B6" VerticalAlignment="Center"
+                           HorizontalAlignment="Center"/>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>

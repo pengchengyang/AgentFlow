@@ -192,6 +192,10 @@ public partial class NodeViewModel : ViewModelBase
     private int _zIndex;
 
     /// <summary>Section visibility flags (empty sections collapse in the card template).</summary>
+    /// <summary>Whether the underlying runtime node is currently running (drives the header spin indicator).</summary>
+    [ObservableProperty]
+    private bool _running;
+
     [ObservableProperty]
     private bool _hasInputs;
 
@@ -232,6 +236,9 @@ public partial class NodeViewModel : ViewModelBase
     }
 
     /// <summary>Override parameter values from a saved JSON document.</summary>
+    /// <summary>Refresh the running flag from the underlying BaseNode and notify the canvas.</summary>
+    public void NotifyRunningChanged() => Running = Model.Node.Running;
+
     public void ApplyParameterValues(IReadOnlyDictionary<string, object?> values)
     {
         foreach (var kv in values)

@@ -13,6 +13,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using AgentFlow.Services;
 using AgentFlow.ViewModels;
 
@@ -74,13 +75,32 @@ public sealed class GraphCanvas : Control
         "M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z");
 
     private readonly Dictionary<NodeViewModel, NodeLayout> _layouts = new();
+    // Running indicator: a lucide "refresh-cw" spinner drawn in the node header. It is green and
+    // slowly rotates while the node is running, and turns gray + static when idle.
+    private static readonly StreamGeometry RefreshIndicatorGeometry = StreamGeometry.Parse(
+        "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 " +
+        "M21 3v5h-5 " +
+        "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 " +
+        "M8 16H3v5");
+    private static readonly Color ColorRunning = Color.Parse("#16A34A");
+
+    private readonly DispatcherTimer _spinTimer;
+    private double _spinAngle;   // current rotation (degrees) of the running indicators
+
+    // Hover tooltip state for a node title that was ellipsized (Plan A).
+    private bool _hoverTitleActive;
+    private string? _hoverTitleText;
+    private Point _hoverTitleScreen;
+
 
     public GraphCanvas()
     {
+        _spinTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+        _spinTimer.Tick += OnSpinTick;
+
         Focusable = true;
         ClipToBounds = true;
         DragDrop.SetAllowDrop(this, true);
-        DragDrop.AddDragOverHandler(this, OnCanvasDragOver);
         DragDrop.AddDropHandler(this, OnCanvasDrop);
         DataContextChanged += (_, _) =>
         {
@@ -96,6 +116,23 @@ public sealed class GraphCanvas : Control
 
     private CanvasViewModel? Vm => DataContext as CanvasViewModel;
 
+    // ================= Running indicator animation =================
+
+    /// <summary>Advance the spin angle on each timer tick (only while a node is running).</summary>
+    private void OnSpinTick(object? sender, EventArgs e)
+    {
+        _spinAngle = (_spinAngle + 2.0) % 360;   // ~60°/s ≈ one rotation every 6s (slow, smooth)
+        InvalidateVisual();
+    }
+
+    /// <summary>Start the spinner while any node is running; stop it when all are idle (avoids wasted redraws).</summary>
+    private void UpdateSpinAnimation()
+    {
+        bool anyRunning = Vm?.Nodes.Any(n => n.Running) ?? false;
+        if (anyRunning && !_spinTimer.IsEnabled) _spinTimer.Start();
+        else if (!anyRunning && _spinTimer.IsEnabled) _spinTimer.Stop();
+    }
+
     // ================= Layout =================
 
     private sealed class NodeLayout
@@ -106,6 +143,7 @@ public sealed class GraphCanvas : Control
         public Rect Body = default;
         public List<Rect> InputHits = new();
         public List<Rect> OutputHits = new();
+        public List<(Rect Rect, string Text)> HoverRegions = new();
 
     }
 
@@ -188,7 +226,12 @@ public sealed class GraphCanvas : Control
 
             foreach (var n in BottomFirstNodes(vm))
                 DrawNode(ctx, n);
+            UpdateSpinAnimation();
         }
+
+        // Hover tooltip is drawn in screen space (not world space) so it does not pan/zoom.
+        if (_hoverTitleActive && _hoverTitleText is not null)
+            DrawTooltip(ctx, _hoverTitleText, _hoverTitleScreen);
     }
 
     private Matrix ViewTransform()
@@ -258,18 +301,45 @@ public sealed class GraphCanvas : Control
             Brushes.White, 11, FontWeight.Bold);
 
         // Title (right of the badge) = DisplayName (fallback to Name); "#instance" tag on the right.
-        DrawText(ctx, node.Title, new Point(badgeCenter.X + badgeR + 8, y + 12.5),
-            new SolidColorBrush(ColorTitle), 11, FontWeight.SemiBold);
         var idText = $"#{node.InstanceId}";
         double idW = TextWidth(idText, 9);
+        const double iconSize = 13;
+        double instanceTextLeft = x + NodeWidth - PadX - idW;
+        double iconCenterX = instanceTextLeft - 7 - iconSize / 2.0;
+
+        // Title is ellipsized so it never collides with the instance tag / running indicator.
+        double titleLeftX = badgeCenter.X + badgeR + 8;
+        double titleMaxWidth = (iconCenterX - iconSize / 2.0 - 4) - titleLeftX;
+        if (titleMaxWidth < 0) titleMaxWidth = 0;
+        string titleText = Ellipsize(node.Title, 11, FontWeight.SemiBold, titleMaxWidth);
+        DrawText(ctx, titleText, new Point(titleLeftX, y + 12.5),
+            new SolidColorBrush(ColorTitle), 11, FontWeight.SemiBold, titleMaxWidth);
+        if (TextWidth(node.Title, 11, FontWeight.SemiBold) > titleMaxWidth + 0.5)
+            l.HoverRegions.Add((new Rect(titleLeftX, y, titleMaxWidth, HeaderHeight), node.Title));
+
         DrawText(ctx, idText, new Point(x + NodeWidth - PadX - idW, y + 15),
             new SolidColorBrush(ColorMuted), 9);
 
-        // Meta rows below the header tint: Name (type id) and DependsOn.
-        DrawText(ctx, node.Name, new Point(x + PadX, y + HeaderHeight + 6),
+        // Running indicator: green "refresh-cw" spinner at the node's top-right,
+        // immediately to the left of the "#instance" tag; rotates while running,
+        // gray + static when idle.
+        var iconCenter = new Point(iconCenterX, y + 15 + 9 / 2.0); // vertically centered on the "#instance" tag
+        DrawRefreshIndicator(ctx, iconCenter, iconSize, node.Running ? ColorRunning : ColorMuted,
+            node.Running ? _spinAngle : 0);
+
+        // Meta rows below the header tint: Name (type id) and DependsOn, both ellipsized to fit the card width.
+        double metaMaxWidth = NodeWidth - PadX * 2;
+        DrawText(ctx, Ellipsize(node.Name, 10, FontWeight.Normal, metaMaxWidth),
+            new Point(x + PadX, y + HeaderHeight + 6),
             new SolidColorBrush(ColorName), 10);
-        DrawText(ctx, $"DependsOn: {node.DependsOn}", new Point(x + PadX, y + HeaderHeight + 24),
+        if (TextWidth(node.Name, 10, FontWeight.Normal) > metaMaxWidth + 0.5)
+            l.HoverRegions.Add((new Rect(x + PadX, y + HeaderHeight + 6, metaMaxWidth, 18), node.Name));
+        var dependsText = $"DependsOn: {node.DependsOn}";
+        DrawText(ctx, Ellipsize(dependsText, 10, FontWeight.Normal, metaMaxWidth),
+            new Point(x + PadX, y + HeaderHeight + 24),
             new SolidColorBrush(ColorMuted), 10);
+        if (TextWidth(dependsText, 10, FontWeight.Normal) > metaMaxWidth + 0.5)
+            l.HoverRegions.Add((new Rect(x + PadX, y + HeaderHeight + 24, metaMaxWidth, 18), dependsText));
 
         // Pin rows: hollow / filled dot in the node's category color, straight on the card edge.
         for (int i = 0; i < node.Inputs.Count; i++)
@@ -321,6 +391,25 @@ public sealed class GraphCanvas : Control
             ctx.DrawEllipse(Brushes.White, new Pen(new SolidColorBrush(Mix(accent, Colors.White, 0.35)), 1.2), c, 4, 4);
         }
     }
+    /// <summary>Draw the lucide "refresh-cw" spinner centered at <paramref name="center"/>, scaled to
+    /// <paramref name="size"/> px and rotated by <paramref name="angleDeg"/> around its own center.</summary>
+    private void DrawRefreshIndicator(DrawingContext ctx, Point center, double size, Color color, double angleDeg)
+    {
+        double scale = size / 24.0;
+        double rad = angleDeg * Math.PI / 180.0;
+        // Avalonia Matrix is row-vector: the LEFT factor is applied first, so the order below
+        // moves the icon's own center (12,12) to the origin, scales, rotates around its own
+        // center, then translates to the requested <paramref name="center"/> on the canvas.
+        var m = Matrix.CreateTranslation(-12, -12)
+              * Matrix.CreateScale(new Vector(scale, scale))
+              * Matrix.CreateRotation(rad)
+              * Matrix.CreateTranslation(center.X, center.Y);
+        using (ctx.PushTransform(m))
+        {
+            ctx.DrawGeometry(null, new Pen(new SolidColorBrush(color), 2.0), RefreshIndicatorGeometry);
+        }
+    }
+
 
     private void DrawBezier(DrawingContext ctx, Point start, Point end, bool selected, bool dashed = false, Color? accent = null)
     {
@@ -379,18 +468,39 @@ public sealed class GraphCanvas : Control
         return Math.Sqrt(ox * ox + oy * oy);
     }
 
-    private void DrawText(DrawingContext ctx, string text, Point pos, IBrush brush, double size, FontWeight weight = FontWeight.Normal)
+    private void DrawText(DrawingContext ctx, string text, Point pos, IBrush brush, double size,
+        FontWeight weight = FontWeight.Normal, double maxWidth = double.PositiveInfinity)
     {
         var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             new Typeface(AppFont, FontStyle.Normal, weight), size, brush);
+        if (double.IsFinite(maxWidth) && maxWidth > 0)
+        {
+            ft.MaxTextWidth = maxWidth;
+            ft.Trimming = TextTrimming.CharacterEllipsis;
+        }
         ctx.DrawText(ft, pos);
     }
-
     private double TextWidth(string text, double size, FontWeight weight = FontWeight.Normal)
     {
         var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             new Typeface(AppFont, FontStyle.Normal, weight), size, Brushes.Black);
         return ft.Width;
+    }
+
+    /// <summary>Return <paramref name="text"/> truncated with a trailing "…" so it fits within <paramref name="maxWidth"/>.</summary>
+    private string Ellipsize(string text, double size, FontWeight weight, double maxWidth)
+    {
+        if (maxWidth <= 0 || TextWidth(text, size, weight) <= maxWidth)
+            return text;
+        int k = text.Length;
+        while (k > 0)
+        {
+            var candidate = text[..k] + "…";
+            if (TextWidth(candidate, size, weight) <= maxWidth)
+                return candidate;
+            k--;
+        }
+        return "…";
     }
 
     // ================= Z-order =================
@@ -596,6 +706,7 @@ public sealed class GraphCanvas : Control
         var screen = e.GetPosition(this);
         if (vm.IsPanning)
         {
+            ClearHover();
             vm.UpdatePan(screen);
             InvalidateVisual();
             return;
@@ -603,14 +714,73 @@ public sealed class GraphCanvas : Control
         var world = ScreenToWorld(screen);
         if (vm.IsDragging)
         {
+            ClearHover();
             vm.UpdateDrag(world);
             InvalidateVisual();
         }
         else if (vm.IsConnecting)
         {
+            ClearHover();
             vm.UpdateConnect(world);
             InvalidateVisual();
         }
+        else
+        {
+            UpdateHover(world, screen);
+        }
+    }
+
+    /// <summary>Reset the hover-tooltip state (no longer over a truncated title).</summary>
+    private void ClearHover()
+    {
+        if (_hoverTitleActive)
+        {
+            _hoverTitleActive = false;
+            _hoverTitleText = null;
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>Update whether the pointer is over a node title that was ellipsized (Plan A).</summary>
+    private void UpdateHover(Point world, Point screen)
+    {
+        var active = false;
+        string? text = null;
+        var topNode = HitTestNode(world);
+        if (topNode is not null && _layouts.TryGetValue(topNode, out var l))
+        {
+            foreach (var region in l.HoverRegions)
+            {
+                if (region.Rect.Contains(world))
+                {
+                    active = true;
+                    text = region.Text;
+                    break;
+                }
+            }
+        }
+        if (active != _hoverTitleActive || text != _hoverTitleText)
+        {
+            _hoverTitleActive = active;
+            _hoverTitleText = text;
+            _hoverTitleScreen = screen;
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>Draw a small dark tooltip near the cursor with the full (untruncated) node title.</summary>
+    private void DrawTooltip(DrawingContext ctx, string text, Point screenPos)
+    {
+        var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+            new Typeface(AppFont, FontStyle.Normal, FontWeight.Normal), 11, Brushes.White);
+        double w = ft.Width + 16;
+        double h = ft.Height + 10;
+        var pos = new Point(screenPos.X + 12, screenPos.Y + 14);
+        pos = new Point(Math.Min(pos.X, Math.Max(0, Bounds.Width - w - 4)),
+                        Math.Min(pos.Y, Math.Max(0, Bounds.Height - h - 4)));
+        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(235, 15, 23, 42)), null,
+            new RoundedRect(new Rect(pos, new Size(w, h)), 6, 6));
+        ctx.DrawText(ft, new Point(pos.X + 8, pos.Y + 5));
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -706,8 +876,11 @@ public sealed class GraphCanvas : Control
             || e.PropertyName == nameof(NodeViewModel.IsSelected)
             || e.PropertyName == nameof(NodeViewModel.ZIndex)
             || e.PropertyName == nameof(NodeViewModel.Title)
-            || e.PropertyName == nameof(NodeViewModel.DependsOn))
+            || e.PropertyName == nameof(NodeViewModel.DependsOn)
+            || e.PropertyName == nameof(NodeViewModel.Running))
             InvalidateVisual();
+        if (e.PropertyName == nameof(NodeViewModel.Running))
+            UpdateSpinAnimation();
     }
 }
 
