@@ -17,16 +17,16 @@
     <conv:InverseBoolConverter x:Key="InverseBool"/>
   </Window.Resources>
 
-  <!-- 悬浮窗外观：整窗外框 16px 圆角（最大化时由 code-behind 归零） -->
+  <!-- Floating window appearance: 16px outer corner radius (set to zero by code-behind when maximized) -->
   <Border x:Name="RootBorder" CornerRadius="16" ClipToBounds="True"
           Background="{DynamicResource BrushCanvas}"
           BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1">
     <Grid RowDefinitions="34,*">
-      <!-- 自定义标题栏（左侧 logo + 标题 + 版本 pill，中间工具组，右侧窗口按钮） -->
+      <!-- Custom title bar (logo + title + version pill on the left, toolbar in the middle, window buttons on the right) -->
       <Border Grid.Row="0" Background="{DynamicResource BrushTitleBar}"
               BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="12,0,10,0">
-          <!-- 左：渐变 logo 方块 + 标题 + 版本 pill（可拖拽） -->
+          <!-- Left: gradient logo tile + title + version pill (draggable) -->
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10"
                       Background="Transparent" VerticalAlignment="Center"
                       PointerPressed="TitleBar_OnPointerPressed">
@@ -43,14 +43,14 @@
                        VerticalAlignment="Center"/>
           </StackPanel>
 
-          <!-- 中：横向工具栏（顺序与设计稿一致，图标之间留出呼吸感） -->
+          <!-- Center: horizontal toolbar (order matches the design, with breathing room between icons) -->
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" Margin="22,0,0,0" VerticalAlignment="Center">
             <Button Classes="toolbtn run" Command="{Binding Main.RunCommand}"
                     ToolTip.Tip="{Binding [Run], Source={x:Static s:Loc.Instance}}"
                     IsEnabled="{Binding Main.IsRunning, Converter={StaticResource InverseBool}}">
               <Path Data="M320 112C434.9 112 528 205.1 528 320C528 434.9 434.9 528 320 528C205.1 528 112 434.9 112 320C112 205.1 205.1 112 320 112zM320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM276.5 211.5C269.1 207 259.8 206.8 252.2 211C244.6 215.2 240 223.3 240 232L240 408C240 416.7 244.7 424.7 252.3 428.9C259.9 433.1 269.1 433 276.6 428.4L420.6 340.4C427.7 336 432.1 328.3 432.1 319.9C432.1 311.5 427.7 303.8 420.6 299.4L276.6 211.4zM362 320L288 365.2L288 274.8L362 320z" Stretch="Uniform" Width="12" Height="12"/>
             </Button>
-            <!-- Stop：深色实心圆角方块 + 白色方块 -->
+            <!-- Stop: solid dark rounded square + white square -->
             <Button Classes="toolbtn dark" Command="{Binding Main.StopCommand}"
                     ToolTip.Tip="{Binding [Stop], Source={x:Static s:Loc.Instance}}"
                     IsEnabled="{Binding Main.IsRunning}">
@@ -89,10 +89,10 @@
             </Button>
           </StackPanel>
 
-          <!-- 可拖拽空白区域 -->
+          <!-- Draggable blank area -->
           <Border Grid.Column="2" Background="Transparent" PointerPressed="TitleBar_OnPointerPressed"/>
 
-          <!-- 右：窗口按钮 -->
+          <!-- Right: window buttons -->
           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <Border Background="#F5F3FF" CornerRadius="8" Padding="7,3"
                     VerticalAlignment="Center" Margin="0,0,14,0">

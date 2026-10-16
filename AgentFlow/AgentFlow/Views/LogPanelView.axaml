@@ -63,6 +63,8 @@
               <Setter Property="Background" Value="Transparent"/>
               <Setter Property="Padding" Value="6,0"/>
               <Setter Property="CornerRadius" Value="6"/>
+              <Setter Property="MinHeight" Value="24"/>
+              <Setter Property="VerticalContentAlignment" Value="Center"/>
               <Setter Property="Template">
                 <ControlTemplate TargetType="ListBoxItem">
                   <ContentPresenter Name="PART_ContentPresenter"
@@ -71,8 +73,8 @@
                                     ContentTemplate="{TemplateBinding ContentTemplate}"
                                     Content="{TemplateBinding Content}"
                                     Padding="{TemplateBinding Padding}"
-                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                    HorizontalContentAlignment="Stretch"
+                                    VerticalContentAlignment="Center"/>
                 </ControlTemplate>
               </Setter>
             </ControlTheme>

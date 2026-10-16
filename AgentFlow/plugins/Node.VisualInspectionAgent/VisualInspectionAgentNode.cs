@@ -68,7 +68,7 @@ public sealed class VisualInspectionAgentNode : BaseNode
             var sample = StringSample.CreateSample();
             sample.SetValue(input, "Output");
             context.SetOutput("Output", sample);
-            context.Logger.LogInformation("{Node}: ran (input length {Len})", Name, input.Length);
+            context.Logger.LogTrace("{Node}: ran (input length {Len})", Name, input.Length);
         }
         finally
         {

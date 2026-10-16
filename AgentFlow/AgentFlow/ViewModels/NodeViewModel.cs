@@ -25,8 +25,8 @@ public static class CategoryColors
         ["Flow"] = "BrushCatFlow",
         ["General"] = "BrushCatGeneral",
         ["Amplifier"] = "BrushCatAmplifier",
-        ["AI"] = "BrushCatLogic",        // ReActAgent 等 AI 节点归到紫色逻辑类
-        ["Network"] = "BrushCatFlow",   // Socket 等网络节点归到青色流类
+        ["AI"] = "BrushCatLogic",        // AI nodes such as ReActAgent are grouped into the purple logic category
+        ["Network"] = "BrushCatFlow",   // Network nodes such as Socket are grouped into the teal flow category
     };
 
     private static readonly Dictionary<string, Color> Fallback = new(StringComparer.OrdinalIgnoreCase)

@@ -30,7 +30,7 @@ public partial class NodeLibraryView : UserControl
 
     private void OnItemPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        // 单击切换选中态：再点当前选中项则取消，否则选中新项并还原旧项。
+        // Single-click toggles the selection: clicking the current item deselects it; otherwise select the new item and restore the old one.
         if (sender is Border border)
         {
             if (_selectedBorder == border)

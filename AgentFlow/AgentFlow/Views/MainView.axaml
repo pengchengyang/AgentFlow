@@ -19,20 +19,20 @@
   </UserControl.KeyBindings>
   <Grid Background="{DynamicResource BrushCanvas}">
     <Grid RowDefinitions="*,28">
-      <!-- 上：画布 + 可折叠日志面板，右侧组件栏 -->
+      <!-- Top: canvas + collapsible log panel, right-side component sidebar -->
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
         <Grid Grid.Column="0" RowDefinitions="*,Auto">
           <Grid Grid.Row="0" IsVisible="{Binding IsLogPanelExpanded, Converter={StaticResource InvertBool}}">
             <views:CanvasView DataContext="{Binding Canvas}"/>
           </Grid>
-          <!-- 日志面板（Log 按钮展开/收起） -->
+          <!-- Log panel (expanded/collapsed by the Log button) -->
           <views:LogPanelView Grid.Row="{Binding IsLogPanelExpanded, Converter={StaticResource BoolToRow}}" DataContext="{Binding LogPanel}" IsVisible="{Binding IsLogPanelOpen}" Grid.RowSpan="{Binding IsLogPanelExpanded, Converter={StaticResource RowSpan}}" Height="{Binding IsLogPanelExpanded, Converter={StaticResource PanelHeight}}"/>
         </Grid>
-        <!-- 右侧节点库 -->
+        <!-- Right-side node library -->
         <views:NodeLibraryView Grid.Column="1" Width="288" DataContext="{Binding NodeLibrary}" IsVisible="{Binding IsSidebarVisible}"/>
       </Grid>
 
-      <!-- 下：底部状态条，贯穿整窗直到最右边 -->
+      <!-- Bottom: status bar spanning the full window width to the far right -->
       <Border Grid.Row="1" Background="{DynamicResource BrushCard}"
               BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
         <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0">

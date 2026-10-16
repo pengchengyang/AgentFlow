@@ -24,7 +24,7 @@ public static class RollingLog
     /// <summary>Shared default options (console + rolling file, Debug level).</summary>
     public static RollingLoggerOptions DefaultOptions() => new()
     {
-        MinimumLevel = LogEventLevel.Debug,
+        MinimumLevel = LogEventLevel.Verbose,
         LogFilePath = "./Logs/Rolling-.log",
         OutputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}][{Level:u3}][{SourceContext}][{CallerFile}:{CallerLineNumber}] {Message:lj}{NewLine}{Exception}",
         FileSizeLimitBytes = 1024 * 1024 * 10,

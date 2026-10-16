@@ -13,7 +13,7 @@
   </UserControl.Resources>
 
   <UserControl.Styles>
-    <!-- 搜索框：设计稿为浅灰填充、无描边、圆角 10 -->
+    <!-- Search box: light gray fill, no border, radius 10 per the design -->
     <Style Selector="TextBox.searchbox">
       <Setter Property="Background" Value="{DynamicResource BrushSurface}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}"/>
@@ -30,14 +30,14 @@
     <Style Selector="TextBox.searchbox:focus /template/ Border#PART_BorderElement">
       <Setter Property="BorderThickness" Value="1"/>
     </Style>
-    <!-- 分组标题（设计稿：小号大写灰字） -->
+    <!-- Group header (design: small uppercase gray text) -->
     <Style Selector="TextBlock.sectiontitle">
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="Bold"/>
       <Setter Property="Foreground" Value="{DynamicResource BrushTextTertiary}"/>
       <Setter Property="Margin" Value="4,14,0,8"/>
     </Style>
-    <!-- 节点库列表项 -->
+    <!-- Node library list item -->
     <Style Selector="Border.libitem">
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="CornerRadius" Value="10"/>
@@ -58,7 +58,7 @@
     <Style Selector="Border.libitem:pressed">
       <Setter Property="Background" Value="{DynamicResource BrushSurfacePressed}"/>
     </Style>
-    <!-- 选中态：轻微放大 + 浅紫底 + 左侧紫条 -->
+    <!-- Selected state: slight scale-up + light purple background + purple bar on the left -->
     <Style Selector="Border.libitem.selected">
       <Setter Property="Background" Value="{DynamicResource BrushDlgSidebarItemActiveBg}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BrushBrandViolet}"/>
@@ -66,7 +66,7 @@
       <Setter Property="Padding" Value="2,5,5,5"/>
       <Setter Property="RenderTransform" Value="scale(1.08,1.08)"/>
     </Style>
-    <!-- 类型图标方块（设计稿：彩色圆角方块 + 白色首字母） -->
+    <!-- Type icon tile (design: colored rounded square + white initial) -->
     <Style Selector="Border.caticon">
       <Setter Property="CornerRadius" Value="6"/>
       <Setter Property="Width" Value="22"/>
@@ -74,7 +74,7 @@
     </Style>
   </UserControl.Styles>
 
-  <!-- 右侧节点库 -->
+  <!-- Right-side node library -->
   <Border Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1,0,0,0">
     <DockPanel Margin="16,18,16,10">
       <TextBlock DockPanel.Dock="Top"
@@ -82,7 +82,7 @@
                  FontWeight="Bold" FontSize="15"
                  Foreground="{DynamicResource BrushTextPrimary}" Margin="2,0,0,14"/>
 
-      <!-- 搜索框 -->
+      <!-- Search box -->
       <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
         <TextBox Classes="searchbox" Text="{Binding SearchText, Mode=TwoWay}"
                  PlaceholderText="{Binding [Search], Source={x:Static s:Loc.Instance}}"/>
@@ -92,7 +92,7 @@
               Stretch="Uniform" IsHitTestVisible="False"/>
       </Grid>
 
-      <!-- 节点列表（按名称 A-Z 排序，点击添加 / 拖拽到画布） -->
+      <!-- Node list (sorted A-Z by name; click to add / drag onto the canvas) -->
       <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,0,-8,0">
         <ItemsControl ItemsSource="{Binding PaletteItems}">
           <ItemsControl.ItemTemplate>

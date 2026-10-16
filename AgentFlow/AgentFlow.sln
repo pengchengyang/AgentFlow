@@ -72,8 +72,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.YieldAnalysisAgent", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.ZeroDefectAgent", "plugins\Node.ZeroDefectAgent\Node.ZeroDefectAgent.csproj", "{57410266-F9A2-4F83-BE00-BE9DAB9164F8}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AutonomousIndustrialMultiAgentOrchestrationPredictiveMaintenanceQualityAgent", "plugins\AutonomousIndustrialMultiAgentOrchestrationPredictiveMaintenanceQualityAgent\AutonomousIndustrialMultiAgentOrchestrationPredictiveMaintenanceQualityAgent.csproj", "{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -354,14 +352,6 @@ Global
 		{57410266-F9A2-4F83-BE00-BE9DAB9164F8}.Release|Any CPU.Build.0 = Release|Any CPU
 		{57410266-F9A2-4F83-BE00-BE9DAB9164F8}.Release|x64.ActiveCfg = Release|x64
 		{57410266-F9A2-4F83-BE00-BE9DAB9164F8}.Release|x64.Build.0 = Release|x64
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Debug|x64.ActiveCfg = Debug|x64
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Debug|x64.Build.0 = Debug|x64
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Release|x64.ActiveCfg = Release|x64
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -396,6 +386,5 @@ Global
 		{834CBCDD-D196-40D9-B873-1553C3774140} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
 		{47ACD1D9-B5AD-43E2-9A3A-1B1F25A18C8F} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
 		{57410266-F9A2-4F83-BE00-BE9DAB9164F8} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
-		{0DA5AAD9-11CC-42D7-87C7-2C86A76FDE4A} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
 	EndGlobalSection
 EndGlobal

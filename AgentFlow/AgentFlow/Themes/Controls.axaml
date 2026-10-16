@@ -1,7 +1,7 @@
-﻿<Styles xmlns="https://github.com/avaloniaui"
+<Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- ============ 涓绘寜閽紙绱壊濉厖锛岀敤浜?Run 绛変富鎿嶄綔锛?============ -->
+    <!-- ============ Primary button (solid purple, used for main actions such as Run) ============ -->
     <Style Selector="Button.primary">
         <Setter Property="Background" Value="{DynamicResource BrushBrand}" />
         <Setter Property="Foreground" Value="{StaticResource BrushTextInverse}" />
@@ -23,7 +23,7 @@
         <Setter Property="Foreground" Value="{DynamicResource BrushTextInverse}" />
     </Style>
 
-    <!-- ============ 娆℃寜閽紙鐧藉簳鐏拌竟锛?============ -->
+    <!-- ============ Secondary button (white background, gray border) ============ -->
     <Style Selector="Button.secondary">
         <Setter Property="Background" Value="{DynamicResource BrushCard}" />
         <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}" />
@@ -43,7 +43,7 @@
         <Setter Property="Background" Value="{DynamicResource BrushSurfacePressed}" />
     </Style>
 
-    <!-- ============ 鏂囧瓧灏忔寜閽紙璇█/涓婚绛夛級 ============ -->
+    <!-- ============ Small text button (language / home, etc.) ============ -->
     <Style Selector="Button.ghost">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}" />
@@ -56,7 +56,7 @@
         <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}" />
     </Style>
 
-    <!-- ============ 杈撳叆妗?/ 鎼滅储妗?============ -->
+    <!-- ============ Input box / search box ============ -->
     <Style Selector="TextBox">
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="10,7" />
@@ -72,14 +72,14 @@
         <Setter Property="BorderThickness" Value="1.5" />
     </Style>
 
-    <!-- ============ 鏁板瓧杈撳叆妗?============ -->
+    <!-- ============ Numeric input box ============ -->
     <Style Selector="NumericUpDown">
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
         <Setter Property="BorderThickness" Value="1" />
     </Style>
 
-    <!-- ============ 鏍囬鏍忓伐鍏锋寜閽紙璁捐绋匡細36脳36 / 鍦嗚 10 / 鏃犺竟妗嗭級 ============ -->
+    <!-- ============ Title-bar tool button (designed 36x36 / corner radius 10 / borderless) ============ -->
     <Style Selector="Button.toolbtn">
         <Setter Property="Width" Value="26" />
         <Setter Property="Height" Value="26" />
@@ -101,7 +101,7 @@
         <Setter Property="Opacity" Value="0.35" />
     </Style>
 
-    <!-- 涓绘搷浣滐細绱壊瀹炲績锛堣璁＄鐨勬挱鏀炬寜閽級 -->
+    <!-- Primary action: solid purple (the design play button) -->
     <Style Selector="Button.toolbtn.run">
         <Setter Property="Background" Value="{DynamicResource BrushSuccessBg}" />
     </Style>
@@ -122,7 +122,7 @@
         <Setter Property="Fill" Value="{DynamicResource BrushSuccess}" />
     </Style>
 
-    <!-- ============ 娴呰壊鍔熻兘鎸夐挳锛圤pen / Save / Clear / Reset / Login锛?============ -->
+    <!-- ============ Light-colored function buttons (Open / Save / Clear / Reset / Login) ============ -->
     <Style Selector="Button.toolbtn.open">
         <Setter Property="Background" Value="{DynamicResource BrushOpenBg}" />
     </Style>
@@ -180,7 +180,7 @@
     <Style Selector="Button.toolbtn.theme Path">
         <Setter Property="Stroke" Value="{DynamicResource BrushThemeBtnFg}" />
     </Style>
-    <!-- 鍋滄锛氭繁鑹插疄蹇冿紙璁捐绋跨殑榛戣壊鏂瑰潡鎸夐挳锛?-->
+    <!-- Stop: solid dark (the design black square button) -->
     <Style Selector="Button.toolbtn.dark">
         <Setter Property="Background" Value="{DynamicResource BrushStopBtnBg}" />
     </Style>
@@ -201,7 +201,7 @@
         <Setter Property="Fill" Value="{DynamicResource BrushStopBtnFg}" />
     </Style>
 
-    <!-- ============ 绐楀彛鎸夐挳锛堟渶灏忓寲 / 鏈€澶у寲 / 鍏抽棴锛?============ -->
+    <!-- ============ Window buttons (minimize / maximize / close) ============ -->
     <Style Selector="Button.winbtn">
         <Setter Property="Width" Value="32" />
         <Setter Property="Height" Value="26" />
@@ -225,7 +225,7 @@
         <Setter Property="Fill" Value="White" />
     </Style>
 
-    <!-- 绐楀彛鎸夐挳娴呰壊鐫€鑹诧紙鏈€灏忓寲 / 鏈€澶у寲 / 鍏抽棴锛?-->
+    <!-- Window button light colors (minimize / maximize / close) -->
     <Style Selector="Button.winbtn.min">
         <Setter Property="Background" Value="{DynamicResource BrushMinBtnBg}" />
     </Style>
@@ -266,7 +266,7 @@
     </Style>
 
 
-    <!-- ============ 鏃ュ織绛夌骇杩囨护 Toggle 鎸夐挳锛堟祬鑹茶儗鏅?+ hover/pressed + 閫変腑杈规锛?============ -->
+    <!-- ============ Log level filter Toggle buttons (light background + hover/pressed + selected border) ============ -->
     <Style Selector="ToggleButton.level">
         <Setter Property="CornerRadius" Value="6" />
         <Setter Property="Padding" Value="6,2" />

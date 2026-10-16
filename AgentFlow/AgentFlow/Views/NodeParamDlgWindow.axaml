@@ -21,7 +21,7 @@
           BoxShadow="0 20 60 0 #260F172A">
     <Grid RowDefinitions="Auto,*,Auto">
 
-      <!-- 自定义标题栏 -->
+      <!-- Custom title bar -->
       <Border Grid.Row="0" Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1" Padding="0,10,0,10">
         <Border.Styles>
           <Style Selector="Button.winbtn">
@@ -34,7 +34,7 @@
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
           </Style>
-          <!-- 最小化：浅青底 -->
+          <!-- Minimize: light teal background -->
           <Style Selector="Button.winbtn.min">
             <Setter Property="Background" Value="{DynamicResource BrushMinBtnBg}"/>
           </Style>
@@ -44,7 +44,7 @@
           <Style Selector="Button.winbtn.min Border">
             <Setter Property="Background" Value="{DynamicResource BrushMinBtnFg}"/>
           </Style>
-          <!-- 最大化：浅紫底 -->
+          <!-- Maximize: light purple background -->
           <Style Selector="Button.winbtn.max">
             <Setter Property="Background" Value="{DynamicResource BrushMaxBtnBg}"/>
           </Style>
@@ -54,7 +54,7 @@
           <Style Selector="Button.winbtn.max Path">
             <Setter Property="Fill" Value="{DynamicResource BrushMaxBtnFg}"/>
           </Style>
-          <!-- 关闭：浅红底 -->
+          <!-- Close: light red background -->
           <Style Selector="Button.winbtn.close">
             <Setter Property="Background" Value="{DynamicResource BrushCloseBtnBg}"/>
           </Style>
@@ -115,10 +115,10 @@
         </Grid>
       </Border>
 
-      <!-- 主体：Zone 导航 + 参数区 -->
+      <!-- Body: Zone navigation + parameter area -->
       <Grid Grid.Row="1" Margin="0" ColumnDefinitions="180,*">
 
-        <!-- Zone 导航 -->
+        <!-- Zone navigation -->
         <Border Grid.Column="0" Background="{DynamicResource BrushDlgSidebarBg}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,1,0">
           <ListBox ItemsSource="{Binding Zones}"
                    SelectedItem="{Binding SelectedZone, Mode=TwoWay}"
@@ -159,7 +159,7 @@
           </ListBox>
         </Border>
 
-        <!-- 参数区 -->
+        <!-- Parameter area -->
         <Border Grid.Column="1" Background="{DynamicResource BrushCard}">
           <Grid RowDefinitions="*,Auto">
 
@@ -283,7 +283,7 @@
               </ListBox>
             </Grid>
 
-            <!-- 描述区 -->
+            <!-- Description area -->
             <Border Grid.Row="1" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0"
                     MinHeight="60" Padding="20,12">
               <StackPanel Spacing="4" VerticalAlignment="Top">
@@ -295,7 +295,7 @@
         </Border>
       </Grid>
 
-      <!-- 底部按钮 -->
+      <!-- Bottom buttons -->
       <Border Grid.Row="2" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0" Padding="20,14">
         <Border.Styles>
           <Style Selector="Button.dlgbtn">
@@ -319,7 +319,7 @@
             <Setter Property="Foreground" Value="{DynamicResource BrushTextTertiary}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}"/>
           </Style>
-          <!-- Cancel 按钮:用对话框专用资源,跟 Apply/OK 区分 -->
+          <!-- Cancel button: uses dialog-specific resources to distinguish it from Apply/OK -->
           <Style Selector="Button.dlgbtn.cancel">
             <Setter Property="Background" Value="{DynamicResource BrushDlgButtonBg}"/>
             <Setter Property="Foreground" Value="{DynamicResource BrushDlgSecondaryText}"/>

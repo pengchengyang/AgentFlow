@@ -25,7 +25,7 @@
         <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#F0F0F0" TintOpacity="0.5" FallbackColor="#F9FAFB" MaterialOpacity="0.55"/>
     </ExperimentalAcrylicBorder.Material>
   <Grid RowDefinitions="34,*">
-    <!-- 自定义标题栏（两个按钮：最小化、关闭） -->
+    <!-- Custom title bar (two buttons: minimize, close) -->
     <Border Grid.Row="0" Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1">
       <Border.Styles>
         <Style Selector="Button.winbtn">
@@ -124,7 +124,7 @@
               <Setter Property="Background" Value="#E5E7EB"/>
             </Style>
 
-            <!-- 主操作：紫色实心 + 白色图标 -->
+            <!-- Primary action: solid purple + white icon -->
             <Style Selector="Button.toolbtn.primary">
               <Setter Property="Background" Value="{DynamicResource BrushBrand}"/>
             </Style>
@@ -137,7 +137,7 @@
             <Style Selector="Button.toolbtn.primary Path">
               <Setter Property="Fill" Value="{DynamicResource BrushTextInverse}"/>
             </Style>
-            <!-- 确认：绿色实心 + 绿色图标 -->
+            <!-- Confirm: solid green + green icon -->
             <Style Selector="Button.toolbtn.success">
               <Setter Property="Background" Value="#DCFCE7"/>
             </Style>
@@ -150,7 +150,7 @@
             <Style Selector="Button.toolbtn.success Path">
               <Setter Property="Fill" Value="#15803D"/>
             </Style>
-            <!-- 取消：浅灰底 + 深色图标 -->
+            <!-- Cancel: light gray background + dark icon -->
             <Style Selector="Button.toolbtn.cancel">
               <Setter Property="Background" Value="#F1F5F9"/>
             </Style>
@@ -160,7 +160,7 @@
             <Style Selector="Button.toolbtn.cancel:pressed">
               <Setter Property="Background" Value="#CBD5E1"/>
             </Style>
-            <!-- 危险：浅玫红底 + 红色图标 -->
+            <!-- Danger: light rose background + red icon -->
             <Style Selector="Button.toolbtn.danger">
               <Setter Property="Background" Value="#FEE2E2"/>
             </Style>

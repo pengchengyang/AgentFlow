@@ -53,10 +53,7 @@ public sealed class SocketClientNode : BaseNode
         AddInputPin(_inPin);
         AddOutputPin(_outPin);
     }
-    /// Declare the node's parameters. Called by the base constructor; each declared
-    /// parameter is automatically surfaced in the property panel and serialized /
-    /// deserialized to JSON by <see cref="BaseNode"/>.
-    /// </summary>
+    /// <summary>Declare the node's parameters.</summary>
     protected override void AddParam()
     {
         base.AddParam();
@@ -102,32 +99,55 @@ public sealed class SocketClientNode : BaseNode
     /// </summary>
     public override async Task Run(INodeContext context, CancellationToken ct = default)
     {
+        var host = Param("Host").Value?.ToString() ?? "127.0.0.1";
+        var port = Convert.ToInt32(Param("Port").Value);
+
+        var client = new TcpClient();
+        _client = client;
+
+        // Keep retrying the connection so running the client without a listening server does
+        // not fail the whole workflow: log a warning, wait briefly, then try again until the
+        // server becomes available or the run is stopped/cancelled.
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await client.ConnectAsync(host, port, ct);
+                break; // connected
+            }
+            catch (OperationCanceledException)
+            {
+                break; // stopped or cancelled while connecting
+            }
+            catch (Exception ex) when (ex is SocketException or IOException or ObjectDisposedException)
+            {
+                context.Logger.LogWarning(
+                    "SocketClient could not connect to {Host}:{Port} ({Message}); retrying in 2s",
+                    host, port, ex.Message);
+                try { await Task.Delay(TimeSpan.FromSeconds(2), ct); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+
+        if (ct.IsCancellationRequested)
+        {
+            client.Dispose();
+            _client = null;
+            return; // run was stopped before the connection could be established
+        }
+
+        context.Logger.LogTrace("SocketClient connected to {Host}:{Port}", host, port);
+
+        _cts = new CancellationTokenSource();
+        _commTask = Task.Run(() => CommLoopAsync(context, _cts.Token));
+
+        // Queue the initial payload; the communication loop sends it (and keeps talking).
+        var payload = !string.IsNullOrEmpty(_sendValue)
+            ? _sendValue
+            : Param("Payload").Value?.ToString() ?? "ping";
+        _sendChannel.Writer.TryWrite(payload);
+        context.Logger.LogTrace("SocketClient queued payload: {Payload}", payload);
         Running = true;
-        try
-        {
-            var client = new TcpClient();
-            _client = client;
-            await client.ConnectAsync(
-                Param("Host").Value?.ToString() ?? "127.0.0.1",
-                Convert.ToInt32(Param("Port").Value), ct);
-            context.Logger.LogInformation("SocketClient connected to {Host}:{Port}",
-                Param("Host").Value?.ToString(), Param("Port").Value);
-
-            _cts = new CancellationTokenSource();
-            _commTask = Task.Run(() => CommLoopAsync(context, _cts.Token));
-
-            // Queue the initial payload; the communication loop sends it (and keeps talking).
-            var payload = !string.IsNullOrEmpty(_sendValue)
-                ? _sendValue
-                : Param("Payload").Value?.ToString() ?? "ping";
-            _sendChannel.Writer.TryWrite(payload);
-            context.Logger.LogInformation("SocketClient queued payload: {Payload}", payload);
-        }
-        catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException)
-        {
-            context.Logger.LogError("SocketClient error: {Message}", ex.Message);
-            throw;
-        }
     }
 
     /// <summary>
@@ -161,7 +181,7 @@ public sealed class SocketClientNode : BaseNode
                         break; // server closed the connection
 
                     var recvSample = new StringSample(); recvSample.SetValue(line, "Received"); context.SetOutput("Received", recvSample);
-                    context.Logger.LogInformation("SocketClient received: {Line}", line);
+                    context.Logger.LogTrace("SocketClient received: {Line}", line);
                     readTask = reader.ReadLineAsync(ct).AsTask(); // re-arm the pending read
                 }
                 else
@@ -170,7 +190,7 @@ public sealed class SocketClientNode : BaseNode
                     while (_sendChannel.Reader.TryRead(out var msg))
                     {
                         await writer.WriteLineAsync(msg.AsMemory(), ct);
-                        context.Logger.LogInformation("SocketClient sent: {Msg}", msg);
+                        context.Logger.LogTrace("SocketClient sent: {Msg}", msg);
                     }
                 }
             }
@@ -178,7 +198,7 @@ public sealed class SocketClientNode : BaseNode
         catch (Exception ex) when (ex is ObjectDisposedException or IOException or SocketException or OperationCanceledException)
         {
             // Connection closed, or the node was stopped / cancelled.
-            context.Logger.LogInformation("SocketClient connection ended: {Message}", ex.Message);
+            context.Logger.LogTrace("SocketClient connection ended: {Message}", ex.Message);
         }
     }
 
@@ -198,7 +218,3 @@ public sealed class SocketClientNode : BaseNode
         Running = false;
     }
 }
-
-
-
-

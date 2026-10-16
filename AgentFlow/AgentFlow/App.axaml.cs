@@ -20,17 +20,17 @@ namespace AgentFlow;
 
 public partial class App : Application
 {
-    /// <summary>当前是否为深色主题。</summary>
+    /// <summary>Whether the current theme is dark.</summary>
     public static bool IsDarkTheme { get; private set; } = false;
 
-    /// <summary>切换浅色/深色主题。</summary>
+    /// <summary>Toggles between light and dark themes.</summary>
     public static void ToggleTheme()
     {
         IsDarkTheme = !IsDarkTheme;
         var app = Current as App;
         if (app == null) return;
 
-        // 清空资源字典，重新加载对应主题
+        // Clear the resource dictionary and reload the corresponding theme
         app.Resources.MergedDictionaries.Clear();
 
         var uri = IsDarkTheme
@@ -40,7 +40,7 @@ public partial class App : Application
         app.Resources.MergedDictionaries.Add(
             (ResourceDictionary)AvaloniaXamlLoader.Load(uri));
 
-        // 触发主窗口里的 GraphCanvas 重绘(画布是代码自绘的,不会自动刷新)
+        // Trigger a redraw of the GraphCanvas in the main window (the canvas is drawn in code and does not refresh automatically)
         if (app.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop &&
             desktop.MainWindow != null)
         {

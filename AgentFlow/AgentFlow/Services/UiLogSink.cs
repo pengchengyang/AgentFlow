@@ -18,7 +18,29 @@ public sealed class UiLogEntry
     public required DateTimeOffset Timestamp { get; init; }
     public required string Level { get; init; }
     public required string Source { get; init; }
+
+    /// <summary>Single-line message used for grid display (all whitespace flattened to one space).</summary>
     public required string Message { get; init; }
+
+    /// <summary>Original multi-line message preserved for clipboard/tooltip copy.</summary>
+    public required string RawMessage { get; init; }
+
+    /// <summary>Flatten any whitespace (newlines, tabs) into single spaces for single-line display.</summary>
+    public static string Flatten(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        var sb = new System.Text.StringBuilder(s.Length);
+        var prevSpace = false;
+        foreach (var ch in s)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                if (!prevSpace) { sb.Append(' '); prevSpace = true; }
+            }
+            else { sb.Append(ch); prevSpace = false; }
+        }
+        return sb.ToString().Trim();
+    }
 }
 
 /// <summary>
@@ -50,6 +72,7 @@ public sealed class UiLogSink : ILogEventSink
 {
     public void Emit(LogEvent logEvent)
     {
+        var raw = logEvent.RenderMessage();
         var entry = new UiLogEntry
         {
             Timestamp = logEvent.Timestamp,
@@ -65,7 +88,8 @@ public sealed class UiLogSink : ILogEventSink
             },
             Source = logEvent.Properties.TryGetValue("SourceContext", out var sc)
                 ? sc.ToString().Trim('"') : "",
-            Message = logEvent.RenderMessage(),
+            Message = UiLogEntry.Flatten(raw),
+            RawMessage = raw,
         };
         UiLogStore.Add(entry);
     }

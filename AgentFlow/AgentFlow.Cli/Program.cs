@@ -22,7 +22,7 @@ RollingLog.Configure(o => o.LogFilePath = "./Logs/Rolling-Cli-.log");
 
 using var loggerFactory = LoggerFactory.Create(builder =>
 {
-    builder.SetMinimumLevel(LogLevel.Debug);
+    builder.SetMinimumLevel(LogLevel.Trace);
     builder.AddProvider(new RollingLoggerProvider());
 });
 var logger = loggerFactory.CreateLogger("AgentFlow.Cli");

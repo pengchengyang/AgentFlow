@@ -56,7 +56,7 @@ public sealed class WorkflowEngine
     /// </summary>
     public async Task StartAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
-        _logger.LogInformation("WorkflowEngine: start ({NodeCount} nodes).", graph.Nodes.Count);
+        _logger.LogTrace("WorkflowEngine: start ({NodeCount} nodes).", graph.Nodes.Count);
         var run = Prepare(graph);
         await run.Manager.StartAsync(run.GetContext, ct);
     }
@@ -65,7 +65,7 @@ public sealed class WorkflowEngine
     /// <summary>Stop every node in the workflow, reverse order (uses <see cref="NodeInstanceManager"/>).</summary>
     public async Task StopAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
-        _logger.LogInformation("WorkflowEngine: stop.");
+        _logger.LogTrace("WorkflowEngine: stop.");
         var run = Prepare(graph);
         await run.Manager.StopAsync(run.GetContext, ct);
     }
@@ -103,7 +103,7 @@ public sealed class WorkflowEngine
             contexts[spec.Id] = new NodeContext(
                 spec.Id, node,
                 _loggerFactory.CreateLogger($"Node:{spec.Id}"));
-            _logger.LogInformation("Instantiated node {Id} ({Name})", spec.Id, spec.Name);
+            _logger.LogTrace("Instantiated node {Id} ({Name})", spec.Id, spec.Name);
         }
 
         // 2. Wire the graph: output.Connect(input) -- output pins hold input pin references.
@@ -112,13 +112,13 @@ public sealed class WorkflowEngine
             var output = contexts[conn.FromNode].GetOutputPin(conn.FromPin);
             var input = contexts[conn.ToNode].GetInputPin(conn.ToPin);
             output.Connect(input);
-            _logger.LogDebug("Wired: {From}.{FromPin} -> {To}.{ToPin}",
+            _logger.LogTrace("Wired: {From}.{FromPin} -> {To}.{ToPin}",
                 conn.FromNode, conn.FromPin, conn.ToNode, conn.ToPin);
         }
 
         // 3. Topological sort (Kahn) with startup-priority tie-break (ALC-inspired).
         var order = WorkflowValidation.TopologicalSort(graph);
-        _logger.LogInformation("Execution order: {Order}", string.Join(" -> ", order));
+        _logger.LogTrace("Execution order: {Order}", string.Join(" -> ", order));
 
         // 4. Build the same unified NodeInstanceManager used by the AgentFlow GUI.
         var orderedInstances = order.Select(id => instances[id]).ToList();
@@ -200,7 +200,7 @@ public sealed class WorkflowEngine
         public void SetOutput(string pinName, Sample? value)
         {
             var pin = GetOutputPin(pinName);
-            Logger.LogDebug("Pin {Node}.{Pin} sent {Value} ({Count} downstream)",
+            Logger.LogTrace("Pin {Node}.{Pin} sent {Value} ({Count} downstream)",
                 _nodeId, pinName, value, pin.Targets.Count);
             pin.SendSample(value);   // The output pin calls Receive on every connected input pin.
         }

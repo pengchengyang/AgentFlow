@@ -150,7 +150,7 @@ public sealed class EditorGraph
             priority,
             parameters);
         Nodes.Add(node);
-        _logger.LogInformation("EditorGraph: added node {Id} ({Name})", node.Id, node.Name);
+        _logger.LogTrace("EditorGraph: added node {Id} ({Name})", node.Id, node.Name);
         GraphChanged?.Invoke();
         return node;
     }
@@ -175,7 +175,7 @@ public sealed class EditorGraph
         output.Connect(input);
 
         Connections.Add(new EditorConnection(fromNode, fromPin, toNode, toPin));
-        _logger.LogDebug("EditorGraph: wired {From}.{FromPin} -> {To}.{ToPin}",
+        _logger.LogTrace("EditorGraph: wired {From}.{FromPin} -> {To}.{ToPin}",
             fromNode.Id, fromPin, toNode.Id, toPin);
         GraphChanged?.Invoke();
     }
@@ -189,7 +189,7 @@ public sealed class EditorGraph
         output.Disconnect(input);
 
         Connections.Remove(conn);
-        _logger.LogDebug("EditorGraph: unwired {From}.{FromPin} -> {To}.{ToPin}",
+        _logger.LogTrace("EditorGraph: unwired {From}.{FromPin} -> {To}.{ToPin}",
             conn.FromNode.Id, conn.FromPin, conn.ToNode.Id, conn.ToPin);
         GraphChanged?.Invoke();
     }
@@ -237,7 +237,7 @@ public sealed class EditorGraph
         Nodes.Remove(node);
         ReleaseNodePinIds(node);
         _pluginLoader.DeleteNodeInstance(node.RuntimeNode);
-        _logger.LogInformation("EditorGraph: removed node {Id}", node.Id);
+        _logger.LogTrace("EditorGraph: removed node {Id}", node.Id);
         GraphChanged?.Invoke();
     }
 
@@ -305,7 +305,7 @@ public sealed class EditorGraph
         // Let the PluginLoader container be the single source of node instances: clear them here too.
         _pluginLoader.ClearInstances();
         GraphChanged?.Invoke();
-        _logger.LogInformation("EditorGraph: cleared graph");
+        _logger.LogTrace("EditorGraph: cleared graph");
     }
 
     private static void ReleaseNodePinIds(EditorNode node)

@@ -104,7 +104,7 @@ public sealed class SocketServerNode : BaseNode
         // Bind to any address (as in TcpMultiServer); Host is kept as a node-standard param.
         _listener = new TcpListener(IPAddress.Any, Convert.ToInt32(Param("Port").Value));
         _listener.Start();
-        context.Logger.LogInformation("SocketServer listening on port {Port}",
+        context.Logger.LogTrace("SocketServer listening on port {Port}",
             ((IPEndPoint)_listener.LocalEndpoint).Port);
         return Task.CompletedTask;
     }
@@ -134,7 +134,7 @@ public sealed class SocketServerNode : BaseNode
         }
         catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
         {
-            context.Logger.LogInformation("SocketServer stopped: {Message}", ex.Message);
+            context.Logger.LogTrace("SocketServer stopped: {Message}", ex.Message);
         }
     }
 
@@ -145,7 +145,7 @@ public sealed class SocketServerNode : BaseNode
         _clients.TryAdd(id, client);
         var ep = (IPEndPoint?)client.Client.RemoteEndPoint;
         var address = ep?.Address.ToString() ?? "?";
-        context.Logger.LogInformation("SocketServer client connected: {Id} ({Address})", id, address);
+        context.Logger.LogTrace("SocketServer client connected: {Id} ({Address})", id, address);
 
         try
         {
@@ -164,7 +164,7 @@ public sealed class SocketServerNode : BaseNode
                     var rp = new StringSample(); rp.SetValue(msg, "Received"); ReceivedPin.SendSample(rp);
                 }
                 var ro = new StringSample(); ro.SetValue(msg, "Received"); context.SetOutput("Received", ro);
-                context.Logger.LogInformation("SocketServer received from {Id}: {Msg}", id, msg);
+                context.Logger.LogTrace("SocketServer received from {Id}: {Msg}", id, msg);
 
                 var reply = GetReply();
                 if (!string.IsNullOrEmpty(reply))
@@ -179,7 +179,7 @@ public sealed class SocketServerNode : BaseNode
         {
             _clients.TryRemove(id, out _);
             client.Dispose();
-            context.Logger.LogInformation("SocketServer client disconnected: {Id}", id);
+            context.Logger.LogTrace("SocketServer client disconnected: {Id}", id);
         }
     }
 

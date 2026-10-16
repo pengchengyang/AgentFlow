@@ -93,7 +93,7 @@ public sealed class ReActAgentNode : BaseNode
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
-        context.Logger.LogInformation("ReActAgent initialized (model {Model}).", Param("Model").Value);
+        context.Logger.LogTrace("ReActAgent initialized (model {Model}).", Param("Model").Value);
         return Task.CompletedTask;
     }
 
@@ -131,7 +131,7 @@ public sealed class ReActAgentNode : BaseNode
 
                 var userPrompt = BuildPrompt(question, observation, tools.Tools);
                 var response = await llm.CompleteAsync(systemPrompt, userPrompt, ct);
-                context.Logger.LogInformation("ReAct step {Step}: {Response}", step + 1, response);
+                context.Logger.LogTrace("ReAct step {Step}: {Response}", step + 1, response);
 
                 if (TryParseFinal(response, out var answer))
                 {
@@ -144,7 +144,7 @@ public sealed class ReActAgentNode : BaseNode
                     observation = tool is null
                         ? $"Unknown tool: {toolName}"
                         : await tool.ExecuteAsync(toolInput, ct);
-                    context.Logger.LogInformation("ReAct tool {Tool} -> {Observation}", toolName, observation);
+                    context.Logger.LogTrace("ReAct tool {Tool} -> {Observation}", toolName, observation);
                 }
                 else
                 {
@@ -157,7 +157,7 @@ public sealed class ReActAgentNode : BaseNode
             if (!finished)
                 finalAnswer = $"Reached the maximum step limit ({maxSteps}) without a final answer.";
 
-            context.Logger.LogInformation("ReActAgent finished with answer: {Answer}", finalAnswer);
+            context.Logger.LogTrace("ReActAgent finished with answer: {Answer}", finalAnswer);
             SetAnswer(context, finalAnswer);
         }
         catch (OperationCanceledException)

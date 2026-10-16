@@ -2,12 +2,12 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ================================================================
-         AgentFlow 浅色主题（Light Theme）资源
-         色值一比一取自设计稿：Violet 品牌强调色 + 节点类型色 + 柔和蓝灰表面。
-         所有界面颜色都从这里取，改一处即可全局换肤。
+         AgentFlow Light Theme resources
+         Colors are taken one-to-one from the design: Violet brand accent + node type colors + soft blue-gray surfaces.
+         All interface colors come from here; change one value to re-theme globally.
          ================================================================ -->
 
-    <!-- ============ 品牌主色（Violet，取自设计稿 Run 按钮 / logo 渐变） ============ -->
+    <!-- ============ Brand primary color (Violet, from the design Run button / logo gradient) ============ -->
     <Color x:Key="Brand50">#F5F3FF</Color>
     <Color x:Key="Brand100">#EDE9FE</Color>
     <Color x:Key="Brand200">#DDD6FE</Color>
@@ -20,10 +20,10 @@
     <Color x:Key="BrandDeep">#6D28D9</Color>
     <Color x:Key="BrandSoft">#F5F3FF</Color>
 
-    <!-- ============ Avalonia 官方品牌蓝（logo 用，取自原 avalonia-logo.ico） ============ -->
+    <!-- ============ Avalonia official brand blue (used for the logo, taken from the original avalonia-logo.ico) ============ -->
     <Color x:Key="AvaloniaBlue">#0065FF</Color>
 
-    <!-- ============ 节点分类色（设计稿节点类型色） ============ -->
+    <!-- ============ Node category colors (design node type colors) ============ -->
     <Color x:Key="CatInput">#3B82F6</Color>   <!-- Blue，String Source -->
     <Color x:Key="CatLogic">#8B5CF6</Color>   <!-- Violet，String To Upper -->
     <Color x:Key="CatOutput">#F43F5E</Color>  <!-- Rose，Log -->
@@ -31,14 +31,14 @@
     <Color x:Key="CatGeneral">#64748B</Color> <!-- Slate -->
     <Color x:Key="CatAmplifier">#F59E0B</Color> <!-- Amber，Amplifier -->
 
-    <!-- ============ 文字色 ============ -->
+    <!-- ============ Text colors ============ -->
     <Color x:Key="TextPrimary">#111827</Color>
     <Color x:Key="TextSecondary">#6B7280</Color>
     <Color x:Key="TextTertiary">#9CA3AF</Color>
     <Color x:Key="TextInverse">#FFFFFF</Color>
     <Color x:Key="TextOnBrand">#FFFFFF</Color>
 
-    <!-- ============ 背景 / 边框 ============ -->
+    <!-- ============ Backgrounds / borders ============ -->
     <Color x:Key="CanvasBg">#F5F6FC</Color>
     <Color x:Key="CanvasDot">#E3E7EE</Color>
     <Color x:Key="CardBg">#FFFFFF</Color>
@@ -52,7 +52,7 @@
     <Color x:Key="PillBg">#F3F4F6</Color>
     <Color x:Key="ShadowNode">#1A0F172A</Color>
 
-    <!-- ============ 语义色 ============ -->
+    <!-- ============ Semantic colors ============ -->
     <Color x:Key="Danger">#F04438</Color>
     <Color x:Key="DangerBg">#FEF3F2</Color>
     <Color x:Key="Success">#12B76A</Color>
@@ -60,7 +60,7 @@
     <Color x:Key="Warning">#F59E0B</Color>
     <Color x:Key="WarningBg">#FFFAEB</Color>
 
-    <!-- ============ 画布 / 节点绘制色 ============ -->
+    <!-- ============ Canvas / node drawing colors ============ -->
     <Color x:Key="NodeCardBg">#FFFFFF</Color>
     <Color x:Key="NodeBorder">#E2E8F0</Color>
     <Color x:Key="NodeSelected">#7C3AED</Color>
@@ -74,7 +74,7 @@
     <Color x:Key="PinOutput">#8B5CF6</Color>
     <Color x:Key="PinBorder">#E2E8F0</Color>
 
-    <!-- ============ 画刷（供 XAML / 代码直接引用） ============ -->
+    <!-- ============ Brushes (referenced directly by XAML / code) ============ -->
     <SolidColorBrush x:Key="BrushBrand" Color="{StaticResource Brand500}" />
     <SolidColorBrush x:Key="BrushBrandHover" Color="{StaticResource Brand600}" />
     <SolidColorBrush x:Key="BrushBrandActive" Color="{StaticResource Brand700}" />
@@ -84,7 +84,7 @@
     <SolidColorBrush x:Key="BrushViolet" Color="{StaticResource BrandViolet}" />
     <SolidColorBrush x:Key="BrushAvaloniaBlue" Color="{StaticResource AvaloniaBlue}" />
 
-    <!-- 设计稿 logo 方块：Violet → Deep Violet 斜向渐变 -->
+    <!-- Design logo tile: diagonal gradient from Violet to Deep Violet -->
     <LinearGradientBrush x:Key="BrushBrandGradient" StartPoint="0%,0%" EndPoint="100%,100%">
         <GradientStop Color="{StaticResource BrandViolet}" Offset="0" />
         <GradientStop Color="{StaticResource BrandDeep}" Offset="1" />
@@ -113,10 +113,10 @@
     <SolidColorBrush x:Key="BrushWarning" Color="{StaticResource Warning}" />
     <SolidColorBrush x:Key="BrushWarningBg" Color="{StaticResource WarningBg}" />
 
-    <!-- 兼容旧引用（BrushIconFill 等被部分视图使用） -->
+    <!-- Backward compatibility (BrushIconFill etc. used by some views) -->
     <SolidColorBrush x:Key="BrushIconFill" Color="{StaticResource TextPrimary}" />
 
-    <!-- 节点分类画刷（供 NodeViewModel 从资源读取） -->
+    <!-- Node category brushes (read from resources by NodeViewModel) -->
     <SolidColorBrush x:Key="BrushCatInput" Color="{StaticResource CatInput}" />
     <SolidColorBrush x:Key="BrushCatLogic" Color="{StaticResource CatLogic}" />
     <SolidColorBrush x:Key="BrushCatOutput" Color="{StaticResource CatOutput}" />
@@ -124,7 +124,7 @@
     <SolidColorBrush x:Key="BrushCatGeneral" Color="{StaticResource CatGeneral}" />
     <SolidColorBrush x:Key="BrushCatAmplifier" Color="{StaticResource CatAmplifier}" />
 
-    <!-- 画布/节点绘制画刷（供 CanvasView.axaml.cs 从资源读取） -->
+    <!-- Canvas/node drawing brushes (read from resources by CanvasView.axaml.cs) -->
     <SolidColorBrush x:Key="BrushNodeCard" Color="{StaticResource NodeCardBg}" />
     <SolidColorBrush x:Key="BrushNodeBorder" Color="{StaticResource NodeBorder}" />
     <SolidColorBrush x:Key="BrushNodeSelected" Color="{StaticResource NodeSelected}" />
@@ -138,7 +138,7 @@
     <SolidColorBrush x:Key="BrushPinBorder" Color="{StaticResource PinBorder}" />
 
 
-    <!-- ============ 工具栏浅色功能按钮（设计稿：浅底 + 同色系图标） ============ -->
+    <!-- ============ Toolbar light function buttons (design: light background + same-hue icon) ============ -->
     <Color x:Key="OpenBg">#E0F2FE</Color>      <Color x:Key="OpenFg">#0284C7</Color>
     <Color x:Key="SaveBg">#E0E7FF</Color>      <Color x:Key="SaveFg">#4F46E5</Color>
     <Color x:Key="ClearBg">#FFE4E6</Color>     <Color x:Key="ClearFg">#E11D48</Color>
@@ -156,7 +156,7 @@
     <SolidColorBrush x:Key="BrushLoginBg" Color="{StaticResource LoginBg}" />
     <SolidColorBrush x:Key="BrushLoginFg" Color="{StaticResource LoginFg}" />
 
-    <!-- ============ 窗口按钮（最小化 / 最大化 / 关闭） ============ -->
+    <!-- ============ Window buttons (minimize / maximize / close) ============ -->
     <Color x:Key="MinBtnBg">#D1FAE5</Color>      <Color x:Key="MinBtnHoverBg">#A7F3D0</Color>    <Color x:Key="MinBtnPressedBg">#6EE7B7</Color>    <Color x:Key="MinBtnFg">#059669</Color>
     <Color x:Key="MaxBtnBg">#EDE9FE</Color>      <Color x:Key="MaxBtnHoverBg">#DDD6FE</Color>    <Color x:Key="MaxBtnPressedBg">#C4B5FD</Color>    <Color x:Key="MaxBtnFg">#7C3AED</Color>
     <Color x:Key="CloseBtnBg">#FEE2E2</Color>    <Color x:Key="CloseBtnHoverBg">#FECACA</Color>  <Color x:Key="CloseBtnPressedBg">#FCA5A5</Color>   <Color x:Key="CloseBtnFg">#DC2626</Color>
@@ -174,7 +174,7 @@
     <SolidColorBrush x:Key="BrushCloseBtnPressedBg" Color="{StaticResource CloseBtnPressedBg}" />
     <SolidColorBrush x:Key="BrushCloseBtnFg" Color="{StaticResource CloseBtnFg}" />
 
-    <!-- ============ 对话框 / 面板专用色 ============ -->
+    <!-- ============ Dialog / panel-specific colors ============ -->
     <Color x:Key="DlgSidebarBg">#F1F5F9</Color>
     <Color x:Key="DlgSidebarItemBg">#F1F5F9</Color>
     <Color x:Key="DlgSidebarItemActiveBg">#EDE9FE</Color>
@@ -207,7 +207,7 @@
     <SolidColorBrush x:Key="BrushDlgPrimaryBtnBg" Color="{StaticResource DlgPrimaryBtnBg}" />
     <SolidColorBrush x:Key="BrushDlgPrimaryBtnHoverBg" Color="{StaticResource DlgPrimaryBtnHoverBg}" />
 
-    <!-- ============ 停止按钮（实心红） ============ -->
+    <!-- ============ Stop button (solid red) ============ -->
     <Color x:Key="StopBtnBg">#DC2626</Color>
     <Color x:Key="StopBtnHoverBg">#B91C1C</Color>
     <Color x:Key="StopBtnPressedBg">#991B1B</Color>
@@ -222,7 +222,7 @@
     <SolidColorBrush x:Key="BrushStopBtnFg" Color="{StaticResource StopBtnFg}" />
     <SolidColorBrush x:Key="BrushStopBtnDisabledFg" Color="{StaticResource StopBtnDisabledFg}" />
 
-    <!-- ============ 主题切换按钮 ============ -->
+    <!-- ============ Theme toggle button ============ -->
     <Color x:Key="ThemeBtnBg">#FEF3C7</Color>
     <Color x:Key="ThemeBtnHoverBg">#FDE68A</Color>
     <Color x:Key="ThemeBtnPressedBg">#FCD34D</Color>

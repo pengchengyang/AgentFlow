@@ -110,7 +110,8 @@ public partial class LogPanelView : UserControl
     {
         var sb = new StringBuilder();
         foreach (var en in entries)
-            sb.AppendLine($"{en.Timestamp:yyyy-MM-dd HH:mm:ss.fff} {en.Level,-7} {en.Source,-16}{en.Message}");
+            sb.AppendLine($"{en.Timestamp:yyyy-MM-dd HH:mm:ss.fff} {en.Level,-7} {en.Source,-16}{en.RawMessage}");
         return sb.ToString().TrimEnd('\r', '\n');
     }
 }
+

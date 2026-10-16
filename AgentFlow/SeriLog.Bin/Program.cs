@@ -1,4 +1,4 @@
-﻿// 引用Rolling.Logging类库的命名空间（和库项目名一致）
+// 引用Rolling.Logging类库的命名空间（和库项目名一致）
 using Rolling.Logging;
 using Serilog.Events;
 using System;
@@ -28,7 +28,7 @@ namespace Rolling.Logging.Demo
                 Console.WriteLine("[测试2] 自定义配置日志（Debug级别+自定义格式+10MB单文件）");
                 var customOptions = new RollingLoggerOptions
                 {
-                    MinimumLevel = LogEventLevel.Debug,
+                    MinimumLevel = LogEventLevel.Verbose,
                     LogFilePath = "./Logs/Rolling-Demo-Test.log",
                     OutputTemplate = "[Rolling-{Timestamp:yyyy-MM-dd HH:mm:ss.fff}][{Level:u3}][{SourceContext}][{CallerFile}:{CallerLineNumber}] {Message:lj}{NewLine}{Exception}",
                     FileSizeLimitBytes = 1024 * 1024 * 10,

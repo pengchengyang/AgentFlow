@@ -81,7 +81,7 @@ public sealed class PluginLoader
             instance.InstanceId = NodeIdPool.Allocate();
             _instances.Add(instance);
         }
-        _logger.LogInformation("PluginLoader: created node instance #{InstanceId} ({Name})",
+        _logger.LogTrace("PluginLoader: created node instance #{InstanceId} ({Name})",
             instance.InstanceId, name);
         return instance;
     }
@@ -118,7 +118,7 @@ public sealed class PluginLoader
             LogicDeserializer.Deserialize(instance, logic);
             LogicDeserializer.RestorePinIds(instance, logic);
         }
-        _logger.LogInformation("PluginLoader: restored node instance #{InstanceId} ({Name}, dependsOn={DependsOn})",
+        _logger.LogTrace("PluginLoader: restored node instance #{InstanceId} ({Name}, dependsOn={DependsOn})",
             instanceId, name, dependsOn);
         return instance;
     }
@@ -136,7 +136,7 @@ public sealed class PluginLoader
             NodeIdPool.Release(instance.InstanceId);
             ReleasePins(instance);
         }
-        _logger.LogInformation("PluginLoader: deleted node instance #{InstanceId}", instanceId);
+        _logger.LogTrace("PluginLoader: deleted node instance #{InstanceId}", instanceId);
         return true;
     }
 
@@ -150,7 +150,7 @@ public sealed class PluginLoader
             NodeIdPool.Release(instance.InstanceId);
             ReleasePins(instance);
         }
-        _logger.LogInformation("PluginLoader: deleted node instance #{InstanceId} ({DisplayName})",
+        _logger.LogTrace("PluginLoader: deleted node instance #{InstanceId} ({DisplayName})",
             instance.InstanceId, instance.DisplayName);
         return true;
     }
@@ -291,7 +291,7 @@ public sealed class PluginLoader
             registry.Register(new NodeDescriptor(
                 probe.Name, probe.DisplayName ?? "", probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
 
-            _logger.LogInformation("Registered node: {Name} ({DisplayName}) <- {Dll}",
+            _logger.LogTrace("Registered node: {Name} ({DisplayName}) <- {Dll}",
                 probe.Name, probe.DisplayName, Path.GetFileName(dllPath));
         }
     }

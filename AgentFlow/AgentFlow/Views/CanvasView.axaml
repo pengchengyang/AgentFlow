@@ -3,8 +3,8 @@
              xmlns:views="clr-namespace:AgentFlow.Views"
              x:Class="AgentFlow.Views.CanvasView">
   <!--
-    纯 Avalonia Canvas：节点、pin、连线全部由 GraphCanvas.Render 用 DrawingContext 自绘，
-    不依赖 Nodify，也没有声明式的 Ellipse / Path 元素。pin 圆点和贝塞尔曲线完全自绘。
+    Pure Avalonia Canvas: nodes, pins and connections are all drawn by GraphCanvas.Render with DrawingContext,
+    with no Nodify dependency and no declarative Ellipse / Path elements. Pin dots and bezier curves are fully self-drawn.
   -->
   <views:GraphCanvas/>
 </UserControl>

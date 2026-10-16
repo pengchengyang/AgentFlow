@@ -13,10 +13,10 @@
 
     <Application.Styles>
         <FluentTheme />
-        <!-- 全局颜色与控件样式 -->
+        <!-- Global colors and control styles -->
         <StyleInclude Source="avares://AgentFlow/Themes/Controls.axaml" />
 
-        <!-- 全局 Noto Sans CJK SC 字体 -->
+        <!-- Global Noto Sans CJK SC font -->
         <Style Selector="Window">
             <Setter Property="FontFamily" Value="avares://AgentFlow/Assets/Fonts/Inter-Regular.otf#Inter, avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC" />
         </Style>
