@@ -60,8 +60,8 @@
     </Style>
     <!-- 选中态：轻微放大 + 浅紫底 + 左侧紫条 -->
     <Style Selector="Border.libitem.selected">
-      <Setter Property="Background" Value="#EDE9FE"/>
-      <Setter Property="BorderBrush" Value="#7C3AED"/>
+      <Setter Property="Background" Value="{DynamicResource BrushDlgSidebarItemActiveBg}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BrushBrandViolet}"/>
       <Setter Property="BorderThickness" Value="3,0,0,0"/>
       <Setter Property="Padding" Value="2,5,5,5"/>
       <Setter Property="RenderTransform" Value="scale(1.08,1.08)"/>

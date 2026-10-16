@@ -1,7 +1,6 @@
 // -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="RollingLoggerProvider.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
-//     Author: Damon Yang (damon.yang@rollingwireless.com)
 // </copyright>
 // -----------------------------------------------------------------------
 
@@ -26,6 +25,18 @@ public sealed class RollingLoggerProvider : ILoggerProvider
     }
 
     public void Dispose() { }
+}
+
+/// <summary>
+/// Raised for every log event emitted through <see cref="RollingLoggerAdapter"/>.
+/// UI layers can subscribe to show logs in an on-screen panel (must marshal to UI thread).
+/// </summary>
+public static class LogEvents
+{
+    public static event Action<LogLevel, string, string, Exception?>? OnLogEmitted;
+
+    internal static void Raise(LogLevel level, string category, string message, Exception? exception)
+        => OnLogEmitted?.Invoke(level, category, message, exception);
 }
 
 /// <summary>An <see cref="ILogger"/> adapter that forwards every level to <see cref="RollingLogger"/>.</summary>
@@ -62,5 +73,8 @@ public sealed class RollingLoggerAdapter(string category) : ILogger
             case LogLevel.None:
                 break;
         }
+
+        // Notify UI subscribers (fire-and-forget; exceptions in UI handlers must not break logging).
+        try { LogEvents.Raise(logLevel, category, message, exception); } catch { /* swallow */ }
     }
 }

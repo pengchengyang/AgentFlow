@@ -7,6 +7,12 @@
              xmlns:s="clr-namespace:AgentFlow.Services"
              x:Class="AgentFlow.Views.MainView"
              x:DataType="vm:MainViewModel">
+  <UserControl.Resources>
+    <s:BoolToRowSpanConverter x:Key="RowSpan"/>
+    <s:BoolToRowConverter x:Key="BoolToRow"/>
+    <s:BoolToPanelHeightConverter x:Key="PanelHeight"/>
+    <s:InvertBoolConverter x:Key="InvertBool"/>
+  </UserControl.Resources>
   <UserControl.KeyBindings>
     <KeyBinding Command="{Binding SaveAsCommand}" Gesture="Ctrl+S"/>
     <KeyBinding Command="{Binding OpenCommand}" Gesture="Ctrl+O"/>
@@ -16,11 +22,11 @@
       <!-- 上：画布 + 可折叠日志面板，右侧组件栏 -->
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
         <Grid Grid.Column="0" RowDefinitions="*,Auto">
-          <Grid Grid.Row="0">
+          <Grid Grid.Row="0" IsVisible="{Binding IsLogPanelExpanded, Converter={StaticResource InvertBool}}">
             <views:CanvasView DataContext="{Binding Canvas}"/>
           </Grid>
           <!-- 日志面板（Log 按钮展开/收起） -->
-          <views:LogPanelView Grid.Row="1" DataContext="{Binding LogPanel}" IsVisible="{Binding IsLogPanelOpen}"/>
+          <views:LogPanelView Grid.Row="{Binding IsLogPanelExpanded, Converter={StaticResource BoolToRow}}" DataContext="{Binding LogPanel}" IsVisible="{Binding IsLogPanelOpen}" Grid.RowSpan="{Binding IsLogPanelExpanded, Converter={StaticResource RowSpan}}" Height="{Binding IsLogPanelExpanded, Converter={StaticResource PanelHeight}}"/>
         </Grid>
         <!-- 右侧节点库 -->
         <views:NodeLibraryView Grid.Column="1" Width="288" DataContext="{Binding NodeLibrary}" IsVisible="{Binding IsSidebarVisible}"/>
@@ -46,6 +52,24 @@
                      Foreground="{DynamicResource BrushTextSecondary}"
                      VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <!-- Running indicator: lightning bolt + "Running" + 3 animated dots -->
+            <Path Data="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
+                  Stretch="Uniform" Width="12" Height="12" VerticalAlignment="Center"
+                  Fill="{Binding RunningIconBrush}">
+              <Path.Effect>
+                <DropShadowEffect Color="#16A34A" BlurRadius="{Binding PulseBlur}" OffsetX="0" OffsetY="0"/>
+              </Path.Effect>
+            </Path>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock Text="{Binding RunningText}" FontSize="11"
+                         Foreground="{Binding RunningIconBrush}" VerticalAlignment="Center"/>
+              <TextBlock Text="." FontSize="11" Foreground="{Binding RunningIconBrush}"
+                         Opacity="{Binding Dot1Opacity}" VerticalAlignment="Center"/>
+              <TextBlock Text="." FontSize="11" Foreground="{Binding RunningIconBrush}"
+                         Opacity="{Binding Dot2Opacity}" VerticalAlignment="Center"/>
+              <TextBlock Text="." FontSize="11" Foreground="{Binding RunningIconBrush}"
+                         Opacity="{Binding Dot3Opacity}" VerticalAlignment="Center"/>
+            </StackPanel>
             <TextBlock Text="{Binding Canvas.ZoomText}" FontSize="11"
                        Foreground="{DynamicResource BrushTextSecondary}" VerticalAlignment="Center"/>
             <Path Data="M128 96l0 64 128 0 0-64c0-35.3-28.7-64-64-64s-64 28.7-64 64zM64 160l0-64C64 25.3 121.3-32 192-32S320 25.3 320 96l0 64c35.3 0 64 28.7 64 64l0 224c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 224c0-35.3 28.7-64 64-64z"

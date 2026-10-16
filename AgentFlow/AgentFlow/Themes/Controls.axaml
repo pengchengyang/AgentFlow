@@ -1,7 +1,7 @@
-<Styles xmlns="https://github.com/avaloniaui"
+﻿<Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- ============ 主按钮（紫色填充，用于 Run 等主操作） ============ -->
+    <!-- ============ 涓绘寜閽紙绱壊濉厖锛岀敤浜?Run 绛変富鎿嶄綔锛?============ -->
     <Style Selector="Button.primary">
         <Setter Property="Background" Value="{DynamicResource BrushBrand}" />
         <Setter Property="Foreground" Value="{StaticResource BrushTextInverse}" />
@@ -23,7 +23,7 @@
         <Setter Property="Foreground" Value="{DynamicResource BrushTextInverse}" />
     </Style>
 
-    <!-- ============ 次按钮（白底灰边） ============ -->
+    <!-- ============ 娆℃寜閽紙鐧藉簳鐏拌竟锛?============ -->
     <Style Selector="Button.secondary">
         <Setter Property="Background" Value="{DynamicResource BrushCard}" />
         <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}" />
@@ -43,7 +43,7 @@
         <Setter Property="Background" Value="{DynamicResource BrushSurfacePressed}" />
     </Style>
 
-    <!-- ============ 文字小按钮（语言/主题等） ============ -->
+    <!-- ============ 鏂囧瓧灏忔寜閽紙璇█/涓婚绛夛級 ============ -->
     <Style Selector="Button.ghost">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}" />
@@ -56,7 +56,7 @@
         <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}" />
     </Style>
 
-    <!-- ============ 输入框 / 搜索框 ============ -->
+    <!-- ============ 杈撳叆妗?/ 鎼滅储妗?============ -->
     <Style Selector="TextBox">
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="10,7" />
@@ -72,14 +72,14 @@
         <Setter Property="BorderThickness" Value="1.5" />
     </Style>
 
-    <!-- ============ 数字输入框 ============ -->
+    <!-- ============ 鏁板瓧杈撳叆妗?============ -->
     <Style Selector="NumericUpDown">
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}" />
         <Setter Property="BorderThickness" Value="1" />
     </Style>
 
-    <!-- ============ 标题栏工具按钮（设计稿：36×36 / 圆角 10 / 无边框） ============ -->
+    <!-- ============ 鏍囬鏍忓伐鍏锋寜閽紙璁捐绋匡細36脳36 / 鍦嗚 10 / 鏃犺竟妗嗭級 ============ -->
     <Style Selector="Button.toolbtn">
         <Setter Property="Width" Value="26" />
         <Setter Property="Height" Value="26" />
@@ -101,25 +101,28 @@
         <Setter Property="Opacity" Value="0.35" />
     </Style>
 
-    <!-- 主操作：紫色实心（设计稿的播放按钮） -->
+    <!-- 涓绘搷浣滐細绱壊瀹炲績锛堣璁＄鐨勬挱鏀炬寜閽級 -->
     <Style Selector="Button.toolbtn.run">
-        <Setter Property="Background" Value="#16A34A" />
+        <Setter Property="Background" Value="{DynamicResource BrushSuccessBg}" />
     </Style>
     <Style Selector="Button.toolbtn.run:pointerover">
-        <Setter Property="Background" Value="#15803D" />
+        <Setter Property="Background" Value="#A7F3D0" />
     </Style>
     <Style Selector="Button.toolbtn.run:pressed">
-        <Setter Property="Background" Value="#166534" />
+        <Setter Property="Background" Value="#6EE7B7" />
     </Style>
     <Style Selector="Button.toolbtn.run:disabled">
-        <Setter Property="Background" Value="#86EFAC" />
+        <Setter Property="Background" Value="{DynamicResource BrushSurface}" />
         <Setter Property="Opacity" Value="1" />
     </Style>
+    <Style Selector="Button.toolbtn.run:disabled Path">
+        <Setter Property="Fill" Value="{DynamicResource BrushTextTertiary}" />
+    </Style>
     <Style Selector="Button.toolbtn.run Path">
-        <Setter Property="Fill" Value="{DynamicResource BrushTextInverse}" />
+        <Setter Property="Fill" Value="{DynamicResource BrushSuccess}" />
     </Style>
 
-    <!-- ============ 浅色功能按钮（Open / Save / Clear / Reset / Login） ============ -->
+    <!-- ============ 娴呰壊鍔熻兘鎸夐挳锛圤pen / Save / Clear / Reset / Login锛?============ -->
     <Style Selector="Button.toolbtn.open">
         <Setter Property="Background" Value="{DynamicResource BrushOpenBg}" />
     </Style>
@@ -165,25 +168,40 @@
     <Style Selector="Button.toolbtn.login:pressed">
         <Setter Property="Background" Value="#D6C6F5" />
     </Style>
-    <!-- 停止：深色实心（设计稿的黑色方块按钮） -->
+    <Style Selector="Button.toolbtn.theme">
+        <Setter Property="Background" Value="{DynamicResource BrushThemeBtnBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.theme:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushThemeBtnHoverBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.theme:pressed">
+        <Setter Property="Background" Value="{DynamicResource BrushThemeBtnPressedBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.theme Path">
+        <Setter Property="Stroke" Value="{DynamicResource BrushThemeBtnFg}" />
+    </Style>
+    <!-- 鍋滄锛氭繁鑹插疄蹇冿紙璁捐绋跨殑榛戣壊鏂瑰潡鎸夐挳锛?-->
     <Style Selector="Button.toolbtn.dark">
-        <Setter Property="Background" Value="#111827" />
+        <Setter Property="Background" Value="{DynamicResource BrushStopBtnBg}" />
     </Style>
     <Style Selector="Button.toolbtn.dark:pointerover">
-        <Setter Property="Background" Value="#1F2937" />
+        <Setter Property="Background" Value="{DynamicResource BrushStopBtnHoverBg}" />
     </Style>
     <Style Selector="Button.toolbtn.dark:pressed">
-        <Setter Property="Background" Value="#0B1220" />
+        <Setter Property="Background" Value="{DynamicResource BrushStopBtnPressedBg}" />
     </Style>
     <Style Selector="Button.toolbtn.dark:disabled">
-        <Setter Property="Background" Value="#9CA3AF" />
+        <Setter Property="Background" Value="{DynamicResource BrushStopBtnDisabledBg}" />
         <Setter Property="Opacity" Value="1" />
     </Style>
+    <Style Selector="Button.toolbtn.dark:disabled Path">
+        <Setter Property="Fill" Value="{DynamicResource BrushStopBtnDisabledFg}" />
+    </Style>
     <Style Selector="Button.toolbtn.dark Path">
-        <Setter Property="Fill" Value="{DynamicResource BrushTextInverse}" />
+        <Setter Property="Fill" Value="{DynamicResource BrushStopBtnFg}" />
     </Style>
 
-    <!-- ============ 窗口按钮（最小化 / 最大化 / 关闭） ============ -->
+    <!-- ============ 绐楀彛鎸夐挳锛堟渶灏忓寲 / 鏈€澶у寲 / 鍏抽棴锛?============ -->
     <Style Selector="Button.winbtn">
         <Setter Property="Width" Value="32" />
         <Setter Property="Height" Value="26" />
@@ -207,43 +225,150 @@
         <Setter Property="Fill" Value="White" />
     </Style>
 
-    <!-- 窗口按钮浅色着色（最小化 / 最大化 / 关闭） -->
+    <!-- 绐楀彛鎸夐挳娴呰壊鐫€鑹诧紙鏈€灏忓寲 / 鏈€澶у寲 / 鍏抽棴锛?-->
     <Style Selector="Button.winbtn.min">
-        <Setter Property="Background" Value="#CFFAFE" />
+        <Setter Property="Background" Value="{DynamicResource BrushMinBtnBg}" />
     </Style>
     <Style Selector="Button.winbtn.min:pointerover">
-        <Setter Property="Background" Value="#A5F3FC" />
+        <Setter Property="Background" Value="{DynamicResource BrushMinBtnHoverBg}" />
     </Style>
     <Style Selector="Button.winbtn.min:pressed">
-        <Setter Property="Background" Value="#67E8F9" />
+        <Setter Property="Background" Value="{DynamicResource BrushMinBtnPressedBg}" />
     </Style>
     <Style Selector="Button.winbtn.min Border">
-        <Setter Property="Background" Value="#0E7490" />
+        <Setter Property="Background" Value="{DynamicResource BrushMinBtnFg}" />
     </Style>
 
     <Style Selector="Button.winbtn.max">
-        <Setter Property="Background" Value="#E0E7FF" />
+        <Setter Property="Background" Value="{DynamicResource BrushMaxBtnBg}" />
     </Style>
     <Style Selector="Button.winbtn.max:pointerover">
-        <Setter Property="Background" Value="#C7D2FE" />
+        <Setter Property="Background" Value="{DynamicResource BrushMaxBtnHoverBg}" />
     </Style>
     <Style Selector="Button.winbtn.max:pressed">
-        <Setter Property="Background" Value="#A5B4FC" />
+        <Setter Property="Background" Value="{DynamicResource BrushMaxBtnPressedBg}" />
     </Style>
     <Style Selector="Button.winbtn.max Path">
-        <Setter Property="Fill" Value="#4338CA" />
+        <Setter Property="Fill" Value="{DynamicResource BrushMaxBtnFg}" />
     </Style>
 
     <Style Selector="Button.winbtn.close">
-        <Setter Property="Background" Value="#FEE2E2" />
+        <Setter Property="Background" Value="{DynamicResource BrushCloseBtnBg}" />
+    </Style>
+    <Style Selector="Button.winbtn.close:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushCloseBtnHoverBg}" />
     </Style>
     <Style Selector="Button.winbtn.close:pressed">
-        <Setter Property="Background" Value="#FCA5A5" />
+        <Setter Property="Background" Value="{DynamicResource BrushCloseBtnPressedBg}" />
     </Style>
     <Style Selector="Button.winbtn.close Path">
-        <Setter Property="Fill" Value="#B91C1C" />
+        <Setter Property="Fill" Value="{DynamicResource BrushCloseBtnFg}" />
     </Style>
 
+
+    <!-- ============ 鏃ュ織绛夌骇杩囨护 Toggle 鎸夐挳锛堟祬鑹茶儗鏅?+ hover/pressed + 閫変腑杈规锛?============ -->
+    <Style Selector="ToggleButton.level">
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="BorderThickness" Value="1.5" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <Style Selector="ToggleButton.level.all">
+        <Setter Property="Background" Value="#F1F5F9" />
+        <Setter Property="Foreground" Value="#64748B" />
+    </Style>
+    <Style Selector="ToggleButton.level.all:pointerover">
+        <Setter Property="Background" Value="#E2E8F0" />
+    </Style>
+    <Style Selector="ToggleButton.level.all:pressed">
+        <Setter Property="Background" Value="#CBD5E1" />
+    </Style>
+    <Style Selector="ToggleButton.level.all:checked">
+        <Setter Property="Background" Value="#CBD5E1" />
+        <Setter Property="BorderBrush" Value="#64748B" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="ToggleButton.level.trace">
+        <Setter Property="Background" Value="#F8FAFC" />
+        <Setter Property="Foreground" Value="#94A3B8" />
+    </Style>
+    <Style Selector="ToggleButton.level.trace:pointerover">
+        <Setter Property="Background" Value="#E2E8F0" />
+    </Style>
+    <Style Selector="ToggleButton.level.trace:pressed">
+        <Setter Property="Background" Value="#CBD5E1" />
+    </Style>
+    <Style Selector="ToggleButton.level.trace:checked">
+        <Setter Property="Background" Value="#CBD5E1" />
+        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="ToggleButton.level.debug">
+        <Setter Property="Background" Value="#DBEAFE" />
+        <Setter Property="Foreground" Value="#2563EB" />
+    </Style>
+    <Style Selector="ToggleButton.level.debug:pointerover">
+        <Setter Property="Background" Value="#BFDBFE" />
+    </Style>
+    <Style Selector="ToggleButton.level.debug:pressed">
+        <Setter Property="Background" Value="#93C5FD" />
+    </Style>
+    <Style Selector="ToggleButton.level.debug:checked">
+        <Setter Property="Background" Value="#93C5FD" />
+        <Setter Property="BorderBrush" Value="#2563EB" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="ToggleButton.level.info">
+        <Setter Property="Background" Value="#EDE9FE" />
+        <Setter Property="Foreground" Value="#7C3AED" />
+    </Style>
+    <Style Selector="ToggleButton.level.info:pointerover">
+        <Setter Property="Background" Value="#DDD6FE" />
+    </Style>
+    <Style Selector="ToggleButton.level.info:pressed">
+        <Setter Property="Background" Value="#C4B5FD" />
+    </Style>
+    <Style Selector="ToggleButton.level.info:checked">
+        <Setter Property="Background" Value="#C4B5FD" />
+        <Setter Property="BorderBrush" Value="#7C3AED" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="ToggleButton.level.warn">
+        <Setter Property="Background" Value="#FEF3C7" />
+        <Setter Property="Foreground" Value="#D97706" />
+    </Style>
+    <Style Selector="ToggleButton.level.warn:pointerover">
+        <Setter Property="Background" Value="#FDE68A" />
+    </Style>
+    <Style Selector="ToggleButton.level.warn:pressed">
+        <Setter Property="Background" Value="#FCD34D" />
+    </Style>
+    <Style Selector="ToggleButton.level.warn:checked">
+        <Setter Property="Background" Value="#FCD34D" />
+        <Setter Property="BorderBrush" Value="#D97706" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="ToggleButton.level.error">
+        <Setter Property="Background" Value="#FEE2E2" />
+        <Setter Property="Foreground" Value="#DC2626" />
+    </Style>
+    <Style Selector="ToggleButton.level.error:pointerover">
+        <Setter Property="Background" Value="#FECACA" />
+    </Style>
+    <Style Selector="ToggleButton.level.error:pressed">
+        <Setter Property="Background" Value="#FCA5A5" />
+    </Style>
+    <Style Selector="ToggleButton.level.error:checked">
+        <Setter Property="Background" Value="#FCA5A5" />
+        <Setter Property="BorderBrush" Value="#DC2626" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
 </Styles>
 
 

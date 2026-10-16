@@ -155,4 +155,81 @@
     <SolidColorBrush x:Key="BrushResetFg" Color="{StaticResource ResetFg}" />
     <SolidColorBrush x:Key="BrushLoginBg" Color="{StaticResource LoginBg}" />
     <SolidColorBrush x:Key="BrushLoginFg" Color="{StaticResource LoginFg}" />
+
+    <!-- ============ 窗口按钮（最小化 / 最大化 / 关闭） ============ -->
+    <Color x:Key="MinBtnBg">#D1FAE5</Color>      <Color x:Key="MinBtnHoverBg">#A7F3D0</Color>    <Color x:Key="MinBtnPressedBg">#6EE7B7</Color>    <Color x:Key="MinBtnFg">#059669</Color>
+    <Color x:Key="MaxBtnBg">#EDE9FE</Color>      <Color x:Key="MaxBtnHoverBg">#DDD6FE</Color>    <Color x:Key="MaxBtnPressedBg">#C4B5FD</Color>    <Color x:Key="MaxBtnFg">#7C3AED</Color>
+    <Color x:Key="CloseBtnBg">#FEE2E2</Color>    <Color x:Key="CloseBtnHoverBg">#FECACA</Color>  <Color x:Key="CloseBtnPressedBg">#FCA5A5</Color>   <Color x:Key="CloseBtnFg">#DC2626</Color>
+
+    <SolidColorBrush x:Key="BrushMinBtnBg" Color="{StaticResource MinBtnBg}" />
+    <SolidColorBrush x:Key="BrushMinBtnHoverBg" Color="{StaticResource MinBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushMinBtnPressedBg" Color="{StaticResource MinBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushMinBtnFg" Color="{StaticResource MinBtnFg}" />
+    <SolidColorBrush x:Key="BrushMaxBtnBg" Color="{StaticResource MaxBtnBg}" />
+    <SolidColorBrush x:Key="BrushMaxBtnHoverBg" Color="{StaticResource MaxBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushMaxBtnPressedBg" Color="{StaticResource MaxBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushMaxBtnFg" Color="{StaticResource MaxBtnFg}" />
+    <SolidColorBrush x:Key="BrushCloseBtnBg" Color="{StaticResource CloseBtnBg}" />
+    <SolidColorBrush x:Key="BrushCloseBtnHoverBg" Color="{StaticResource CloseBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushCloseBtnPressedBg" Color="{StaticResource CloseBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushCloseBtnFg" Color="{StaticResource CloseBtnFg}" />
+
+    <!-- ============ 对话框 / 面板专用色 ============ -->
+    <Color x:Key="DlgSidebarBg">#F8FAFC</Color>
+    <Color x:Key="DlgSidebarItemBg">#F1F5F9</Color>
+    <Color x:Key="DlgSidebarItemActiveBg">#EDE9FE</Color>
+    <Color x:Key="DlgContentBg">#FFFFFF</Color>
+    <Color x:Key="DlgGroupBg">#FAFAFC</Color>
+    <Color x:Key="DlgGroupHoverBg">#F5F3FF</Color>
+    <Color x:Key="DlgGroupBorder">#E2E8F0</Color>
+    <Color x:Key="DlgGroupSelectedBorder">#7C3AED</Color>
+    <Color x:Key="DlgSecondaryText">#334155</Color>
+    <Color x:Key="DlgMutedText">#94A3B8</Color>
+    <Color x:Key="DlgButtonBg">#FFFFFF</Color>
+    <Color x:Key="DlgButtonHoverBg">#F8FAFC</Color>
+    <Color x:Key="DlgButtonPressedBg">#F1F5F9</Color>
+    <Color x:Key="DlgPrimaryBtnBg">#7C3AED</Color>
+    <Color x:Key="DlgPrimaryBtnHoverBg">#6D28D9</Color>
+
+    <SolidColorBrush x:Key="BrushDlgSidebarBg" Color="{StaticResource DlgSidebarBg}" />
+    <SolidColorBrush x:Key="BrushDlgSidebarItemBg" Color="{StaticResource DlgSidebarItemBg}" />
+    <SolidColorBrush x:Key="BrushDlgSidebarItemActiveBg" Color="{StaticResource DlgSidebarItemActiveBg}" />
+    <SolidColorBrush x:Key="BrushDlgContentBg" Color="{StaticResource DlgContentBg}" />
+    <SolidColorBrush x:Key="BrushDlgGroupBg" Color="{StaticResource DlgGroupBg}" />
+    <SolidColorBrush x:Key="BrushDlgGroupHoverBg" Color="{StaticResource DlgGroupHoverBg}" />
+    <SolidColorBrush x:Key="BrushDlgGroupBorder" Color="{StaticResource DlgGroupBorder}" />
+    <SolidColorBrush x:Key="BrushDlgGroupSelectedBorder" Color="{StaticResource DlgGroupSelectedBorder}" />
+    <SolidColorBrush x:Key="BrushDlgSecondaryText" Color="{StaticResource DlgSecondaryText}" />
+    <SolidColorBrush x:Key="BrushDlgMutedText" Color="{StaticResource DlgMutedText}" />
+    <SolidColorBrush x:Key="BrushDlgButtonBg" Color="{StaticResource DlgButtonBg}" />
+    <SolidColorBrush x:Key="BrushDlgButtonHoverBg" Color="{StaticResource DlgButtonHoverBg}" />
+    <SolidColorBrush x:Key="BrushDlgButtonPressedBg" Color="{StaticResource DlgButtonPressedBg}" />
+    <SolidColorBrush x:Key="BrushDlgPrimaryBtnBg" Color="{StaticResource DlgPrimaryBtnBg}" />
+    <SolidColorBrush x:Key="BrushDlgPrimaryBtnHoverBg" Color="{StaticResource DlgPrimaryBtnHoverBg}" />
+
+    <!-- ============ 停止按钮（实心红） ============ -->
+    <Color x:Key="StopBtnBg">#DC2626</Color>
+    <Color x:Key="StopBtnHoverBg">#B91C1C</Color>
+    <Color x:Key="StopBtnPressedBg">#991B1B</Color>
+    <Color x:Key="StopBtnDisabledBg">#F1F5F9</Color>
+    <Color x:Key="StopBtnFg">#FFFFFF</Color>
+    <Color x:Key="StopBtnDisabledFg">#94A3B8</Color>
+
+    <SolidColorBrush x:Key="BrushStopBtnBg" Color="{StaticResource StopBtnBg}" />
+    <SolidColorBrush x:Key="BrushStopBtnHoverBg" Color="{StaticResource StopBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushStopBtnPressedBg" Color="{StaticResource StopBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushStopBtnDisabledBg" Color="{StaticResource StopBtnDisabledBg}" />
+    <SolidColorBrush x:Key="BrushStopBtnFg" Color="{StaticResource StopBtnFg}" />
+    <SolidColorBrush x:Key="BrushStopBtnDisabledFg" Color="{StaticResource StopBtnDisabledFg}" />
+
+    <!-- ============ 主题切换按钮 ============ -->
+    <Color x:Key="ThemeBtnBg">#FEF3C7</Color>
+    <Color x:Key="ThemeBtnHoverBg">#FDE68A</Color>
+    <Color x:Key="ThemeBtnPressedBg">#FCD34D</Color>
+    <Color x:Key="ThemeBtnFg">#D97706</Color>
+
+    <SolidColorBrush x:Key="BrushThemeBtnBg" Color="{StaticResource ThemeBtnBg}" />
+    <SolidColorBrush x:Key="BrushThemeBtnHoverBg" Color="{StaticResource ThemeBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushThemeBtnPressedBg" Color="{StaticResource ThemeBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushThemeBtnFg" Color="{StaticResource ThemeBtnFg}" />
 </ResourceDictionary>

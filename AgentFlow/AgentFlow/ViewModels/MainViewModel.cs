@@ -15,6 +15,7 @@ using AgentFlow.Serialization;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -42,7 +43,7 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ConnectionViewModel> Connections { get; } = new();
     public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
-    public ObservableCollection<string> Logs { get; } = new();
+    public ObservableCollection<UiLogEntry> Logs { get; } = new();
     // ---- Dedicated view-models (1 view <-> 1 view-model) ----
     public NodeLibraryViewModel NodeLibrary { get; }
     public LogPanelViewModel LogPanel { get; }
@@ -56,6 +57,26 @@ public partial class MainViewModel : ViewModelBase
     private bool _isDirty;
     [ObservableProperty]
     private string _statusText = Loc.Instance["Ready"];
+
+    /// <summary>Text for the running indicator (fixed "Running" when active, "Ready" when idle).</summary>
+    [ObservableProperty]
+    private string _runningText = "Ready";
+
+    /// <summary>Opacity of the 3 animated dots (only one is fully visible at a time).</summary>
+    [ObservableProperty] private double _dot1Opacity = 0.3;
+    [ObservableProperty] private double _dot2Opacity = 0.3;
+    [ObservableProperty] private double _dot3Opacity = 0.3;
+
+    /// <summary>Brush for the running icon (green when running, gray when idle).</summary>
+    [ObservableProperty]
+    private IBrush? _runningIconBrush;
+
+    /// <summary>Blur radius of the glow effect around the running icon (pulsing when active).</summary>
+    [ObservableProperty]
+    private double _pulseBlur = 0;
+
+    private readonly DispatcherTimer _runTimer;
+    private int _dotStep;
     /// <summary>Full path of the currently open / saved JSON workflow file.</summary>
     [ObservableProperty]
     private string _currentFilePath = "";
@@ -64,6 +85,10 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Whether the bottom log panel is expanded (toggled by the Logs button).</summary>
     [ObservableProperty]
     private bool _isLogPanelOpen;
+    /// <summary>Whether the log panel fills the whole canvas area (double-click toggle).</summary>
+    [ObservableProperty]
+    private bool _isLogPanelExpanded;
+    public void ToggleLogPanelExpanded() => IsLogPanelExpanded = !IsLogPanelExpanded;
     /// <summary>Reset the canvas zoom/pan back to its default transform (delegates to the canvas view-model).</summary>
     [RelayCommand]
     private void ResetZoom() => Canvas.ResetZoom();
@@ -86,10 +111,45 @@ public partial class MainViewModel : ViewModelBase
         _loggerFactory = LoggerFactory.Create(b =>
         {
             b.SetMinimumLevel(LogLevel.Debug);
-            b.AddProvider(new UiLoggerProvider(Logs));
             b.AddProvider(new RollingLoggerProvider());
         });
         _logger = _loggerFactory.CreateLogger(nameof(MainViewModel));
+
+        // Subscribe to Rolling.Logging events to mirror logs into the UI panel.
+        // All UI updates are marshalled via Dispatcher.UIThread.Post.
+        LogEvents.OnLogEmitted += (level, category, message, ex) =>
+        {
+            var shortLevel = level switch
+            {
+                LogLevel.Trace => "TRACE",
+                LogLevel.Debug => "DEBUG",
+                LogLevel.Information => "INFO",
+                LogLevel.Warning => "WARN",
+                LogLevel.Error => "ERROR",
+                LogLevel.Critical => "ERROR",
+                _ => "INFO",
+            };
+            Dispatcher.UIThread.Post(() =>
+            {
+                Logs.Add(new UiLogEntry
+                {
+                    Timestamp = DateTimeOffset.Now,
+                    Level = shortLevel,
+                    Source = category,
+                    Message = message,
+                });
+                if (ex is not null)
+                    Logs.Add(new UiLogEntry
+                    {
+                        Timestamp = DateTimeOffset.Now,
+                        Level = "ERROR",
+                        Source = category,
+                        Message = ex.ToString(),
+                    });
+                if (Logs.Count > 500) Logs.RemoveAt(0);
+            });
+        };
+
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
         _nodeManager = new NodeInstanceManager(_pluginLoader);
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader);
@@ -105,6 +165,31 @@ public partial class MainViewModel : ViewModelBase
         NodeLibrary = new NodeLibraryViewModel(this);
         LogPanel = new LogPanelViewModel(this);
         Canvas = new CanvasViewModel(this);
+
+        // Running indicator animation: dots light up one by one (marquee effect).
+        _runTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _runTimer.Tick += (_, _) =>
+        {
+            if (IsRunning)
+            {
+                RunningText = "Running";
+                RunningIconBrush = new SolidColorBrush(Color.Parse("#12B76A"));
+                _dotStep = (_dotStep + 1) % 3;
+                Dot1Opacity = _dotStep == 0 ? 1.0 : 0.25;
+                Dot2Opacity = _dotStep == 1 ? 1.0 : 0.25;
+                Dot3Opacity = _dotStep == 2 ? 1.0 : 0.25;
+                // Glow pulse: blur radius alternates between 4 and 8.
+                PulseBlur = (_dotStep % 2 == 0) ? 8 : 4;
+            }
+            else
+            {
+                RunningText = "Ready";
+                RunningIconBrush = new SolidColorBrush(Color.Parse("#9CA3AF"));
+                Dot1Opacity = Dot2Opacity = Dot3Opacity = 0;
+                PulseBlur = 0;
+            }
+        };
+        _runTimer.Start();
     }
     // ---------- Language / theme switching ----------
     [RelayCommand]
@@ -222,7 +307,7 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Logs.Add($"[{L["LoadFailed"]}] {ex.Message}");
+            Log($"[{L["LoadFailed"]}] {ex.Message}", "ERROR");
             _logger.LogError(ex, "Auto-load failed: {Message}", ex.Message);
         }
         finally
@@ -238,13 +323,13 @@ public partial class MainViewModel : ViewModelBase
             (source, target) = (target, source);
         if (!source.IsOutput || !target.IsInput)
         {
-            Logs.Add(L["ErrMustOutToIn"]);
+            Log(L["ErrMustOutToIn"], "WARN");
             return false;
         }
         var error = ValidateConnection(source, target);
         if (error is not null)
         {
-            Logs.Add($"[{L["ConnRejected"]}] {error}");
+            Log($"[{L["ConnRejected"]}] {error}", "ERROR");
             return false;
         }
         Establish(source, target);
@@ -375,6 +460,23 @@ public partial class MainViewModel : ViewModelBase
     }
     [RelayCommand]
     private void ToggleLogPanel() => IsLogPanelOpen = !IsLogPanelOpen;
+
+    /// <summary>Helper: append a structured log entry to the UI panel (thread-safe).</summary>
+    private void Log(string message, string level = "INFO", string source = "Main")
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            Logs.Add(new UiLogEntry
+            {
+                Timestamp = DateTimeOffset.Now,
+                Level = level,
+                Source = source,
+                Message = message,
+            });
+            if (Logs.Count > 500) Logs.RemoveAt(0);
+        });
+    }
+
     [RelayCommand]
     private void ClearLog() => Logs.Clear();
     /// <summary>Raised when the clear-canvas confirmation dialog should be shown (View layer listens to open a window).</summary>
@@ -394,7 +496,7 @@ public partial class MainViewModel : ViewModelBase
             Connections.Clear();
             SelectedNode = null;
             _graph.Clear();
-            Logs.Add("Canvas cleared.");
+            Log("Canvas cleared.");
             _logger.LogInformation("Canvas cleared.");
         };
         ClearRequested?.Invoke(this, dialog);
@@ -496,7 +598,7 @@ public partial class MainViewModel : ViewModelBase
         {
             StatusText = L["ValidationFailed"];
             foreach (var err in validationErrors)
-                Logs.Add($"[{L["ErrorPrefix"]}] {err}");
+                Log($"[{L["ErrorPrefix"]}] {err}", "ERROR");
             return;
         }
         StatusText = L["Running"];
@@ -526,7 +628,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusText = L["RunFailed"];
-            Logs.Add($"[{L["ErrorPrefix"]}] {ex.Message}");
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
             _logger.LogError(ex, "Run failed: {Message}", ex.Message);
         }
         finally
@@ -547,7 +649,7 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Logs.Add($"[{L["ErrorPrefix"]}] {ex.Message}");
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
         }
         finally
         {
@@ -642,7 +744,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusText = L["LoadFailed"];
-            Logs.Add($"[{L["ErrorPrefix"]}] {ex.Message}");
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
         }
     }
 }
