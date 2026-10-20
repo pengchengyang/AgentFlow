@@ -11,24 +11,33 @@ namespace AgentFlow.Contracts;
 /// Allocates unique node instance ids in the range 1000..5000. Each node created through
 /// <see cref="AgentFlow.Core.PluginLoader.CreateNodeInstance"/> receives an id; ids are returned to the pool
 /// when a node is deleted so the next created node reuses the smallest available id.
+/// <para>
+/// The pool is <b>instance-level</b>: every <see cref="AgentFlow.Core.WorkflowRunner"/> (owned mode) creates
+/// its own pool so each workflow's ids start from the minimum again and concurrent runs never
+/// share / collide. The <see cref="Default"/> singleton backs the classic Desktop editing flow
+/// (via <see cref="PoolScope"/>) with no behaviour change.
+/// </para>
 /// </summary>
-internal static class NodeIdPool
+internal sealed class NodeIdPool
 {
     private const int MinNodeId = 1000;
     private const int MaxNodeId = 5000;
 
-    private static readonly object Gate = new();
-    private static readonly SortedSet<int> FreeIds = new();
-    private static int _nextId = MinNodeId;
+    /// <summary>The shared pool used when no explicit scope is active (Desktop editing / attached mode).</summary>
+    public static NodeIdPool Default { get; } = new();
 
-    public static int Allocate()
+    private readonly object _gate = new();
+    private readonly SortedSet<int> _freeIds = new();
+    private int _nextId = MinNodeId;
+
+    public int Allocate()
     {
-        lock (Gate)
+        lock (_gate)
         {
-            if (FreeIds.Count > 0)
+            if (_freeIds.Count > 0)
             {
-                int id = FreeIds.Min;
-                FreeIds.Remove(id);
+                int id = _freeIds.Min;
+                _freeIds.Remove(id);
                 return id;
             }
 
@@ -41,9 +50,9 @@ internal static class NodeIdPool
     }
 
     /// <summary>Reserve a specific id (used when restoring a saved node instance).</summary>
-    public static void Reserve(int id)
+    public void Reserve(int id)
     {
-        lock (Gate)
+        lock (_gate)
         {
             if (id < MinNodeId || id > MaxNodeId)
                 throw new ArgumentOutOfRangeException(nameof(id), id,
@@ -53,27 +62,27 @@ internal static class NodeIdPool
                 _nextId++;
                 return;
             }
-            if (FreeIds.Remove(id))
+            if (_freeIds.Remove(id))
                 return;
             throw new InvalidOperationException($"Node id {id} is already in use.");
         }
     }
 
-    public static void Release(int id)
+    public void Release(int id)
     {
-        lock (Gate)
+        lock (_gate)
         {
             if (id >= MinNodeId && id <= MaxNodeId)
-                FreeIds.Add(id);
+                _freeIds.Add(id);
         }
     }
 
     /// <summary>Clear the free pool and restart allocation from the minimum id.</summary>
-    public static void Reset()
+    public void Reset()
     {
-        lock (Gate)
+        lock (_gate)
         {
-            FreeIds.Clear();
+            _freeIds.Clear();
             _nextId = MinNodeId;
         }
     }

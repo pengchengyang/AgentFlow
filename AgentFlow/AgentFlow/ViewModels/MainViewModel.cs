@@ -27,7 +27,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly NodeRegistry _registry = new();
     private readonly PluginLoader _pluginLoader;
     private readonly EditorGraph _graph;
-    private readonly NodeInstanceManager _nodeManager;
+    private readonly WorkflowRunner _runner;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private CancellationTokenSource? _runCts;
@@ -50,7 +50,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private NodeViewModel? _selectedNode;
     /// <summary>True while the workflow is running, derived from every node instance's Running state.</summary>
-    public bool IsRunning => _nodeManager.IsRunning;
+    public bool IsRunning => _runner.IsRunning;
     /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
     [ObservableProperty]
     private bool _isDirty;
@@ -110,7 +110,7 @@ public partial class MainViewModel : ViewModelBase
         _loggerFactory = AppLog.CreateLoggerFactory();
         _logger = _loggerFactory.CreateLogger(nameof(MainViewModel));
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
-        _nodeManager = new NodeInstanceManager(_pluginLoader);
+        _runner = WorkflowRunner.CreateAttached(() => _pluginLoader.Instances, GetNodeContext, _loggerFactory);
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader);
         _store = DefaultWorkflowStore ?? new LocalWorkflowStore();
         _graph.GraphChanged += RefreshPinConnections;
@@ -561,14 +561,13 @@ public partial class MainViewModel : ViewModelBase
             () => { }, Avalonia.Threading.DispatcherPriority.Render);
         try
         {
-            var contexts = BuildNodeContexts();
-            // Unified persistent model: Start = initialize + run (no auto-stop). The Stop button
-            // calls NodeInstanceManager.StopAsync to tear down long-running nodes.
-            // If any node is still running from a previous Start, stop it first so we can
-            // start fresh (avoids e.g. a socket port already bound by the previous run).
-            if (_nodeManager.Instances.Any(n => n.Running))
-                await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
-            await Task.Run(() => _nodeManager.StartAsync(node => contexts[node], _runCts.Token));
+            // Unified persistent model (attached mode): Start = initialize + run (no auto-stop).
+            // The Stop button calls runner.StopAsync to tear down long-running nodes. If any node
+            // is still running from a previous Start, stop it first so we can start fresh (avoids
+            // e.g. a socket port already bound by the previous run).
+            if (_runner.Instances.Any(n => n.Running))
+                await Task.Run(() => _runner.StopAsync());
+            await Task.Run(() => _runner.StartAsync(_runCts.Token));
             StatusText = L["RunCompleted"];
             _logger.LogTrace("Run completed.");
         }
@@ -597,7 +596,7 @@ public partial class MainViewModel : ViewModelBase
         _runCts?.Cancel();
         try
         {
-            await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
+            await Task.Run(() => _runner.StopAsync());
         }
         catch (Exception ex)
         {
@@ -615,23 +614,16 @@ public partial class MainViewModel : ViewModelBase
         // Keep each node's header spin indicator in sync with the underlying runtime state.
         foreach (var n in Nodes) n.NotifyRunningChanged();
     }
-    /// <summary>Build a node context for the given runtime instance so NodeInstanceManager can run it.</summary>
+    /// <summary>Build a node context for the given runtime instance so the attached runner can run it.</summary>
     private INodeContext GetNodeContext(BaseNode node) => _graph.CreateContext(node);
-    /// <summary>
-    /// Pre-create contexts for every managed instance and bind them to the runtime pins before a
-    /// run. This ensures downstream input pins already have a context when an upstream node pushes
-    /// data, even if the downstream node has not been reached in the dependency-ordered loop yet.
-    /// </summary>
-    private Dictionary<BaseNode, INodeContext> BuildNodeContexts()
-    {
-        var contexts = new Dictionary<BaseNode, INodeContext>();
-        foreach (var node in _pluginLoader.Instances)
-            contexts[node] = _graph.CreateContext(node);
-        return contexts;
-    }
     [RelayCommand]
     private async void Save()
     {
+        if (!string.IsNullOrEmpty(CurrentFilePath))
+        {
+            SaveToPath(CurrentFilePath);
+            return;
+        }
         SyncGraphState();
         await _store.SaveAsync(GraphSerializer.Serialize(_graph));
         IsDirty = false;
@@ -700,7 +692,3 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
-
-
-
-

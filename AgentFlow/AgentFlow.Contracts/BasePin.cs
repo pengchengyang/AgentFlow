@@ -82,7 +82,7 @@ public class BasePin
         Direction = direction;
         Required = required;
         Uuid = Guid.NewGuid().ToString("N");
-        Id = id ?? PinIdPool.Allocate();
+        Id = id ?? PoolScope.PinPool.Allocate();
     }
 
     /// <summary>
@@ -92,13 +92,13 @@ public class BasePin
     internal void RestoreId(int newId)
     {
         if (Id == newId) return;
-        PinIdPool.Release(Id);
-        PinIdPool.Reserve(newId);
+        PoolScope.PinPool.Release(Id);
+        PoolScope.PinPool.Reserve(newId);
         Id = newId;
     }
 
     /// <summary>Return this pin's id to the id pool so it can be reused (e.g. when its node is removed).</summary>
-    public void ReleaseId() => PinIdPool.Release(Id);
+    public void ReleaseId() => PoolScope.PinPool.Release(Id);
 
     /// <summary>
     /// Called on an INPUT pin when data pushed from an upstream OUTPUT pin arrives.
@@ -151,5 +151,6 @@ public class BasePin
         Owner.ReceiveSample(this, value);
     }
 }
+
 
 

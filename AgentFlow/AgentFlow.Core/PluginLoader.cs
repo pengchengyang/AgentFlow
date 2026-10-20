@@ -78,7 +78,7 @@ public sealed class PluginLoader
         EnsurePinsCreated(instance, registry.Get(name));
         lock (_gate)
         {
-            instance.InstanceId = NodeIdPool.Allocate();
+            instance.InstanceId = PoolScope.NodePool.Allocate();
             _instances.Add(instance);
         }
         _logger.LogTrace("PluginLoader: created node instance #{InstanceId} ({Name})",
@@ -103,12 +103,12 @@ public sealed class PluginLoader
         {
             if (instanceId > 0)
             {
-                NodeIdPool.Reserve(instanceId);
+                PoolScope.NodePool.Reserve(instanceId);
                 instance.InstanceId = instanceId;
             }
             else
             {
-                instance.InstanceId = NodeIdPool.Allocate();
+                instance.InstanceId = PoolScope.NodePool.Allocate();
             }
             instance.DependsOn = dependsOn;
             _instances.Add(instance);
@@ -133,7 +133,7 @@ public sealed class PluginLoader
             if (idx < 0) return false;
             var instance = _instances[idx];
             _instances.RemoveAt(idx);
-            NodeIdPool.Release(instance.InstanceId);
+            PoolScope.NodePool.Release(instance.InstanceId);
             ReleasePins(instance);
         }
         _logger.LogTrace("PluginLoader: deleted node instance #{InstanceId}", instanceId);
@@ -147,7 +147,7 @@ public sealed class PluginLoader
         lock (_gate)
         {
             if (!_instances.Remove(instance)) return false;
-            NodeIdPool.Release(instance.InstanceId);
+            PoolScope.NodePool.Release(instance.InstanceId);
             ReleasePins(instance);
         }
         _logger.LogTrace("PluginLoader: deleted node instance #{InstanceId} ({DisplayName})",
@@ -214,7 +214,7 @@ public sealed class PluginLoader
         lock (_gate)
         {
             _instances.Clear();
-            NodeIdPool.Reset();
+            PoolScope.NodePool.Reset();
         }
     }
 
@@ -296,3 +296,4 @@ public sealed class PluginLoader
         }
     }
 }
+

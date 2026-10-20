@@ -326,7 +326,7 @@ public sealed class EditorGraph
 
     /// <summary>
     /// Build an <see cref="INodeContext"/> bound to the editor node that owns the given
-    /// runtime instance. Used by <see cref="NodeInstanceManager"/> so UI commands run the
+    /// runtime instance. Used by <see cref="WorkflowRunner"/> (attached mode) so UI commands run the
     /// actual on-canvas node instances through the same wired runtime pins.
     /// </summary>
     public INodeContext CreateContext(BaseNode runtimeNode)
@@ -365,6 +365,7 @@ public sealed class EditorGraph
         public T? GetService<T>() => default;
     }
 }
+
 
 
 

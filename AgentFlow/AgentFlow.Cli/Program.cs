@@ -13,6 +13,8 @@ using Microsoft.Extensions.Logging;
 // The workflow JSON is always parsed the same way as the GUI (Core's EditorJsonLoader):
 // node type/params come from each node's `logic` blob and pin-id connections are resolved
 // to logical (node, pin) connections, so the headless CLI runs the exact same logic.
+// The CLI uses the unified WorkflowRunner in OWNED mode: it builds the node/pin instances
+// from the JSON itself, runs them, and tears them down when the process exits.
 
 var workflowPath = args.Length > 0 ? args[0] : "sample.workflow.json";
 var pluginDir = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "plugins");
@@ -31,7 +33,8 @@ logger.LogInformation("Registered {Count} node types", registry.Nodes.Count);
 logger.LogInformation("Loading workflow: {Path}", workflowPath);
 var graph = EditorJsonLoader.Load(workflowPath, registry);
 
-var engine = new WorkflowEngine(registry, loggerFactory);
+// Unified executor, owned mode: builds the instances from the graph and owns their lifecycle.
+using var runner = WorkflowRunner.CreateOwned(registry, graph, loggerFactory);
 
 // Unified persistent model: start = initialize + run (no auto-stop). The workflow keeps
 // running until the user presses Ctrl+C, which triggers Stop to tear down long-running nodes.
@@ -45,7 +48,7 @@ Console.CancelKeyPress += (_, e) =>
 
 try
 {
-    await engine.StartAsync(graph, cts.Token);
+    await runner.StartAsync(cts.Token);
     logger.LogInformation("Workflow running. Press Ctrl+C to stop.");
 
     // Keep the process alive (letting background / long-running nodes execute) until Ctrl+C.
@@ -60,7 +63,8 @@ try
 }
 finally
 {
-    await engine.StopAsync(graph);
+    await runner.StopAsync();
     logger.LogInformation("Workflow stopped.");
     AppLog.Close();
 }
+
