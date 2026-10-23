@@ -362,7 +362,29 @@ public sealed class EditorGraph
                 pin.SendSample(value);
         }
 
-        public T? GetService<T>() => default;
+        public T? GetService<T>()
+        {
+            // 临时:直接返回本地 Ollama 客户端
+            if (typeof(T) == typeof(ILLMClient))
+            {
+                var client = new OllamaLlmClient();
+                return (T)(object)client;
+            }
+            // 临时:返回一个空的工具提供者,先让模型能跑起来
+            if (typeof(T) == typeof(IAgentToolProvider))
+            {
+                var provider = new EmptyToolProvider();
+                return (T)(object)provider;
+            }
+            return default;
+        }
+    }
+
+    /// <summary>空的工具提供者,先返回空列表,后面再接真实工具。</summary>
+    private sealed class EmptyToolProvider : IAgentToolProvider
+    {
+        public IReadOnlyList<IAgentTool> Tools => Array.Empty<IAgentTool>();
+        public IAgentTool? Find(string name) => null;
     }
 }
 

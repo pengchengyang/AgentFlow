@@ -50,8 +50,9 @@ public partial class MainViewModel : ViewModelBase
     public CanvasViewModel Canvas { get; }
     [ObservableProperty]
     private NodeViewModel? _selectedNode;
-    /// <summary>True while the workflow is running, derived from every node instance's Running state.</summary>
-    public bool IsRunning => _nodeManager.IsRunning;
+    /// <summary>True while the workflow is running (UI state, set immediately on Start/Stop).</summary>
+    [ObservableProperty]
+    private bool _isRunning;
     /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
     [ObservableProperty]
     private bool _isDirty;
@@ -89,6 +90,25 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isLogPanelExpanded;
     public void ToggleLogPanelExpanded() => IsLogPanelExpanded = !IsLogPanelExpanded;
+
+    /// <summary>
+    /// Bottom inset the canvas reserves while the log panel is docked, so canvas content is never
+    /// drawn underneath it. Zero when the panel is closed or when it fills the whole area.
+    /// </summary>
+    public Thickness CanvasLogInset => IsLogPanelOpen && !IsLogPanelExpanded
+        ? new Thickness(0, 0, 0, BoolToPanelHeightConverter.DockedHeight)
+        : default;
+
+    /// <summary>Closing the panel also clears its expanded state, otherwise the canvas stays hidden.</summary>
+    partial void OnIsLogPanelOpenChanged(bool value)
+    {
+        if (!value)
+            IsLogPanelExpanded = false;
+        OnPropertyChanged(nameof(CanvasLogInset));
+    }
+
+    partial void OnIsLogPanelExpandedChanged(bool value) => OnPropertyChanged(nameof(CanvasLogInset));
+
     /// <summary>Reset the canvas zoom/pan back to its default transform (delegates to the canvas view-model).</summary>
     [RelayCommand]
     private void ResetZoom() => Canvas.ResetZoom();
@@ -419,6 +439,54 @@ public partial class MainViewModel : ViewModelBase
         Nodes.Remove(node);
         _logger.LogTrace("Removed node #{InstanceId} ({Name})", node.Id, node.Name);
     }
+
+    // ---------- Node commands (right-click menu) ----------
+    /// <summary>Snapshot of the commands the given node exposes to the editor context menu.</summary>
+    public IReadOnlyList<NodeCommandInfo> GetNodeCommands(NodeViewModel node)
+        => node is null ? Array.Empty<NodeCommandInfo>() : _nodeManager.GetNodeCommands(node.InstanceId);
+
+    /// <summary>
+    /// Execute a node command through Core. When the command requests confirmation the
+    /// view layer shows a dialog first; execution then uses the same node context as run/stop.
+    /// </summary>
+    public async Task ExecuteNodeCommandAsync(NodeViewModel node, NodeCommandInfo command)
+    {
+        if (node is null || command is null) return;
+        try
+        {
+            if (command.RequiresConfirmation)
+            {
+                var confirmed = await RequestConfirmationAsync(
+                    command.Title, $"Run '{command.Title}' on node '{node.Title}'?");
+                if (!confirmed) return;
+            }
+
+            await _nodeManager.ExecuteNodeCommandAsync(node.InstanceId, command.Id, GetNodeContext);
+            _logger.LogTrace("Node command {CommandId} executed on #{InstanceId}",
+                command.Id, node.InstanceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Node command {CommandId} failed on #{InstanceId}",
+                command.Id, node.InstanceId);
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+        }
+    }
+
+    /// <summary>Raised when a generic confirmation dialog should be shown by the view layer.</summary>
+    public event EventHandler<ConfirmDialogViewModel>? ConfirmRequested;
+
+    private Task<bool> RequestConfirmationAsync(string title, string message)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dialog = new ConfirmDialogViewModel(title, message, "Confirm", "Cancel");
+        dialog.RequestClose += (_, confirmed) => tcs.TrySetResult(confirmed);
+        if (ConfirmRequested is null)
+            tcs.TrySetResult(true); // Headless fallback: no view attached.
+        else
+            ConfirmRequested.Invoke(this, dialog);
+        return tcs.Task;
+    }
     /// <summary>Whether the current user is logged in as Admin (Admin-only features gate on this).</summary>
     [ObservableProperty]
     private bool _isAdmin = true; // Dev: default account is Admin so admin-only UI is available on open.
@@ -603,6 +671,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
         StatusText = L["Running"];
+        IsRunning = true;
         _logger.LogTrace("Run started ({NodeCount} nodes).", Nodes.Count);
         _runCts = new CancellationTokenSource();
         // Yield to the UI thread so the Stop icon renders before the run starts.
@@ -654,6 +723,7 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
+            IsRunning = false;
             NotifyRunningState();
         }
     }
@@ -749,6 +819,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 }
+
 
 
 

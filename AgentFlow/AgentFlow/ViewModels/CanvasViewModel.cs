@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System.Collections.ObjectModel;
+using AgentFlow.Core;
 using Avalonia;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -91,6 +92,13 @@ public partial class CanvasViewModel : ViewModelBase
     public void RemoveConnection(ConnectionViewModel connection) => _main.RemoveConnection(connection);
     public void OpenNodeParameters(NodeViewModel node) => _main.OpenNodeParametersCommand.Execute(node);
     public ICommand RemoveNodeCommand => _main.RemoveNodeCommand;
+
+    /// <summary>Commands the node exposes to the right-click menu (delegated to Core via MainViewModel).</summary>
+    public IReadOnlyList<NodeCommandInfo> GetNodeCommands(NodeViewModel node) => _main.GetNodeCommands(node);
+
+    /// <summary>Execute a node command through Core (delegated to MainViewModel).</summary>
+    public Task ExecuteNodeCommandAsync(NodeViewModel node, NodeCommandInfo command)
+        => _main.ExecuteNodeCommandAsync(node, command);
     public void AddNodeAt(PaletteItem item, Point world) => _main.AddNodeAt(item, world);
 
     // ---- Panning (middle mouse drag) ----
@@ -155,4 +163,5 @@ public partial class CanvasViewModel : ViewModelBase
         _dragNode = null;
     }
 }
+
 

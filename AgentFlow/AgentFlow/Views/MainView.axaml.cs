@@ -25,6 +25,7 @@ public partial class MainView : UserControl
         {
             vm.DialogRequested += OnDialogRequested;
             vm.ClearRequested += OnClearRequested;
+            vm.ConfirmRequested += OnClearRequested;
             vm.LoginRequested += OnLoginRequested;
             vm.SaveAsRequested += OnSaveAsRequested;
             vm.OpenRequested += OnOpenRequested;
@@ -106,3 +107,4 @@ public partial class MainView : UserControl
             vm.LoadFromPath(path);
     }
 }
+

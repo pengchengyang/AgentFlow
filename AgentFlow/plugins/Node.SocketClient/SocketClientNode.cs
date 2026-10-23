@@ -87,6 +87,31 @@ public sealed class SocketClientNode : BaseNode
         _outPin.SendSample(sendSample);
     }
 
+    /// <summary>
+    /// Node-specific right-click commands. "Send Payload" is enabled only while the node is
+    /// running and enqueues the configured <c>Payload</c> through the same send channel used
+    /// by the communication loop.
+    /// </summary>
+    protected override void AddCommands()
+    {
+        AddCommand(new NodeCommand
+        {
+            Id = "send-payload",
+            Title = "Send Payload",
+            Order = 10,
+            CanExecute = () => Running,
+            Execute = (ctx, _) =>
+            {
+                var payload = Param("Payload").Value?.ToString() ?? string.Empty;
+                var queued = _sendChannel.Writer.TryWrite(payload);
+                if (queued)
+                    ctx.Logger.LogInformation("SocketClient queued payload from context menu: {Payload}", payload);
+                else
+                    ctx.Logger.LogWarning("SocketClient could not queue payload from context menu: channel is closed.");
+                return Task.CompletedTask;
+            }
+        });
+    }
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         return Task.CompletedTask;

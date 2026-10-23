@@ -43,7 +43,7 @@ public sealed class ReActAgentNode : BaseNode
     public override string Category => "AI";
 
     /// <summary>Question input pin (from an upstream node / user).</summary>
-    private readonly BasePin _inPin = new("Question", DataType.STRING, PinDirection.Input, required: true);
+    private readonly BasePin _inPin = new("Question", DataType.STRING, PinDirection.Input, required: false);
 
     /// <summary>Final answer output pin (pushed downstream).</summary>
     private readonly BasePin _outPin = new("Answer", DataType.STRING, PinDirection.Output);

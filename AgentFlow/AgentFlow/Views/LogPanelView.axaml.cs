@@ -114,4 +114,3 @@ public partial class LogPanelView : UserControl
         return sb.ToString().TrimEnd('\r', '\n');
     }
 }
-

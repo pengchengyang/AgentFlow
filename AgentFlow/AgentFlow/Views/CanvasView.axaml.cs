@@ -11,10 +11,12 @@ using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using AgentFlow.Services;
+using AgentFlow.Core;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
@@ -91,6 +93,12 @@ public sealed class GraphCanvas : Control
     private bool _hoverTitleActive;
     private string? _hoverTitleText;
     private Point _hoverTitleScreen;
+
+    // The currently-open right-click node menu, if any. Only one menu is allowed at a time;
+    // opening a new one always closes the previous one first.
+    private Window? _openNodeMenuWindow;
+    // Last right-click position in screen coords, used to place the menu window.
+    private PixelPoint _lastRightClickScreenPos;
 
 
     public GraphCanvas()
@@ -595,6 +603,10 @@ public sealed class GraphCanvas : Control
         var vm = Vm;
         if (vm is null) return;
 
+        // Any press on the canvas dismisses the open right-click menu first.
+        // (Clicks inside the menu itself hit the Popup, not the canvas, so they don't land here.)
+        CloseNodeContextMenu();
+
         if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
         {
             vm.BeginPan(e.GetPosition(this));
@@ -607,6 +619,7 @@ public sealed class GraphCanvas : Control
 
         if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
         {
+            _lastRightClickScreenPos = this.PointToScreen(e.GetPosition(this));
             if (HitTestNode(pos) is { } rn)
             {
                 vm.BringToFront(rn);
@@ -615,6 +628,7 @@ public sealed class GraphCanvas : Control
             }
             else
             {
+                CloseNodeContextMenu();
                 vm.SelectOnly(null);
             }
             e.Handled = true;
@@ -831,21 +845,91 @@ public sealed class GraphCanvas : Control
         }
     }
 
-    /// <summary>Show the right-click context menu for the selected node at the given screen position (Delete). Presentation only; actions are bound to ViewModel commands.</summary>
+    /// <summary>Close any currently-open right-click node menu, if one is open.</summary>
+    private void CloseNodeContextMenu()
+    {
+        if (_openNodeMenuWindow is null) return;
+        var old = _openNodeMenuWindow;
+        _openNodeMenuWindow = null;
+        old.Close();
+        old.Content = null;
+    }
+
+    /// <summary>
+    /// Show the node right-click menu. The menu body is the fully self-drawn
+    /// <see cref="NodeContextMenu"/> (visual language matches the node cards); an Avalonia
+    /// <see cref="Popup"/> only provides the top-level popup shell (pointer placement,
+    /// click-outside-to-close, Esc). Every action is dispatched through the view model.
+    /// </summary>
     private void ShowNodeContextMenu(NodeViewModel node)
     {
-        var menu = new ContextMenu();
+        var vm = Vm;
+        if (vm is null) return;
 
-        var delete = new MenuItem { Header = "Delete" };
-        delete.Click += (_, _) =>
+        // Only one menu may be open at a time: close the previous one first.
+        CloseNodeContextMenu();
+
+        var commands = vm.GetNodeCommands(node);
+
+        var menu = new NodeContextMenu
         {
-            if (Vm is { } vm) vm.RemoveNodeCommand.Execute(node);
+            Items = commands,
+            ShowDelete = true,
+        };
+        menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+        void Close()
+        {
+            if (_openNodeMenuWindow is null) return;
+            _openNodeMenuWindow.Close();
+        }
+
+        menu.CommandSelected += async cmd =>
+        {
+            Close();
+            await vm.ExecuteNodeCommandAsync(node, cmd);
+        };
+        menu.DeleteSelected += () =>
+        {
+            Close();
+            vm.RemoveNodeCommand.Execute(node);
+        };
+        menu.CloseRequested += Close;
+
+        var window = new Window
+        {
+            Content = menu,
+            Title = "",
+            ShowInTaskbar = false,
+            CanResize = false,
+            WindowDecorations = WindowDecorations.None,
+            TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent, WindowTransparencyLevel.None },
+            Background = Brushes.Transparent,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            Topmost = true,
+            Focusable = true,
         };
 
-        menu.Items.Add(delete);
-        this.ContextMenu = menu;
-        menu.Placement = PlacementMode.Pointer;
-        menu.Open(this);
+        // Position the window at the right-click screen position.
+        window.Position = new PixelPoint(_lastRightClickScreenPos.X + 4, _lastRightClickScreenPos.Y + 4);
+
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_openNodeMenuWindow, window))
+            {
+                _openNodeMenuWindow = null;
+            }
+        };
+
+        // Click outside the window closes it (light dismiss).
+        window.Deactivated += (_, _) =>
+        {
+            window.Close();
+        };
+
+        _openNodeMenuWindow = window;
+        window.Show();
+        window.Activate();
     }
 
     // ================= Data change subscriptions =================
@@ -884,6 +968,7 @@ public sealed class GraphCanvas : Control
             UpdateSpinAnimation();
     }
 }
+
 
 
 

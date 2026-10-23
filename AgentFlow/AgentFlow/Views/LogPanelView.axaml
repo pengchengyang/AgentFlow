@@ -5,112 +5,113 @@
              x:Class="AgentFlow.Views.LogPanelView"
              x:DataType="vm:LogPanelViewModel">
 
-  <UserControl.Resources>
-    <s:LevelToBackgroundConverter x:Key="LevelBg"/>
-    <s:LevelToForegroundConverter x:Key="LevelFg"/>
-    <s:LevelInCollectionConverter x:Key="LvlIn"/>
-  </UserControl.Resources>
+	<UserControl.Resources>
+		<s:LevelToBackgroundConverter x:Key="LevelBg"/>
+		<s:LevelToForegroundConverter x:Key="LevelFg"/>
+		<s:LevelInCollectionConverter x:Key="LvlIn"/>
+	</UserControl.Resources>
 
-  <UserControl.Styles>
-    <Style Selector="TextBox.logsearch">
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Padding" Value="6,0"/>
-    </Style>
-    <Style Selector="TextBox.logsearch:focus">
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource BrushBorderFocus}"/>
-    </Style>
-    <Style Selector="TextBox.logsearch:focus /template/ Border#PART_BorderElement">
-      <Setter Property="BorderThickness" Value="1"/>
-    </Style>
-  </UserControl.Styles>
+	<UserControl.Styles>
+		<Style Selector="TextBox.logsearch">
+			<Setter Property="BorderThickness" Value="1"/>
+			<Setter Property="Padding" Value="6,0"/>
+		</Style>
+		<Style Selector="TextBox.logsearch:focus">
+			<Setter Property="BorderThickness" Value="1"/>
+			<Setter Property="BorderBrush" Value="{DynamicResource BrushBorderFocus}"/>
+		</Style>
+		<Style Selector="TextBox.logsearch:focus /template/ Border#PART_BorderElement">
+			<Setter Property="BorderThickness" Value="1"/>
+		</Style>
+	</UserControl.Styles>
 
-  <Border Background="{DynamicResource BrushCard}"
-          BorderBrush="{DynamicResource BrushBorder}"
-          BorderThickness="0,1,0,0">
-    <DockPanel Margin="12,8">
-      <!-- Top toolbar: Logs title on left, everything else on right -->
-      <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="2,0,0,6">
-        <TextBlock Text="Logs" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource BrushTextPrimary}"
-                   VerticalAlignment="Center"/>
-        <!-- Right-aligned: level buttons + search + clear -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <ToggleButton Content="All" FontSize="12" Classes="level all" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=ALL}" Command="{Binding ToggleLevelCommand}" CommandParameter="ALL"/>
-            <ToggleButton Content="Trace" FontSize="12" Classes="level trace" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=TRACE}" Command="{Binding ToggleLevelCommand}" CommandParameter="TRACE"/>
-            <ToggleButton Content="Debug" FontSize="12" Classes="level debug" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=DEBUG}" Command="{Binding ToggleLevelCommand}" CommandParameter="DEBUG"/>
-            <ToggleButton Content="Info" FontSize="12" Classes="level info" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=INFO}" Command="{Binding ToggleLevelCommand}" CommandParameter="INFO"/>
-            <ToggleButton Content="Warn" FontSize="12" Classes="level warn" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=WARN}" Command="{Binding ToggleLevelCommand}" CommandParameter="WARN"/>
-            <ToggleButton Content="Error" FontSize="12" Classes="level error" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=ERROR}" Command="{Binding ToggleLevelCommand}" CommandParameter="ERROR"/>
-          </StackPanel>
-          <TextBox Classes="logsearch" PlaceholderText="Search..."
-                   Text="{Binding SearchText, Mode=TwoWay}" FontSize="11"
-                   VerticalAlignment="Center" Width="140" Height="20" MinHeight="0" Padding="6,0"/>
-          <Button Classes="ghost" Content="Clear" FontSize="11" Padding="8,2"
-                  Command="{Binding ClearLogCommand}"/>
-        </StackPanel>
-      </Grid>
+	<Border Background="{DynamicResource BrushCard}"
+			BorderBrush="{DynamicResource BrushBorder}"
+			BorderThickness="0,1,0,0">
+		<DockPanel Margin="12,4,12,8">
+			<!-- Top toolbar: Logs title on left, everything else on right -->
+			<Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="2,0,0,6">
+				<TextBlock Text="Logs" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource BrushTextPrimary}"
+						   VerticalAlignment="Center"/>
+				<!-- Right-aligned: level buttons + search + clear -->
+				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+					<StackPanel Orientation="Horizontal" Spacing="4">
+						<ToggleButton Content="All" FontSize="12" Classes="level all" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=ALL}" Command="{Binding ToggleLevelCommand}" CommandParameter="ALL"/>
+						<ToggleButton Content="Trace" FontSize="12" Classes="level trace" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=TRACE}" Command="{Binding ToggleLevelCommand}" CommandParameter="TRACE"/>
+						<ToggleButton Content="Debug" FontSize="12" Classes="level debug" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=DEBUG}" Command="{Binding ToggleLevelCommand}" CommandParameter="DEBUG"/>
+						<ToggleButton Content="Info" FontSize="12" Classes="level info" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=INFO}" Command="{Binding ToggleLevelCommand}" CommandParameter="INFO"/>
+						<ToggleButton Content="Warn" FontSize="12" Classes="level warn" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=WARN}" Command="{Binding ToggleLevelCommand}" CommandParameter="WARN"/>
+						<ToggleButton Content="Error" FontSize="12" Classes="level error" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=ERROR}" Command="{Binding ToggleLevelCommand}" CommandParameter="ERROR"/>
+					</StackPanel>
+					<TextBox Classes="logsearch" PlaceholderText="Search..."
+							 Text="{Binding SearchText, Mode=TwoWay}" FontSize="11"
+							 VerticalAlignment="Center" Width="140" Height="26" MinHeight="0" Padding="6,0"/>
+					<Button Classes="ghost" Content="Clear" FontSize="11" Padding="8,2"
+							Command="{Binding ClearLogCommand}"/>
+				</StackPanel>
+			</Grid>
 
-      <Border Background="{DynamicResource BrushSurface}" CornerRadius="8" Padding="8,4">
-        <ListBox x:Name="LogListBox" ItemsSource="{Binding FilteredLogs}" Background="Transparent" BorderThickness="0"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                 SelectionMode="Multiple"
-                 ItemContainerTheme="{StaticResource LogListItemTheme}"
-                 KeyDown="OnListKeyDown"
-                 FontFamily="avares://AgentFlow/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono" FontSize="11">
-          <ListBox.Resources>
-            <ControlTheme x:Key="LogListItemTheme" TargetType="ListBoxItem">
-              <Setter Property="Background" Value="Transparent"/>
-              <Setter Property="Padding" Value="6,0"/>
-              <Setter Property="CornerRadius" Value="6"/>
-              <Setter Property="MinHeight" Value="24"/>
-              <Setter Property="VerticalContentAlignment" Value="Center"/>
-              <Setter Property="Template">
-                <ControlTemplate TargetType="ListBoxItem">
-                  <ContentPresenter Name="PART_ContentPresenter"
-                                    Background="{TemplateBinding Background}"
-                                    CornerRadius="{TemplateBinding CornerRadius}"
-                                    ContentTemplate="{TemplateBinding ContentTemplate}"
-                                    Content="{TemplateBinding Content}"
-                                    Padding="{TemplateBinding Padding}"
-                                    HorizontalContentAlignment="Stretch"
-                                    VerticalContentAlignment="Center"/>
-                </ControlTemplate>
-              </Setter>
-            </ControlTheme>
-          </ListBox.Resources>
-          <ListBox.Styles>
-            <Style Selector="ListBoxItem:pointerover">
-              <Setter Property="Background" Value="{DynamicResource BrushDlgGroupHoverBg}"/>
-            </Style>
-            <Style Selector="ListBoxItem:selected">
-              <Setter Property="Background" Value="{DynamicResource BrushDlgSidebarItemActiveBg}"/>
-            </Style>
-            <Style Selector="ListBoxItem:selected:pointerover">
-              <Setter Property="Background" Value="{DynamicResource BrushMaxBtnPressedBg}"/>
-            </Style>
-          </ListBox.Styles>
-          <ListBox.ContextMenu>
-            <ContextMenu>
-              <MenuItem Header="Copy" Click="CopyMenu_Click"/>
-            </ContextMenu>
-          </ListBox.ContextMenu>          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="s:UiLogEntry">
-              <Grid ColumnDefinitions="156,48,96,*" Margin="0,0">
-                <TextBlock Text="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd HH:mm:ss.fff}}" Foreground="{DynamicResource BrushTextTertiary}" VerticalAlignment="Center"/>
-                <Border Grid.Column="1" CornerRadius="3" Padding="6,1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="{Binding Level, Converter={StaticResource LevelBg}}">
-                  <TextBlock Text="{Binding Level}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
-                             Foreground="{Binding Level, Converter={StaticResource LevelFg}}"/>
-                </Border>
-                <TextBlock Grid.Column="2" Text="{Binding Source}" Foreground="{DynamicResource BrushTextTertiary}" FontSize="10"
-                           Margin="6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock Grid.Column="3" Text="{Binding Message}" Foreground="{DynamicResource BrushTextPrimary}" VerticalAlignment="Center"/>
-              </Grid>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
-      </Border>
-    </DockPanel>
-  </Border>
+			<Border Background="{DynamicResource BrushSurface}" CornerRadius="8" Padding="8,4">
+				<ListBox x:Name="LogListBox" ItemsSource="{Binding FilteredLogs}" Background="Transparent" BorderThickness="0"
+						 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+						 SelectionMode="Multiple"
+						 ItemContainerTheme="{StaticResource LogListItemTheme}"
+						 KeyDown="OnListKeyDown"
+						 FontFamily="avares://AgentFlow/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono" FontSize="11">
+					<ListBox.Resources>
+						<ControlTheme x:Key="LogListItemTheme" TargetType="ListBoxItem">
+							<Setter Property="Background" Value="Transparent"/>
+							<Setter Property="Padding" Value="6,0"/>
+							<Setter Property="CornerRadius" Value="6"/>
+							<Setter Property="MinHeight" Value="24"/>
+							<Setter Property="VerticalContentAlignment" Value="Center"/>
+							<Setter Property="Template">
+								<ControlTemplate TargetType="ListBoxItem">
+									<ContentPresenter Name="PART_ContentPresenter"
+													  Background="{TemplateBinding Background}"
+													  CornerRadius="{TemplateBinding CornerRadius}"
+													  ContentTemplate="{TemplateBinding ContentTemplate}"
+													  Content="{TemplateBinding Content}"
+													  Padding="{TemplateBinding Padding}"
+													  HorizontalContentAlignment="Stretch"
+													  VerticalContentAlignment="Center"/>
+								</ControlTemplate>
+							</Setter>
+						</ControlTheme>
+					</ListBox.Resources>
+					<ListBox.Styles>
+						<Style Selector="ListBoxItem:pointerover">
+							<Setter Property="Background" Value="{DynamicResource BrushDlgGroupHoverBg}"/>
+						</Style>
+						<Style Selector="ListBoxItem:selected">
+							<Setter Property="Background" Value="{DynamicResource BrushDlgSidebarItemActiveBg}"/>
+						</Style>
+						<Style Selector="ListBoxItem:selected:pointerover">
+							<Setter Property="Background" Value="{DynamicResource BrushMaxBtnPressedBg}"/>
+						</Style>
+					</ListBox.Styles>
+					<ListBox.ContextMenu>
+						<ContextMenu>
+							<MenuItem Header="Copy" Click="CopyMenu_Click"/>
+						</ContextMenu>
+					</ListBox.ContextMenu>
+					<ListBox.ItemTemplate>
+						<DataTemplate x:DataType="s:UiLogEntry">
+							<Grid ColumnDefinitions="156,48,96,*" Margin="0,0">
+								<TextBlock Text="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd HH:mm:ss.fff}}" Foreground="{DynamicResource BrushTextTertiary}" VerticalAlignment="Center"/>
+								<Border Grid.Column="1" CornerRadius="3" Padding="6,1" HorizontalAlignment="Center" VerticalAlignment="Center"
+										Background="{Binding Level, Converter={StaticResource LevelBg}}">
+									<TextBlock Text="{Binding Level}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+											   Foreground="{Binding Level, Converter={StaticResource LevelFg}}"/>
+								</Border>
+								<TextBlock Grid.Column="2" Text="{Binding Source}" Foreground="{DynamicResource BrushTextTertiary}" FontSize="10"
+										   Margin="6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+								<TextBlock Grid.Column="3" Text="{Binding Message}" Foreground="{DynamicResource BrushTextPrimary}" VerticalAlignment="Center"/>
+							</Grid>
+						</DataTemplate>
+					</ListBox.ItemTemplate>
+				</ListBox>
+			</Border>
+		</DockPanel>
+	</Border>
 </UserControl>

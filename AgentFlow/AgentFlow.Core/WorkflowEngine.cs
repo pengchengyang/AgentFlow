@@ -205,7 +205,16 @@ public sealed class WorkflowEngine
             pin.SendSample(value);   // The output pin calls Receive on every connected input pin.
         }
 
-        public T? GetService<T>() => default;
+        public T? GetService<T>()
+        {
+            // 临时:直接返回本地 Ollama 客户端
+            if (typeof(T) == typeof(ILLMClient))
+            {
+                var client = new OllamaLlmClient();
+                return (T)(object)client;
+            }
+            return default;
+        }
     }
 }
 

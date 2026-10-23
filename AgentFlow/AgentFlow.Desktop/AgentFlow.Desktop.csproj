@@ -15,12 +15,6 @@
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="Rolling.Logging">
-      <HintPath>..\SeriLog.Bin\Debug\netstandard2.0\Rolling.Logging.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-  </ItemGroup>
 
 
   <ItemGroup>
@@ -34,8 +28,7 @@
   <!-- Dev build: copy plugin DLLs next to the desktop output so the app finds them. -->
   <Target Name="CopyPlugins" AfterTargets="Build">
     <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll"
-                  Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
+      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
   </Target>
@@ -44,8 +37,7 @@
        the publish output's plugins/ folder. This runs for every RID (linux-x64 etc.). -->
   <Target Name="PublishPlugins" AfterTargets="Publish">
     <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll"
-                  Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
+      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(PublishDir)plugins" SkipUnchangedFiles="true" />
   </Target>

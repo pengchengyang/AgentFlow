@@ -9,13 +9,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="Rolling.Logging">
-      <HintPath>..\SeriLog.Bin\Debug\netstandard2.0\Rolling.Logging.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Serilog" Version="4.3.1" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />

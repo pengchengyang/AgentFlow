@@ -8,9 +8,8 @@
              x:Class="AgentFlow.Views.MainView"
              x:DataType="vm:MainViewModel">
   <UserControl.Resources>
-    <s:BoolToRowSpanConverter x:Key="RowSpan"/>
-    <s:BoolToRowConverter x:Key="BoolToRow"/>
     <s:BoolToPanelHeightConverter x:Key="PanelHeight"/>
+    <s:BoolToPanelAlignmentConverter x:Key="PanelAlign"/>
     <s:InvertBoolConverter x:Key="InvertBool"/>
   </UserControl.Resources>
   <UserControl.KeyBindings>
@@ -21,12 +20,21 @@
     <Grid RowDefinitions="*,28">
       <!-- Top: canvas + collapsible log panel, right-side component sidebar -->
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-        <Grid Grid.Column="0" RowDefinitions="*,Auto">
-          <Grid Grid.Row="0" IsVisible="{Binding IsLogPanelExpanded, Converter={StaticResource InvertBool}}">
+        <!-- The canvas and the log panel share one cell. While the panel is docked the canvas is
+             inset by the docked height, so canvas content never hides behind the panel; while the
+             panel is expanded the canvas is hidden and the panel stretches over the whole cell. -->
+        <Grid Grid.Column="0">
+          <Grid Margin="{Binding CanvasLogInset}"
+                IsVisible="{Binding IsLogPanelExpanded, Converter={StaticResource InvertBool}}">
             <views:CanvasView DataContext="{Binding Canvas}"/>
           </Grid>
-          <!-- Log panel (expanded/collapsed by the Log button) -->
-          <views:LogPanelView Grid.Row="{Binding IsLogPanelExpanded, Converter={StaticResource BoolToRow}}" DataContext="{Binding LogPanel}" IsVisible="{Binding IsLogPanelOpen}" Grid.RowSpan="{Binding IsLogPanelExpanded, Converter={StaticResource RowSpan}}" Height="{Binding IsLogPanelExpanded, Converter={StaticResource PanelHeight}}"/>
+          <!-- Log panel wrapper: owns the geometry so it reads the root view-model directly.
+               Docked at the bottom by default, stretched over the whole cell after a double-click. -->
+          <Grid VerticalAlignment="{Binding IsLogPanelExpanded, Converter={StaticResource PanelAlign}}"
+                Height="{Binding IsLogPanelExpanded, Converter={StaticResource PanelHeight}}"
+                IsVisible="{Binding IsLogPanelOpen}">
+            <views:LogPanelView DataContext="{Binding LogPanel}"/>
+          </Grid>
         </Grid>
         <!-- Right-side node library -->
         <views:NodeLibraryView Grid.Column="1" Width="288" DataContext="{Binding NodeLibrary}" IsVisible="{Binding IsSidebarVisible}"/>

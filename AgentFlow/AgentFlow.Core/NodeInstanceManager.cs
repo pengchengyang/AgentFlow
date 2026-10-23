@@ -74,6 +74,48 @@ public sealed class NodeInstanceManager
         foreach (var node in Instances.Reverse())
             await node.Stop(contextFactory(node), ct);
     }
+    /// <summary>Find a managed instance by its compact instance id, or null when absent.</summary>
+    public BaseNode? FindInstance(int instanceId) =>
+        Instances.FirstOrDefault(n => n.InstanceId == instanceId);
+
+    /// <summary>
+    /// Snapshot the commands a node exposes for the editor context menu. CanExecute is evaluated
+    /// on every call so dynamic enabled/disabled state stays fresh.
+    /// </summary>
+    public IReadOnlyList<NodeCommandInfo> GetNodeCommands(int instanceId)
+    {
+        var node = FindInstance(instanceId);
+        if (node is null) return Array.Empty<NodeCommandInfo>();
+        return node.NodeCommands
+            .OrderBy(c => c.Order)
+            .Select(c => new NodeCommandInfo(
+                c.Id, c.Title, c.IconKey, c.Group, c.Order,
+                c.CanExecute?.Invoke() ?? true, c.RequiresConfirmation))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Execute one node command through the Core layer. The host supplies the context factory
+    /// (normally the editor graph's CreateContext) so commands use the same wired pins/logging
+    /// as run/stop.
+    /// </summary>
+    public async Task ExecuteNodeCommandAsync(
+        int instanceId,
+        string commandId,
+        Func<BaseNode, INodeContext> contextFactory,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(contextFactory);
+        var node = FindInstance(instanceId)
+            ?? throw new InvalidOperationException($"Node instance #{instanceId} was not found.");
+        var context = new NodeCommandContext
+        {
+            Node = node,
+            NodeContext = contextFactory(node),
+            CancellationToken = ct,
+        };
+        await node.ExecuteCommandAsync(commandId, context, ct).ConfigureAwait(false);
+    }
     /// <summary>Whether a node is currently executing.</summary>
     public bool IsNodeRunning(BaseNode node) => node.Running;
 
@@ -84,3 +126,4 @@ public sealed class NodeInstanceManager
     /// </summary>
     public bool IsRunning => Instances.Count > 0 && Instances.All(n => n.Running);
 }
+

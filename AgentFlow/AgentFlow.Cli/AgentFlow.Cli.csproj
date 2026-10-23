@@ -4,12 +4,6 @@
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
     <ProjectReference Include="..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="Rolling.Logging">
-      <HintPath>..\SeriLog.Bin\Debug\netstandard2.0\Rolling.Logging.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-  </ItemGroup>
 
 
   <ItemGroup>

@@ -22,6 +22,9 @@ public abstract class BaseNode
     private readonly List<BasePin> _inputPins = new();
     private readonly List<BasePin> _outputPins = new();
     private readonly List<NodeParameter> _nodeParameters = new();
+    private readonly List<NodeCommand> _nodeCommands = new();
+    private readonly object _commandsGate = new();
+    private bool _commandsInitialized;
 
     /// <summary>Names of the built-in General parameters that every node owns (not shown in the property-panel <see cref="Parameters"/> list).</summary>
     private static readonly HashSet<string> BuiltInParamNames = new(StringComparer.Ordinal)
@@ -80,6 +83,41 @@ public abstract class BaseNode
 
     /// <summary>Append an output pin to the output list.</summary>
     public void AddOutputPin(BasePin pin) => _outputPins.Add(pin);
+
+    /// <summary>
+    /// Commands declared by this node for the editor right-click menu. The list is initialised
+    /// lazily by calling the overridable <see cref="AddCommands"/> exactly once, so derived nodes
+    /// declare commands without requiring a base-constructor virtual call.
+    /// </summary>
+    public IReadOnlyList<NodeCommand> NodeCommands
+    {
+        get
+        {
+            EnsureCommands();
+            lock (_commandsGate) return _nodeCommands.ToList();
+        }
+    }
+
+    /// <summary>Derived nodes override this to register their right-click commands.</summary>
+    protected virtual void AddCommands() { }
+
+    /// <summary>Register one node command. Called from <see cref="AddCommands"/> overrides.</summary>
+    protected void AddCommand(NodeCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        lock (_commandsGate) _nodeCommands.Add(command);
+    }
+
+    private void EnsureCommands()
+    {
+        if (_commandsInitialized) return;
+        lock (_commandsGate)
+        {
+            if (_commandsInitialized) return;
+            _commandsInitialized = true;
+            AddCommands();
+        }
+    }
 
     /// <summary>
     /// Parameter declarations (used to auto-generate the property panel). Derived automatically
@@ -399,7 +437,26 @@ public abstract class BaseNode
     /// inside <see cref="Run"/>.
     /// </summary>
     public virtual void ReceiveSample(BasePin pin, Sample? value) { }
+
+    /// <summary>
+    /// Execute one of this node's registered commands by id. Used by AgentFlow.Core when the
+    /// editor invokes a command from the node context menu.
+    /// </summary>
+    public async Task ExecuteCommandAsync(
+        string commandId, NodeCommandContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var command = NodeCommands.FirstOrDefault(c =>
+            string.Equals(c.Id, commandId, StringComparison.Ordinal));
+        if (command is null)
+            throw new InvalidOperationException(
+                $"Node '{Name}' does not define a command with id '{commandId}'.");
+        if (command.CanExecute?.Invoke() == false)
+            return;
+        await command.Execute(context, cancellationToken).ConfigureAwait(false);
+    }
 }
+
 
 
 
