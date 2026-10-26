@@ -192,9 +192,25 @@ public partial class NodeViewModel : ViewModelBase
     private int _zIndex;
 
     /// <summary>Section visibility flags (empty sections collapse in the card template).</summary>
-    /// <summary>Whether the underlying runtime node is currently running (drives the header spin indicator).</summary>
+    /// <summary>Whether the underlying runtime node is currently executing (drives the header spin).</summary>
     [ObservableProperty]
     private bool _running;
+
+    /// <summary>
+    /// Whether the underlying runtime node has been started successfully (initialized + Run returned
+    /// without errors) and has not been stopped yet. Stays true after a one-shot node finished its
+    /// work — the workflow is still running until Stop.
+    /// </summary>
+    [ObservableProperty]
+    private bool _started;
+
+    /// <summary>Whether the underlying runtime node is still starting up (connecting / waiting for a resource).</summary>
+    [ObservableProperty]
+    private bool _connecting;
+
+    /// <summary>Whether the underlying runtime node failed to start.</summary>
+    [ObservableProperty]
+    private bool _failed;
 
     [ObservableProperty]
     private bool _hasInputs;
@@ -236,8 +252,15 @@ public partial class NodeViewModel : ViewModelBase
     }
 
     /// <summary>Override parameter values from a saved JSON document.</summary>
-    /// <summary>Refresh the running flag from the underlying BaseNode and notify the canvas.</summary>
-    public void NotifyRunningChanged() => Running = Model.Node.Running;
+    /// <summary>Refresh the runtime state mirrors (executing / started / connecting / failed) from the underlying BaseNode.</summary>
+    public void NotifyRunningChanged()
+    {
+        var node = Model.Node;
+        Running = node.Running;                       // executing right now (spinner)
+        Started = node.State == NodeState.Running;    // started successfully, not stopped yet
+        Connecting = node.Connecting;
+        Failed = node.Failed;
+    }
 
     public void ApplyParameterValues(IReadOnlyDictionary<string, object?> values)
     {

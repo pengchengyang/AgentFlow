@@ -70,6 +70,15 @@ public static class UiLogStore
 /// <summary>Serilog sink that forwards every event into <see cref="UiLogStore"/> for the UI panel.</summary>
 public sealed class UiLogSink : ILogEventSink
 {
+    private static int _started;
+
+    public UiLogSink()
+    {
+        // Ensure only one live sink emits, even if a host or debugger creates several.
+        if (Interlocked.Exchange(ref _started, 1) == 1)
+            throw new InvalidOperationException("UiLogSink may only be created once.");
+    }
+
     public void Emit(LogEvent logEvent)
     {
         var raw = logEvent.RenderMessage();

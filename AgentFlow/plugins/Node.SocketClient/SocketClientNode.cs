@@ -140,11 +140,14 @@ public sealed class SocketClientNode : BaseNode
                 await client.ConnectAsync(host, port, ct);
                 break; // connected
             }
-            catch (OperationCanceledException)
+            catch (Exception) when (ct.IsCancellationRequested)
             {
-                break; // stopped or cancelled while connecting
+                // Stopped while connecting. TcpClient.ConnectAsync may also throw a
+                // NullReferenceException when the client is disposed at the same time, so the
+                // cancellation check must come before the targeted retry filters below.
+                break;
             }
-            catch (Exception ex) when (ex is SocketException or IOException or ObjectDisposedException)
+            catch (Exception ex) when (ex is SocketException or IOException or ObjectDisposedException or InvalidOperationException)
             {
                 context.Logger.LogWarning(
                     "SocketClient could not connect to {Host}:{Port} ({Message}); retrying in 2s",

@@ -26,6 +26,10 @@ public abstract class BaseNode
     private readonly object _commandsGate = new();
     private bool _commandsInitialized;
 
+    // Runtime lifecycle state (see State / Running). Never serialized.
+    private bool _running;
+    private NodeState _state = NodeState.Idle;
+
     /// <summary>Names of the built-in General parameters that every node owns (not shown in the property-panel <see cref="Parameters"/> list).</summary>
     private static readonly HashSet<string> BuiltInParamNames = new(StringComparer.Ordinal)
     {
@@ -51,10 +55,77 @@ public abstract class BaseNode
     public int DependsOn { get; set; }
 
     /// <summary>
-    /// Runtime-only state: true while this node is currently executing.
-    /// This value is intentionally NOT serialized into JSON.
+    /// Runtime-only state: true while this node is currently executing (i.e. doing work right now).
+    /// This value is intentionally NOT serialized into JSON. Setting it to true moves
+    /// <see cref="State"/> to <see cref="NodeState.Running"/>; setting it back to false does NOT end
+    /// the running state — a node that already finished its work stays "running" until the workflow
+    /// is stopped, which is what the editor indicator reports.
     /// </summary>
-    public bool Running { get; set; }
+    public bool Running
+    {
+        get => _running;
+        set
+        {
+            if (_running == value) return;
+            _running = value;
+            if (value && _state is NodeState.Idle or NodeState.Connecting)
+                _state = NodeState.Running;
+        }
+    }
+
+    /// <summary>
+    /// Current lifecycle state of this node instance (idle / connecting / running / failed).
+    /// Runtime-only, never serialized. Every node has it, so the editor can tell "still starting"
+    /// apart from "running" and from "failed".
+    /// </summary>
+    public NodeState State => _state;
+
+    /// <summary>True while the node is starting up and has not become operational yet.</summary>
+    public bool Connecting => _state == NodeState.Connecting;
+
+    /// <summary>True when this node's last start / run failed.</summary>
+    public bool Failed => _state == NodeState.Failed;
+
+    /// <summary>
+    /// Mark the node as starting up (initializing / connecting / waiting for a resource).
+    /// Call this at the beginning of a start sequence, before the node is operational.
+    /// </summary>
+    public void SetConnecting()
+    {
+        _running = false;
+        _state = NodeState.Connecting;
+    }
+
+    /// <summary>
+    /// Mark the node as started (initialized and its <see cref="Run"/> returned without errors).
+    /// This only moves <see cref="State"/>; <see cref="Running"/> keeps describing whether the node is
+    /// executing right now, so a one-shot node that already finished stays started but not executing.
+    /// </summary>
+    public void SetRunning() => _state = NodeState.Running;
+
+    /// <summary>
+    /// Mark the node as no longer running. An existing <see cref="NodeState.Failed"/> is preserved
+    /// so a failed node stays failed until it is started again.
+    /// </summary>
+    public void SetIdle()
+    {
+        _running = false;
+        if (_state != NodeState.Failed) _state = NodeState.Idle;
+    }
+
+    /// <summary>Mark this node's start / run as failed (the exception itself is logged by the manager).</summary>
+    public void SetFailed()
+    {
+        _running = false;
+        _state = NodeState.Failed;
+    }
+
+    /// <summary>Reset the lifecycle state to <see cref="NodeState.Idle"/> (used after a stop).</summary>
+    public void ResetState()
+    {
+        _running = false;
+        _state = NodeState.Idle;
+    }
 
     /// <summary>
     /// Unique type identifier of this subclass. It is left empty in <see cref="BaseNode"/>
@@ -425,10 +496,20 @@ public abstract class BaseNode
     /// <summary>One-time setup before a run starts. Nodes must implement this.</summary>
     public abstract Task Initialize(INodeContext context, CancellationToken cancellationToken = default);
 
-    /// <summary>Run body; must set <see cref="Running"/> true/false around node-specific work.</summary>
+    /// <summary>
+    /// Run body. A node must set <see cref="Running"/> = true (or call <see cref="SetRunning"/>) once it
+    /// is operational, and faithfully report failures by throwing: returning normally means the node
+    /// started successfully and counts as running until the workflow is stopped. A node that needs
+    /// time before it is ready (connecting, waiting for a resource) simply stays in
+    /// <see cref="NodeState.Connecting"/> — the editor shows that startup phase as "starting" — and
+    /// only leaves it once it reaches <see cref="NodeState.Running"/>.
+    /// </summary>
     public abstract Task Run(INodeContext context, CancellationToken cancellationToken = default);
 
-    /// <summary>Stop body; must set <see cref="Running"/> to false.</summary>
+    /// <summary>
+    /// Stop body: release every resource the node acquired (sockets, threads, files, timers) and set
+    /// <see cref="Running"/> to false. Called for every node on Stop and after a failed start.
+    /// </summary>
     public abstract Task Stop(INodeContext context, CancellationToken cancellationToken = default);
 
     /// <summary>

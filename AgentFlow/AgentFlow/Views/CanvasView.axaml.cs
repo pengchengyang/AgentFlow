@@ -77,14 +77,17 @@ public sealed class GraphCanvas : Control
         "M316.9 18C311.6 7 300.4 0 288.1 0s-23.4 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L438.5 329 542.7 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L381.2 150.3 316.9 18z");
 
     private readonly Dictionary<NodeViewModel, NodeLayout> _layouts = new();
-    // Running indicator: a lucide "refresh-cw" spinner drawn in the node header. It is green and
-    // slowly rotates while the node is running, and turns gray + static when idle.
+    // Running indicator: a lucide "refresh-cw" spinner drawn in the node header. Green + rotating
+    // while the node is running, amber + rotating while it is still starting up (connecting), red +
+    // static when its start failed, and gray + static when idle.
     private static readonly StreamGeometry RefreshIndicatorGeometry = StreamGeometry.Parse(
         "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 " +
         "M21 3v5h-5 " +
         "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 " +
         "M8 16H3v5");
     private static readonly Color ColorRunning = Color.Parse("#16A34A");
+    private static readonly Color ColorConnecting = Color.Parse("#F59E0B");
+    private static readonly Color ColorFailed = Color.Parse("#EF4444");
 
     private readonly DispatcherTimer _spinTimer;
     private double _spinAngle;   // current rotation (degrees) of the running indicators
@@ -133,12 +136,12 @@ public sealed class GraphCanvas : Control
         InvalidateVisual();
     }
 
-    /// <summary>Start the spinner while any node is running; stop it when all are idle (avoids wasted redraws).</summary>
+    /// <summary>Start the spinner while any node is executing or still starting up; stop when all are idle (avoids wasted redraws).</summary>
     private void UpdateSpinAnimation()
     {
-        bool anyRunning = Vm?.Nodes.Any(n => n.Running) ?? false;
-        if (anyRunning && !_spinTimer.IsEnabled) _spinTimer.Start();
-        else if (!anyRunning && _spinTimer.IsEnabled) _spinTimer.Stop();
+        bool anyActive = Vm?.Nodes.Any(n => n.Running || n.Connecting) ?? false;
+        if (anyActive && !_spinTimer.IsEnabled) _spinTimer.Start();
+        else if (!anyActive && _spinTimer.IsEnabled) _spinTimer.Stop();
     }
 
     // ================= Layout =================
@@ -329,12 +332,17 @@ public sealed class GraphCanvas : Control
         DrawText(ctx, idText, new Point(x + NodeWidth - PadX - idW, y + 15),
             new SolidColorBrush(ColorMuted), 9);
 
-        // Running indicator: green "refresh-cw" spinner at the node's top-right,
-        // immediately to the left of the "#instance" tag; rotates while running,
-        // gray + static when idle.
+        // Running indicator: spinner at the node's top-right, immediately to the left of the
+        // "#instance" tag. Green while the node is started (it keeps rotating only while the node is
+        // actually executing — a one-shot node that already finished stays solid green), amber while
+        // it is still starting up (connecting), red when the start failed, gray + static when idle.
         var iconCenter = new Point(iconCenterX, y + 15 + 9 / 2.0); // vertically centered on the "#instance" tag
-        DrawRefreshIndicator(ctx, iconCenter, iconSize, node.Running ? ColorRunning : ColorMuted,
-            node.Running ? _spinAngle : 0);
+        var indicatorColor = node.Started ? ColorRunning
+            : node.Connecting ? ColorConnecting
+            : node.Failed ? ColorFailed
+            : ColorMuted;
+        var indicatorAngle = node.Running || node.Connecting ? _spinAngle : 0;
+        DrawRefreshIndicator(ctx, iconCenter, iconSize, indicatorColor, indicatorAngle);
 
         // Meta rows below the header tint: Name (type id) and DependsOn, both ellipsized to fit the card width.
         double metaMaxWidth = NodeWidth - PadX * 2;
@@ -962,9 +970,15 @@ public sealed class GraphCanvas : Control
             || e.PropertyName == nameof(NodeViewModel.ZIndex)
             || e.PropertyName == nameof(NodeViewModel.Title)
             || e.PropertyName == nameof(NodeViewModel.DependsOn)
-            || e.PropertyName == nameof(NodeViewModel.Running))
+            || e.PropertyName == nameof(NodeViewModel.Running)
+            || e.PropertyName == nameof(NodeViewModel.Started)
+            || e.PropertyName == nameof(NodeViewModel.Connecting)
+            || e.PropertyName == nameof(NodeViewModel.Failed))
             InvalidateVisual();
-        if (e.PropertyName == nameof(NodeViewModel.Running))
+        if (e.PropertyName is nameof(NodeViewModel.Running)
+            or nameof(NodeViewModel.Started)
+            or nameof(NodeViewModel.Connecting)
+            or nameof(NodeViewModel.Failed))
             UpdateSpinAnimation();
     }
 }

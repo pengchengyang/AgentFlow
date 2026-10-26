@@ -63,13 +63,13 @@
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" Margin="22,0,0,0" VerticalAlignment="Center">
             <Button Classes="toolbtn run" Command="{Binding Main.RunCommand}"
                     ToolTip.Tip="{Binding [Run], Source={x:Static s:Loc.Instance}, StringFormat={}{0} (F1)}"
-                    IsEnabled="{Binding Main.IsRunning, Converter={StaticResource InverseBool}}">
+                    IsEnabled="{Binding Main.IsBusy, Converter={StaticResource InverseBool}}">
               <Path Data="M320 112C434.9 112 528 205.1 528 320C528 434.9 434.9 528 320 528C205.1 528 112 434.9 112 320C112 205.1 205.1 112 320 112zM320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM276.5 211.5C269.1 207 259.8 206.8 252.2 211C244.6 215.2 240 223.3 240 232L240 408C240 416.7 244.7 424.7 252.3 428.9C259.9 433.1 269.1 433 276.6 428.4L420.6 340.4C427.7 336 432.1 328.3 432.1 319.9C432.1 311.5 427.7 303.8 420.6 299.4L276.6 211.4zM362 320L288 365.2L288 274.8L362 320z" Stretch="Uniform" Width="12" Height="12"/>
             </Button>
             <!-- Stop: solid dark rounded square + white square -->
             <Button Classes="toolbtn dark" Command="{Binding Main.StopCommand}"
                     ToolTip.Tip="{Binding [Stop], Source={x:Static s:Loc.Instance}, StringFormat={}{0} (F2)}"
-                    IsEnabled="{Binding Main.IsRunning}">
+                    IsEnabled="{Binding Main.CanStop}">
               <Path Data="M320 112C434.9 112 528 205.1 528 320C528 434.9 434.9 528 320 528C205.1 528 112 434.9 112 320C112 205.1 205.1 112 320 112zM320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM288 248C288 234.7 277.3 224 264 224C250.7 224 240 234.7 240 248L240 392C240 405.3 250.7 416 264 416C277.3 416 288 405.3 288 392L288 248zM400 248C400 234.7 389.3 224 376 224C362.7 224 352 234.7 352 248L352 392C352 405.3 362.7 416 376 416C389.3 416 400 405.3 400 392L400 248z" Stretch="Uniform" Width="12" Height="12"/>
             </Button>
             <!-- Open -->

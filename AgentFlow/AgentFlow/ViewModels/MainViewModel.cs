@@ -10,6 +10,7 @@ using AgentFlow.Models;
 using AgentFlow.Core;
 using BaseNode = AgentFlow.Contracts.BaseNode;
 using INodeContext = AgentFlow.Contracts.INodeContext;
+using NodeState = AgentFlow.Contracts.NodeState;
 using AgentFlow.Services;
 using AgentFlow.Serialization;
 using Avalonia;
@@ -43,16 +44,53 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ConnectionViewModel> Connections { get; } = new();
     public ObservableCollection<ConnectionViewModel> SelectedConnections { get; } = new();
-    public ObservableCollection<UiLogEntry> Logs { get; } = new();
     // ---- Dedicated view-models (1 view <-> 1 view-model) ----
     public NodeLibraryViewModel NodeLibrary { get; }
     public LogPanelViewModel LogPanel { get; }
     public CanvasViewModel Canvas { get; }
     [ObservableProperty]
     private NodeViewModel? _selectedNode;
-    /// <summary>True while the workflow is running (UI state, set immediately on Start/Stop).</summary>
+    /// <summary>
+    /// True only while every canvas node has been started successfully (initialized, Run returned
+    /// without errors) and has not been stopped yet. Derived by <see cref="RefreshRunState"/> from the
+    /// nodes' real runtime state — never set optimistically on Start.
+    /// </summary>
     [ObservableProperty]
     private bool _isRunning;
+
+    /// <summary>True while at least one node is still starting up (connecting) and none has failed yet.</summary>
+    [ObservableProperty]
+    private bool _isStarting;
+
+    /// <summary>True when at least one node failed to start and nothing is running / starting.</summary>
+    [ObservableProperty]
+    private bool _isRunFailed;
+
+    partial void OnIsRunningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsBusy));
+        OnPropertyChanged(nameof(CanStop));
+    }
+
+    partial void OnIsStartingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsBusy));
+        OnPropertyChanged(nameof(CanStop));
+    }
+
+    partial void OnIsRunFailedChanged(bool value) => OnPropertyChanged(nameof(CanStop));
+
+    /// <summary>Whether the workflow is running or still starting (the Start button is disabled while busy).</summary>
+    public bool IsBusy => IsRunning || IsStarting;
+
+    /// <summary>Stop stays available while starting, running, or after a failed start (to clear the failure).</summary>
+    public bool CanStop => IsRunning || IsStarting || IsRunFailed;
+
+    /// <summary>Indicator brushes: green only when the whole workflow is really running.</summary>
+    private static readonly IBrush RunningIndicatorBrush = new SolidColorBrush(Color.Parse("#12B76A"));
+    private static readonly IBrush StartingIndicatorBrush = new SolidColorBrush(Color.Parse("#F59E0B"));
+    private static readonly IBrush FailedIndicatorBrush = new SolidColorBrush(Color.Parse("#EF4444"));
+    private static readonly IBrush IdleIndicatorBrush = new SolidColorBrush(Color.Parse("#9CA3AF"));
     /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
     [ObservableProperty]
     private bool _isDirty;
@@ -78,6 +116,8 @@ public partial class MainViewModel : ViewModelBase
 
     private readonly DispatcherTimer _runTimer;
     private int _dotStep;
+    /// <summary>Whether the current run already reported a start failure in the status line (edge trigger).</summary>
+    private bool _runFailureNotified;
     /// <summary>Full path of the currently open / saved JSON workflow file.</summary>
     [ObservableProperty]
     private string _currentFilePath = "";
@@ -128,49 +168,8 @@ public partial class MainViewModel : ViewModelBase
     }
     public MainViewModel()
     {
-        _loggerFactory = LoggerFactory.Create(b =>
-        {
-            b.SetMinimumLevel(LogLevel.Trace);
-            b.AddProvider(new RollingLoggerProvider());
-        });
+        _loggerFactory = AppLog.CreateLoggerFactory();
         _logger = _loggerFactory.CreateLogger(nameof(MainViewModel));
-
-        // Subscribe to Rolling.Logging events to mirror logs into the UI panel.
-        // All UI updates are marshalled via Dispatcher.UIThread.Post.
-        LogEvents.OnLogEmitted += (level, category, message, ex) =>
-        {
-            var shortLevel = level switch
-            {
-                LogLevel.Trace => "TRACE",
-                LogLevel.Debug => "DEBUG",
-                LogLevel.Information => "INFO",
-                LogLevel.Warning => "WARN",
-                LogLevel.Error => "ERROR",
-                LogLevel.Critical => "ERROR",
-                _ => "INFO",
-            };
-            Dispatcher.UIThread.Post(() =>
-            {
-                Logs.Add(new UiLogEntry
-                {
-                    Timestamp = DateTimeOffset.Now,
-                    Level = shortLevel,
-                    Source = category,
-                    Message = UiLogEntry.Flatten(message),
-                    RawMessage = message,
-                });
-                if (ex is not null)
-                    Logs.Add(new UiLogEntry
-                    {
-                        Timestamp = DateTimeOffset.Now,
-                        Level = "ERROR",
-                        Source = category,
-                        Message = UiLogEntry.Flatten(ex.ToString()),
-                        RawMessage = ex.ToString(),
-                    });
-                if (Logs.Count > 500) Logs.RemoveAt(0);
-            });
-        };
 
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
         _nodeManager = new NodeInstanceManager(_pluginLoader);
@@ -179,7 +178,8 @@ public partial class MainViewModel : ViewModelBase
         _graph.GraphChanged += RefreshPinConnections;
         LoadPlugins();
         // Auto-persist graph on every structural change (add/remove node, wire, or drag move).
-        Nodes.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); };
+        // The run indicator is re-derived too: removing a node changes "all nodes running".
+        Nodes.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); RefreshRunState(); };
         Connections.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); };
         // Restore the previous graph on startup.
         AutoLoad();
@@ -188,30 +188,24 @@ public partial class MainViewModel : ViewModelBase
         LogPanel = new LogPanelViewModel(this);
         Canvas = new CanvasViewModel(this);
 
-        // Running indicator animation: dots light up one by one (marquee effect).
+        // Run indicator: the state itself is derived from the nodes' real runtime state (re-derived
+        // on every tick, so a node that connects later or fails asynchronously shows up within
+        // ~300 ms); this timer only animates it (dots marquee + glow pulse).
         _runTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _runTimer.Tick += (_, _) =>
         {
-            if (IsRunning)
-            {
-                RunningText = "Running";
-                RunningIconBrush = new SolidColorBrush(Color.Parse("#12B76A"));
-                _dotStep = (_dotStep + 1) % 3;
-                Dot1Opacity = _dotStep == 0 ? 1.0 : 0.25;
-                Dot2Opacity = _dotStep == 1 ? 1.0 : 0.25;
-                Dot3Opacity = _dotStep == 2 ? 1.0 : 0.25;
-                // Glow pulse: blur radius alternates between 2 and 16 for more visible breathing.
-                PulseBlur = (_dotStep % 2 == 0) ? 16 : 2;
-            }
-            else
-            {
-                RunningText = "Ready";
-                RunningIconBrush = new SolidColorBrush(Color.Parse("#9CA3AF"));
-                Dot1Opacity = Dot2Opacity = Dot3Opacity = 0;
-                PulseBlur = 0;
-            }
+            RefreshRunState();
+            if (!IsBusy)
+                return;
+            _dotStep = (_dotStep + 1) % 3;
+            Dot1Opacity = _dotStep == 0 ? 1.0 : 0.25;
+            Dot2Opacity = _dotStep == 1 ? 1.0 : 0.25;
+            Dot3Opacity = _dotStep == 2 ? 1.0 : 0.25;
+            // Glow pulse: blur radius alternates between 2 and 16 for more visible breathing.
+            PulseBlur = (_dotStep % 2 == 0) ? 16 : 2;
         };
         _runTimer.Start();
+        RefreshRunState();
     }
     // ---------- Language / theme switching ----------
     [RelayCommand]
@@ -531,23 +525,17 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Helper: append a structured log entry to the UI panel (thread-safe).</summary>
     private void Log(string message, string level = "INFO", string source = "Main")
-    {
-        Dispatcher.UIThread.Post(() =>
+        => UiLogStore.Add(new UiLogEntry
         {
-            Logs.Add(new UiLogEntry
-            {
-                Timestamp = DateTimeOffset.Now,
-                Level = level,
-                Source = source,
-                Message = UiLogEntry.Flatten(message),
-                RawMessage = message,
-            });
-            if (Logs.Count > 500) Logs.RemoveAt(0);
+            Timestamp = DateTimeOffset.Now,
+            Level = level,
+            Source = source,
+            Message = UiLogEntry.Flatten(message),
+            RawMessage = message,
         });
-    }
 
     [RelayCommand]
-    private void ClearLog() => Logs.Clear();
+    private void ClearLog() => UiLogStore.Clear();
     /// <summary>Raised when the clear-canvas confirmation dialog should be shown (View layer listens to open a window).</summary>
     public event EventHandler<ConfirmDialogViewModel>? ClearRequested;
     /// <summary>Clear the whole canvas: show a confirmation first; only on confirm delete all nodes and wires and clear the Core layer (including the PluginLoader instance container).</summary>
@@ -659,8 +647,8 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task RunAsync()
     {
-        if (IsRunning) return;
-        // Validate BEFORE marking running, so a validation failure doesn't flash the button.
+        if (IsBusy) return;
+        // Validate BEFORE starting, so a validation failure doesn't flash the indicator.
         var graph = ToGraph();
         var validationErrors = WorkflowValidation.Validate(_registry, graph);
         if (validationErrors.Count > 0)
@@ -670,8 +658,10 @@ public partial class MainViewModel : ViewModelBase
                 Log($"[{L["ErrorPrefix"]}] {err}", "ERROR");
             return;
         }
-        StatusText = L["Running"];
-        IsRunning = true;
+        // Do NOT light the "running" indicator here: it is derived from the nodes' real state further
+        // down (and every 300 ms afterwards), so it turns green only once every node is started.
+        _runFailureNotified = false;
+        StatusText = L["RunStateStarting"];
         _logger.LogTrace("Run started ({NodeCount} nodes).", Nodes.Count);
         _runCts = new CancellationTokenSource();
         // Yield to the UI thread so the Stop icon renders before the run starts.
@@ -680,15 +670,23 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var contexts = BuildNodeContexts();
-            // Unified persistent model: Start = initialize + run (no auto-stop). The Stop button
+            // Unified persistent model: Start = initialize + launch (no auto-stop). The Stop button
             // calls NodeInstanceManager.StopAsync to tear down long-running nodes.
-            // If any node is still running from a previous Start, stop it first so we can
-            // start fresh (avoids e.g. a socket port already bound by the previous run).
-            if (_nodeManager.Instances.Any(n => n.Running))
+            // If any node is still started / connecting / failed from a previous Start, stop it first
+            // so we can start fresh (avoids e.g. a socket port already bound by the last run). A node
+            // that already finished its work is still "started", so State != Idle is the right test.
+            if (_nodeManager.Instances.Any(n => n.State != NodeState.Idle))
                 await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
+            // StartAsync launches every node concurrently and returns immediately: a node that has to
+            // wait for a resource (SocketClient retrying its connection) no longer blocks the startup
+            // of the nodes after it, and the indicator follows the real node state instead.
             await Task.Run(() => _nodeManager.StartAsync(node => contexts[node], _runCts.Token));
-            StatusText = L["RunCompleted"];
-            _logger.LogTrace("Run completed.");
+            RefreshRunState();
+            StatusText = IsRunning ? L["Running"]
+                : IsStarting ? L["RunStateStarting"]
+                : IsRunFailed ? L["RunFailed"]
+                : L["Ready"];
+            _logger.LogTrace("Run launched ({State}).", IsRunning ? "running" : "starting");
         }
         catch (OperationCanceledException)
         {
@@ -703,7 +701,7 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
-            NotifyRunningState();
+            RefreshRunState();
             _runCts?.Dispose();
             _runCts = null;
         }
@@ -723,16 +721,62 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
-            IsRunning = false;
-            NotifyRunningState();
+            _runFailureNotified = false;
+            RefreshRunState();
+            StatusText = L["Ready"];
         }
     }
-    /// <summary>Raise change notifications for the workflow running state (derived from node instances).</summary>
-    private void NotifyRunningState()
+    /// <summary>
+    /// Re-derive the run indicator from the nodes' real runtime state, and mirror every node's state
+    /// onto its view-model first so the canvas header indicators and the status bar can never
+    /// disagree. "Running" means every canvas node was started successfully (initialized, Run
+    /// returned without errors) and has not been stopped — one-shot nodes that already finished their
+    /// work still count. While any node is still connecting the indicator shows "starting" (this holds
+    /// for every node type, not just socket clients), and a failed node shows "failed".
+    /// </summary>
+    private void RefreshRunState()
     {
-        OnPropertyChanged(nameof(IsRunning));
-        // Keep each node's header spin indicator in sync with the underlying runtime state.
         foreach (var n in Nodes) n.NotifyRunningChanged();
+
+        bool allRunning = Nodes.Count > 0 && Nodes.All(n => n.Started);
+        bool starting = !allRunning && Nodes.Any(n => n.Connecting);
+        bool failed = !allRunning && !starting && Nodes.Any(n => n.Failed);
+
+        IsRunning = allRunning;
+        IsStarting = starting;
+        IsRunFailed = failed;
+
+        if (allRunning)
+        {
+            RunningText = L["RunStateRunning"];
+            RunningIconBrush = RunningIndicatorBrush;
+        }
+        else if (starting)
+        {
+            RunningText = L["RunStateStarting"];
+            RunningIconBrush = StartingIndicatorBrush;
+        }
+        else if (failed)
+        {
+            RunningText = L["RunStateFailed"];
+            RunningIconBrush = FailedIndicatorBrush;
+            Dot1Opacity = Dot2Opacity = Dot3Opacity = 0;
+            PulseBlur = 0;
+            // A failed node stops the whole workflow automatically; report it once in the status line.
+            if (!_runFailureNotified)
+            {
+                _runFailureNotified = true;
+                StatusText = L["RunFailed"];
+                _logger.LogWarning("Run failed: a node failed to start, the workflow was stopped automatically.");
+            }
+        }
+        else
+        {
+            RunningText = L["RunStateReady"];
+            RunningIconBrush = IdleIndicatorBrush;
+            Dot1Opacity = Dot2Opacity = Dot3Opacity = 0;
+            PulseBlur = 0;
+        }
     }
     /// <summary>Build a node context for the given runtime instance so NodeInstanceManager can run it.</summary>
     private INodeContext GetNodeContext(BaseNode node) => _graph.CreateContext(node);
