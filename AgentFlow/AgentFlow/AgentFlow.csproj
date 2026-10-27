@@ -19,11 +19,14 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+    <!-- The UI log sink implements Serilog's ILogEventSink; the sink itself stays in this GUI project. -->
+    <PackageReference Include="Serilog" Version="4.3.1" />
 
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
+    <ProjectReference Include="..\Hosting.Logging\Hosting.Logging.csproj" />
   </ItemGroup>
   <Target Name="CopyPlugins" AfterTargets="Build">
     <ItemGroup>

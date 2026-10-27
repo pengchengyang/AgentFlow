@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
     <ProjectReference Include="..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
+    <ProjectReference Include="..\Hosting.Logging\Hosting.Logging.csproj" />
   </ItemGroup>
 
 

@@ -111,6 +111,9 @@ public sealed class EditorGraph
     private readonly PluginLoader _pluginLoader;
     private readonly ILogger _logger;
 
+    /// <summary>This document's pin-id allocator: ids only need to be unique inside this document.</summary>
+    private readonly PinIdAllocator _pinIds = new();
+
     public List<EditorNode> Nodes { get; } = new();
     public List<EditorConnection> Connections { get; } = new();
 
@@ -235,7 +238,6 @@ public sealed class EditorGraph
             Disconnect(c);
 
         Nodes.Remove(node);
-        ReleaseNodePinIds(node);
         _pluginLoader.DeleteNodeInstance(node.RuntimeNode);
         _logger.LogTrace("EditorGraph: removed node {Id}", node.Id);
         GraphChanged?.Invoke();
@@ -298,29 +300,54 @@ public sealed class EditorGraph
         foreach (var conn in Connections.ToList())
             conn.SourcePin.Disconnect(conn.TargetPin);
 
-        foreach (var node in Nodes)
-            ReleaseNodePinIds(node);
         Connections.Clear();
         Nodes.Clear();
+        // A cleared graph is a new document: forget the pin ids handed out for the previous one.
+        // The next save observes the ids the newly loaded document actually carries, so allocation
+        // restarts from that document's ids instead of keeping on growing in this session.
+        _pinIds.Reset();
         // Let the PluginLoader container be the single source of node instances: clear them here too.
         _pluginLoader.ClearInstances();
         GraphChanged?.Invoke();
         _logger.LogTrace("EditorGraph: cleared graph");
     }
 
-    private static void ReleaseNodePinIds(EditorNode node)
+    /// <summary>
+    /// Assign the persistent pin ids this document will write to disk.
+    /// <para>
+    /// Pin ids are only needed for persistence (they link connections to pins in the saved JSON), so
+    /// they are allocated lazily here — once per save, for pins that do not have an id yet — instead
+    /// of at pin construction inside a process-wide pool. Ids restored from an existing document are
+    /// merely observed, which keeps them stable across saves and makes loading tolerant of sparse ids.
+    /// </para>
+    /// </summary>
+    public void EnsurePinIds()
     {
-        foreach (var pin in node.Inputs.Values)
-            pin.ReleaseId();
-        foreach (var pin in node.Outputs.Values)
-            pin.ReleaseId();
-
-        if (node.RuntimeNode is not null)
+        // The pin definition owns the persisted id (logic.pins[] is serialized from the definitions),
+        // while runtime pins mirror it so the connection endpoints written into the document match.
+        IEnumerable<BasePin> Definitions()
         {
-            foreach (var pin in node.RuntimeNode.InputPins)
-                pin.ReleaseId();
-            foreach (var pin in node.RuntimeNode.OutputPins)
-                pin.ReleaseId();
+            foreach (var node in Nodes)
+            {
+                if (node.RuntimeNode is null) continue;
+                foreach (var pin in node.RuntimeNode.InputPins) yield return pin;
+                foreach (var pin in node.RuntimeNode.OutputPins) yield return pin;
+            }
+        }
+
+        // Pass 1: take the highest already known id into account (restored documents, previous saves).
+        foreach (var pin in Definitions())
+            if (pin.Id != 0) _pinIds.Observe(pin.Id);
+
+        // Pass 2: give a fresh id to every pin created since the last save.
+        foreach (var pin in Definitions())
+            if (pin.Id == 0) pin.AssignId(_pinIds.Allocate());
+
+        // Keep each runtime pin in sync with the definition it wraps.
+        foreach (var node in Nodes)
+        {
+            foreach (var pin in node.Inputs.Values) pin.AssignId(pin.Definition.Id);
+            foreach (var pin in node.Outputs.Values) pin.AssignId(pin.Definition.Id);
         }
     }
 

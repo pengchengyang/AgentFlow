@@ -64,41 +64,30 @@ public class BasePin
     public INodeContext? Context { get; set; }
 
     /// <summary>
-    /// Unique pin instance id in the range 6000..10000. Assigned at construction and returned
-    /// to the id pool when the pin is released (smallest available id is always reused).
-    /// Used to persist connection info (output pin id + input pin id) to JSON.
+    /// Persistent pin id, used to write connections (<c>pins[].id</c>) into the editor JSON.
+    /// It is assigned lazily by the document that owns the pin (see
+    /// <see cref="PinIdAllocator"/>), right before the document is saved, and is 0 until then.
+    /// Headless runs never assign ids, so pin ids are not a per-process resource.
     /// </summary>
     public int Id { get; internal set; }
 
     public BasePin(string name, DataType dataType, PinDirection direction, bool required = true)
-        : this(name, dataType, direction, required, id: null)
-    {
-    }
-
-    internal BasePin(string name, DataType dataType, PinDirection direction, bool required, int? id)
     {
         Name = name;
         DataType = dataType;
         Direction = direction;
         Required = required;
         Uuid = Guid.NewGuid().ToString("N");
-        Id = id ?? PinIdPool.Allocate();
     }
 
     /// <summary>
-    /// Replace this pin's id with a saved id (restoration path). The old id is returned to the
-    /// pool and the saved id is reserved so future allocations never collide with persisted ids.
+    /// Assign an id that was persisted in a saved document (restoration path). The caller reports
+    /// the id to its document's <see cref="PinIdAllocator"/> so later allocations never collide.
     /// </summary>
-    internal void RestoreId(int newId)
-    {
-        if (Id == newId) return;
-        PinIdPool.Release(Id);
-        PinIdPool.Reserve(newId);
-        Id = newId;
-    }
+    internal void RestoreId(int newId) => Id = newId;
 
-    /// <summary>Return this pin's id to the id pool so it can be reused (e.g. when its node is removed).</summary>
-    public void ReleaseId() => PinIdPool.Release(Id);
+    /// <summary>Assign a fresh id (called by the owning document when it persists its pins).</summary>
+    internal void AssignId(int newId) => Id = newId;
 
     /// <summary>
     /// Called on an INPUT pin when data pushed from an upstream OUTPUT pin arrives.

@@ -20,6 +20,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Hosting.Logging;
 namespace AgentFlow.ViewModels;
 /// <summary>A node entry in the component palette.</summary>
 public sealed record PaletteItem(string Name, string DisplayName, string Category, string PinSummary, SolidColorBrush Accent);
@@ -53,7 +54,7 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>
     /// True only while every canvas node has been started successfully (initialized, Run returned
     /// without errors) and has not been stopped yet. Derived by <see cref="RefreshRunState"/> from the
-    /// nodes' real runtime state â€” never set optimistically on Start.
+    /// nodes' real runtime state â€?never set optimistically on Start.
     /// </summary>
     [ObservableProperty]
     private bool _isRunning;
@@ -730,7 +731,7 @@ public partial class MainViewModel : ViewModelBase
     /// Re-derive the run indicator from the nodes' real runtime state, and mirror every node's state
     /// onto its view-model first so the canvas header indicators and the status bar can never
     /// disagree. "Running" means every canvas node was started successfully (initialized, Run
-    /// returned without errors) and has not been stopped â€” one-shot nodes that already finished their
+    /// returned without errors) and has not been stopped â€?one-shot nodes that already finished their
     /// work still count. While any node is still connecting the indicator shows "starting" (this holds
     /// for every node type, not just socket clients), and a failed node shows "failed".
     /// </summary>

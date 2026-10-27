@@ -4,18 +4,8 @@
     <ProjectReference Include="..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Serilog" Version="4.3.1" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
-    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
-    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
-    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
-  </ItemGroup>
+  <!-- Logging infrastructure lives in the reusable Hosting.Logging project (referenced by the hosts).
+       Core only depends on the ILogger abstractions, which come transitively from Contracts. -->
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

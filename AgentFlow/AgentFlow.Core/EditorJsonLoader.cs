@@ -46,8 +46,8 @@ public sealed class EditorDocument
 /// without any GUI dependency. Only the <c>logic</c> parts are parsed: node type/params are
 /// taken from each node's <c>logic</c> blob, and pin-id based connections are resolved back
 /// to <c>(node, pinName)</c> using each node's <c>logic.pins</c> id table (identical to how
-/// the editor resolves them via <c>FindPinById</c>). This resolver never touches the shared
-/// <see cref="PinIdPool"/>, so it is safe even after plugin probing has reserved pin ids.
+/// the editor resolves them via <c>FindPinById</c>). It never allocates or reserves pin ids, so
+/// headless runs do not consume the editor's persistence ids at all.
 /// </summary>
 public static class EditorJsonLoader
 {
@@ -78,7 +78,7 @@ public static class EditorJsonLoader
 
         // pin id -> (node id, pin name, is output). Resolved purely from the JSON logic.pins
         // tables (direction from the instantiated node by name), mirroring the editor's
-        // FindPinById without touching the shared PinIdPool.
+        // FindPinById without allocating any pin id.
         var pinMap = new Dictionary<int, (string NodeId, string PinName, bool IsOutput)>();
 
         foreach (var spec in doc.Nodes)

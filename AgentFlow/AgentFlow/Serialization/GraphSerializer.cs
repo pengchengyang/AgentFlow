@@ -71,6 +71,12 @@ public static class GraphSerializer
     public static string Serialize(EditorGraph graph)
     {
         ArgumentNullException.ThrowIfNull(graph);
+
+        // Pin ids are persisted (pins[].id and the connection endpoints), so make sure every pin has
+        // one before the document is built. Pins created since the last save get an id here; ids that
+        // already exist are kept unchanged.
+        graph.EnsurePinIds();
+
         var doc = BuildDocument(graph);
         return JsonSerializer.Serialize(doc, Options);
     }

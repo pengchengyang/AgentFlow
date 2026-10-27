@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow\AgentFlow.csproj" />
+    <ProjectReference Include="..\Hosting.Logging\Hosting.Logging.csproj" />
     <!-- Build plugin projects as part of this project so their DLLs are always fresh,
          but do not add them to the app's normal assembly output (they live in plugins/). -->
     <PluginProjects Include="..\plugins\**\*.csproj" />

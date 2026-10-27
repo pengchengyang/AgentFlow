@@ -189,8 +189,8 @@ public sealed class PluginLoader
     }
 
     /// <summary>
-    /// Release every pin owned by the node: clear any bidirectional ConnectedPin references
-    /// and return the pin ids to <see cref="PinIdPool"/> so they can be reused.
+    /// Release every pin owned by the node: clear any bidirectional ConnectedPin references.
+    /// (Pin ids need no bookkeeping: they are assigned lazily per document, only when saving.)
     /// </summary>
     private static void ReleasePins(BaseNode node)
     {
@@ -205,7 +205,6 @@ public sealed class PluginLoader
         if (pin.ConnectedPin is { } other && ReferenceEquals(other.ConnectedPin, pin))
             other.ConnectedPin = null;
         pin.ConnectedPin = null;
-        pin.ReleaseId();
     }
 
     /// <summary>Remove all managed node instances (e.g. before loading a fresh workflow).</summary>

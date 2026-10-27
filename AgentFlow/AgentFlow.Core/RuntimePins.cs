@@ -20,12 +20,16 @@ public abstract class RuntimePin : BasePin
     private readonly BasePin _definition;
 
     protected RuntimePin(BasePin definition, BaseNode? owner)
-        : base(definition.Name, definition.DataType, definition.Direction, definition.Required, definition.Id)
+        : base(definition.Name, definition.DataType, definition.Direction, definition.Required)
     {
         _definition = definition;
+        Id = definition.Id;   // a runtime pin mirrors the id of the pin definition it wraps
         Owner = owner;
         Context = definition.Context;
     }
+
+    /// <summary>The pin definition this runtime pin wraps (owns the persisted id).</summary>
+    internal BasePin Definition => _definition;
 
     /// <inheritdoc/>
     public override void OnReceive(Sample? value) => _definition.OnReceive(value);

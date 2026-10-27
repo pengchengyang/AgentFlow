@@ -7,6 +7,7 @@
 
 using AgentFlow.Core;
 using Microsoft.Extensions.Logging;
+using Hosting.Logging;
 
 // AgentFlow.Cli - headless runner entry point.
 // Usage: AgentFlow.Cli <workflow.json> [pluginDir]
@@ -17,8 +18,8 @@ using Microsoft.Extensions.Logging;
 var workflowPath = args.Length > 0 ? args[0] : "sample.workflow.json";
 var pluginDir = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "plugins");
 
-// One log file for the whole CLI process (Core + all plugins).
-AppLog.ConfigureHost("Cli");
+// One log file for the whole CLI process (Core + all plugins): ./Logs/AgentFlow-Cli-.log
+AppLog.ConfigureHost("AgentFlow");
 
 using var loggerFactory = AppLog.CreateLoggerFactory();
 var logger = loggerFactory.CreateLogger("AgentFlow.Cli");

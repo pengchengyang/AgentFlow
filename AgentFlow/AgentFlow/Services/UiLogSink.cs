@@ -7,6 +7,7 @@
 using System;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
+using Hosting.Logging;
 using Serilog.Core;
 using Serilog.Events;
 
@@ -85,16 +86,7 @@ public sealed class UiLogSink : ILogEventSink
         var entry = new UiLogEntry
         {
             Timestamp = logEvent.Timestamp,
-            Level = logEvent.Level switch
-            {
-                LogEventLevel.Verbose => "TRACE",
-                LogEventLevel.Debug => "DEBUG",
-                LogEventLevel.Information => "INFO",
-                LogEventLevel.Warning => "WARN",
-                LogEventLevel.Error => "ERROR",
-                LogEventLevel.Fatal => "FATAL",
-                _ => logEvent.Level.ToString().ToUpperInvariant(),
-            },
+            Level = LogLevelNames.From(logEvent.Level),
             Source = logEvent.Properties.TryGetValue("SourceContext", out var sc)
                 ? sc.ToString().Trim('"') : "",
             Message = UiLogEntry.Flatten(raw),

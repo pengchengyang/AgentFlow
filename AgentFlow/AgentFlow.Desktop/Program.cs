@@ -8,8 +8,8 @@
 using System;
 
 using Avalonia;
-using AgentFlow.Core;
 using AgentFlow.Services;
+using Hosting.Logging;
 using Serilog;
 
 namespace AgentFlow.Desktop;
@@ -22,9 +22,10 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // One log file for the whole Desktop process (UI + Core + all plugins), plus the
-        // UI panel sink that mirrors every log line into the on-screen log panel.
-        AppLog.ConfigureHost("Desktop", cfg => cfg.WriteTo.Sink(new UiLogSink()));
+        // One log file for the whole Desktop process (UI + Core + all plugins):
+        // ./Logs/AgentFlow-Desktop-.log, plus the UI panel sink that mirrors every log line into
+        // the on-screen log panel.
+        AppLog.ConfigureHost("AgentFlow", configure: cfg => cfg.WriteTo.Sink(new UiLogSink()));
 
         try
         {
