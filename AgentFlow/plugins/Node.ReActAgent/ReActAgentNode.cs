@@ -68,6 +68,8 @@ public sealed class ReActAgentNode : BaseNode
     {
         base.AddParam();
         AddParameter(new NodeParameter("Model", typeof(string), "qwen2.5:7b", isEditable: true, group: "General", zone: "AgentZone"));
+        // Blank endpoint = use the host default (OLLAMA_BASE_URL / OLLAMA_HOST, else http://localhost:11434).
+        AddParameter(new NodeParameter("Endpoint", typeof(string), "", isEditable: true, group: "General", zone: "AgentZone"));
         AddParameter(new NodeParameter("SystemPrompt", typeof(string), DefaultSystemPrompt, isEditable: true, group: "General", zone: "AgentZone"));
         AddParameter(new NodeParameter("MaxSteps", typeof(int), 5, isEditable: true, group: "General", zone: "AgentZone"));
         AddParameter(new NodeParameter("Temperature", typeof(double), 0.2, isEditable: true, group: "General", zone: "AgentZone"));
@@ -76,6 +78,7 @@ public sealed class ReActAgentNode : BaseNode
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
         if (parameters.TryGetValue("Model", out var m) && m is not null) Param("Model").Value = m.ToString() ?? "";
+        if (parameters.TryGetValue("Endpoint", out var ep) && ep is not null) Param("Endpoint").Value = ep.ToString() ?? "";
         if (parameters.TryGetValue("SystemPrompt", out var sp) && sp is not null) Param("SystemPrompt").Value = sp.ToString() ?? DefaultSystemPrompt;
         if (parameters.TryGetValue("MaxSteps", out var ms) && ms is not null) Param("MaxSteps").Value = Convert.ToInt32(ms);
         if (parameters.TryGetValue("Temperature", out var t) && t is not null) Param("Temperature").Value = Convert.ToDouble(t);
@@ -93,8 +96,29 @@ public sealed class ReActAgentNode : BaseNode
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
-        context.Logger.LogTrace("ReActAgent initialized (model {Model}).", Param("Model").Value);
+        // Only the configured parameters are known here; the effective model/endpoint (after the
+        // host defaults and OLLAMA_* env vars are applied) is logged at the start of Run.
+        context.Logger.LogTrace("ReActAgent initialized (configured model {Model}, endpoint {Endpoint}).",
+            Param("Model").Value, EndpointOrHostDefault());
         return Task.CompletedTask;
+    }
+
+    /// <summary>The configured endpoint, or a marker when the host default should be used.</summary>
+    private string EndpointOrHostDefault()
+    {
+        var endpoint = Param("Endpoint").Value?.ToString();
+        return string.IsNullOrWhiteSpace(endpoint) ? "(host default)" : endpoint.Trim();
+    }
+
+    /// <summary>Configured temperature, or null when the provider default should be used.</summary>
+    private double? Temperature()
+    {
+        return Param("Temperature").Value switch
+        {
+            null => null,
+            IConvertible convertible => Convert.ToDouble(convertible, System.Globalization.CultureInfo.InvariantCulture),
+            _ => null,
+        };
     }
 
     /// <summary>
@@ -106,7 +130,17 @@ public sealed class ReActAgentNode : BaseNode
         Running = true;
         try
         {
-            var llm = context.GetService<ILLMClient>();
+            // The node's own Model/Endpoint/Temperature parameters drive the request through the
+            // host's LLM factory. Without a factory (older hosts) fall back to the plain client.
+            var factory = context.GetService<ILLMClientFactory>();
+            var model = Param("Model").Value?.ToString();
+            var endpoint = Param("Endpoint").Value?.ToString();
+            var temperature = Temperature();
+            var llm = factory?.Create(
+                    model: model,
+                    baseUrl: string.IsNullOrWhiteSpace(endpoint) ? null : endpoint,
+                    temperature: temperature)
+                ?? context.GetService<ILLMClient>();
             var tools = context.GetService<IAgentToolProvider>();
             if (llm is null || tools is null)
             {
@@ -114,6 +148,10 @@ public sealed class ReActAgentNode : BaseNode
                 SetAnswer(context, "Agent not configured: LLM or tool services are unavailable.");
                 return;
             }
+
+            context.Logger.LogTrace("ReActAgent LLM: model {Model}, endpoint {Endpoint}, temperature {Temperature}.",
+                string.IsNullOrWhiteSpace(model) ? "(host default)" : model.Trim(),
+                EndpointOrHostDefault(), temperature);
 
             var systemPrompt = Param("SystemPrompt").Value?.ToString() ?? DefaultSystemPrompt;
             var maxSteps = Convert.ToInt32(Param("MaxSteps").Value ?? 5);

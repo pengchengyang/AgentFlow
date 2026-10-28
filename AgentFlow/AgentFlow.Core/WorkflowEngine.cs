@@ -207,14 +207,24 @@ public sealed class WorkflowEngine
 
         public T? GetService<T>()
         {
-            // 临时:直接返回本地 Ollama 客户端
+            // 临时:本地 Ollama 工厂。节点通过它按自己的 Model/Endpoint 参数创建客户端,
+            // 直接取 ILLMClient 时退化为默认模型/端点(保持旧行为)。
+            if (typeof(T) == typeof(ILLMClientFactory))
+            {
+                return (T)(object)LlmFactory;
+            }
             if (typeof(T) == typeof(ILLMClient))
             {
-                var client = new OllamaLlmClient();
-                return (T)(object)client;
+                return (T)(object)LlmFactory.Create();
+            }
+            if (typeof(T) == typeof(IAgentToolProvider))
+            {
+                return (T)(object)EmptyAgentToolProvider.Instance;
             }
             return default;
         }
+
+        private static readonly OllamaClientFactory LlmFactory = new();
     }
 }
 

@@ -391,27 +391,25 @@ public sealed class EditorGraph
 
         public T? GetService<T>()
         {
-            // 临时:直接返回本地 Ollama 客户端
+            // 临时:本地 Ollama 工厂。节点通过它按自己的 Model/Endpoint 参数创建客户端,
+            // 直接取 ILLMClient 时退化为默认模型/端点(保持旧行为)。
+            if (typeof(T) == typeof(ILLMClientFactory))
+            {
+                return (T)(object)LlmFactory;
+            }
             if (typeof(T) == typeof(ILLMClient))
             {
-                var client = new OllamaLlmClient();
-                return (T)(object)client;
+                return (T)(object)LlmFactory.Create();
             }
             // 临时:返回一个空的工具提供者,先让模型能跑起来
             if (typeof(T) == typeof(IAgentToolProvider))
             {
-                var provider = new EmptyToolProvider();
-                return (T)(object)provider;
+                return (T)(object)EmptyAgentToolProvider.Instance;
             }
             return default;
         }
-    }
 
-    /// <summary>空的工具提供者,先返回空列表,后面再接真实工具。</summary>
-    private sealed class EmptyToolProvider : IAgentToolProvider
-    {
-        public IReadOnlyList<IAgentTool> Tools => Array.Empty<IAgentTool>();
-        public IAgentTool? Find(string name) => null;
+        private static readonly OllamaClientFactory LlmFactory = new();
     }
 }
 
