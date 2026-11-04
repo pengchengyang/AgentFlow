@@ -32,9 +32,14 @@ public partial class MainViewModel : ViewModelBase
     private readonly NodeInstanceManager _nodeManager;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
+    private readonly BroadcastDemo _broadcastDemo;
     private CancellationTokenSource? _runCts;
     private int _nodeSpawnIndex;
     private bool _isLoading;
+    private bool _suppressAutoSave;
+    private bool _autoSaveInFlight;
+    private bool _autoSavePending;
+    private readonly DispatcherTimer _autoSaveTimer;
     private readonly IWorkflowStore _store;
     /// <summary>Optional override store; the Web (WASM) host sets this before the app starts.</summary>
     public static IWorkflowStore? DefaultWorkflowStore { get; set; }
@@ -54,7 +59,7 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>
     /// True only while every canvas node has been started successfully (initialized, Run returned
     /// without errors) and has not been stopped yet. Derived by <see cref="RefreshRunState"/> from the
-    /// nodes' real runtime state �?never set optimistically on Start.
+    /// nodes' real runtime state — never set optimistically on Start.
     /// </summary>
     [ObservableProperty]
     private bool _isRunning;
@@ -95,6 +100,25 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
     [ObservableProperty]
     private bool _isDirty;
+
+    // Set once the window starts closing. RunAsync re-checks it after validation so a Start
+    // clicked immediately before Close cannot launch nodes after the shutdown stop has completed.
+    private bool _shuttingDown;
+
+    // True from the moment RunAsync publishes its run session until its finally block. The close
+    // path uses it to stop a start that is still inside StartAsync even though IsRunning/ IsStarting
+    // (refreshed every 300 ms) have not caught up yet.
+    private bool _runInProgress;
+
+    // Monotonic revision of in-memory edits. Auto-save captures it before serializing so a change
+    // made while the write is in flight is not marked as saved by the completing write.
+    private int _changeVersion;
+
+    private void MarkDirty()
+    {
+        IsDirty = true;
+        _changeVersion++;
+    }
     [ObservableProperty]
     private string _statusText = Loc.Instance["Ready"];
 
@@ -173,15 +197,45 @@ public partial class MainViewModel : ViewModelBase
         _logger = _loggerFactory.CreateLogger(nameof(MainViewModel));
 
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
-        _nodeManager = new NodeInstanceManager(_pluginLoader);
+        _nodeManager = new NodeInstanceManager(_pluginLoader, _loggerFactory.CreateLogger(nameof(NodeInstanceManager)));
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader);
+
+        // Generic TopicBus demo: the GUI and Node.Broadcast.Demo share only topic strings.
+        // Subscribe before LoadPlugins so the demo node's initial message is not lost.
+        _broadcastDemo = new BroadcastDemo(
+            message => Log(message, "INFO", "Broadcast.Demo"));
+
         _store = DefaultWorkflowStore ?? new LocalWorkflowStore();
         _graph.GraphChanged += RefreshPinConnections;
         LoadPlugins();
-        // Auto-persist graph on every structural change (add/remove node, wire, or drag move).
-        // The run indicator is re-derived too: removing a node changes "all nodes running".
-        Nodes.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); RefreshRunState(); };
-        Connections.CollectionChanged += (_, _) => { IsDirty = true; AutoSave(); };
+        // Debounce auto-save: a node drag updates Location on every pointer move, so writing the
+        // whole document synchronously for every event made large graphs freeze the UI.
+        _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _autoSaveTimer.Tick += (_, _) =>
+        {
+            _autoSaveTimer.Stop();
+            AutoSaveNow();
+        };
+        // Auto-persist graph after structural changes (add/remove node, wire, drag move). The
+        // collection handlers also mark the graph dirty; while loading, both are suppressed so a
+        // half-built document is never written over the user's file.
+        Nodes.CollectionChanged += (_, _) =>
+        {
+            if (!_isLoading && !_suppressAutoSave)
+            {
+                MarkDirty();
+                ScheduleAutoSave();
+            }
+            RefreshRunState();
+        };
+        Connections.CollectionChanged += (_, _) =>
+        {
+            if (!_isLoading && !_suppressAutoSave)
+            {
+                MarkDirty();
+                ScheduleAutoSave();
+            }
+        };
         // Restore the previous graph on startup.
         AutoLoad();
         // Dedicated view-models (composed per view).
@@ -236,6 +290,10 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Create a node from a palette item at a specific graph-space location (drag &amp; drop).</summary>
     public void AddNodeAt(PaletteItem item, Point graphLocation)
     {
+        // Mutating the graph while a node is starting/running would remove it from the manager's
+        // lifetime, so Stop could never release its resources. Palette click / drag-drop must obey
+        // the same gate as delete/connect/clear.
+        if (!CanEditGraphNow()) return;
         // Create a contract-layer instance; NodeModel and EditorGraph share the same BaseNode instance.
         var instance = _pluginLoader.CreateNodeInstance(item.Name);
         var node = new NodeViewModel(new NodeModel(instance)) { Location = graphLocation };
@@ -269,11 +327,14 @@ public partial class MainViewModel : ViewModelBase
         {
             if (e.PropertyName == nameof(NodeViewModel.IsSelected) && node.IsSelected)
                 SelectedNode = node;
-            // Persist when the node is dragged to a new location.
-            if (e.PropertyName == nameof(NodeViewModel.Location))
+            // Persist when the node is dragged to a new location, or when the user edits the
+            // display name / priority outside the parameter dialog.
+            if (e.PropertyName == nameof(NodeViewModel.Location)
+                || e.PropertyName == nameof(NodeViewModel.DisplayName)
+                || e.PropertyName == nameof(NodeViewModel.Priority))
             {
-                IsDirty = true;
-                AutoSave();
+                MarkDirty();
+                ScheduleAutoSave();
             }
         };
     }
@@ -296,28 +357,79 @@ public partial class MainViewModel : ViewModelBase
             }
         }
     }
-    /// <summary>Write the current graph to disk (no-op while we are itself loading).</summary>
-    private async void AutoSave()
+    /// <summary>Schedule a debounced auto-save; no-op while a document is being loaded/cleared.</summary>
+    private void ScheduleAutoSave()
     {
-        if (_isLoading) return;
+        if (_isLoading || _suppressAutoSave) return;
+        _autoSaveTimer.Stop();
+        _autoSaveTimer.Start();
+    }
+    /// <summary>Write the current graph to disk (no-op while we are itself loading).</summary>
+    private async void AutoSaveNow()
+    {
+        if (_isLoading || _suppressAutoSave) return;
+        if (_autoSaveInFlight)
+        {
+            _autoSavePending = true;
+            return;
+        }
+
+        _autoSaveInFlight = true;
+        var version = _changeVersion;
         try
         {
-            SyncGraphState();
-            await _store.SaveAsync(GraphSerializer.Serialize(_graph));
+            await SaveSnapshotAsync();
+            // Auto-save is a real save: clear the dirty flag unless the document changed while the
+            // write was in flight (then the pending timer keeps it dirty and saves again).
+            if (_changeVersion == version)
+                IsDirty = false;
         }
-        catch (Exception ex) { _logger.LogError(ex, "Auto-save failed: {Message}", ex.Message); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Auto-save failed: {Message}", ex.Message);
+            StatusText = $"{L["ErrorPrefix"]}: {ex.Message}";
+        }
+        finally
+        {
+            _autoSaveInFlight = false;
+            if (_autoSavePending)
+            {
+                _autoSavePending = false;
+                AutoSaveNow();
+            }
+        }
+    }
+    /// <summary>Serialize and write the current graph to the current file, or the store when none is set.</summary>
+    private async Task SaveSnapshotAsync()
+    {
+        SyncGraphState();
+        var json = GraphSerializer.Serialize(_graph);
+        if (!string.IsNullOrEmpty(CurrentFilePath))
+        {
+            var temp = CurrentFilePath + ".tmp";
+            File.WriteAllText(temp, json);
+            File.Move(temp, CurrentFilePath, overwrite: true);
+        }
+        else
+        {
+            await _store.SaveAsync(json);
+        }
     }
     /// <summary>Reload the graph from disk if it exists.</summary>
     private async void AutoLoad()
     {
+        bool loaded = false;
+        // Suppress collection-driven dirty/auto-save for the whole async load, not only after the
+        // store returns. Otherwise edits made while a remote store is still loading would be
+        // wiped by the final IsDirty = false below.
+        _isLoading = true;
         try
         {
             var json = await _store.LoadAsync();
             if (string.IsNullOrEmpty(json)) return;
-            _isLoading = true;
             var doc = GraphDeserializer.Deserialize(json);
             LoadGraphFromDocument(doc);
-            CurrentFilePath = _store.Description;
+            loaded = true;
             StatusText = $"{L["LoadedFrom"]}: {_store.Description}";
         }
         catch (Exception ex)
@@ -328,11 +440,17 @@ public partial class MainViewModel : ViewModelBase
         finally
         {
             _isLoading = false;
+            if (loaded)
+                IsDirty = false;
         }
     }
     /// <summary>Called by the canvas when a connection drag is dropped on an input pin.</summary>
     public bool TryCreateConnection(PinViewModel source, PinViewModel target)
     {
+        // Wiring while nodes are starting/running can deliver a sample to the wrong target or drop
+        // one in the disconnect window; require a stop first, like structural edits.
+        if (!CanEditGraphNow()) return false;
+
         // Normalize direction: source must be the output, target the input.
         if (source.IsInput && target.IsOutput)
             (source, target) = (target, source);
@@ -347,12 +465,12 @@ public partial class MainViewModel : ViewModelBase
             Log($"[{L["ConnRejected"]}] {error}", "ERROR");
             return false;
         }
-        Establish(source, target);
-        return true;
+        return Establish(source, target);
     }
     /// <summary>Detach the single wire connected to this input pin (drag input pin onto empty canvas).</summary>
     public void DisconnectInputPin(PinViewModel input)
     {
+        if (!CanEditGraphNow()) return;
         var conn = Connections.FirstOrDefault(c => ReferenceEquals(c.Target, input));
         if (conn is null) return;
         Teardown(conn);
@@ -362,11 +480,31 @@ public partial class MainViewModel : ViewModelBase
     /// and the input pin saves a reference back to the output pin (bidirectional ConnectedPin).
     /// The GUI only adds a visual wire.
     /// </summary>
-    private void Establish(PinViewModel source, PinViewModel target)
+    private bool Establish(PinViewModel source, PinViewModel target)
     {
-        _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
+        bool connected;
+        try
+        {
+            connected = _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
+        }
+        catch (Exception ex)
+        {
+            StatusText = L["ErrPinOccupied"];
+            Log($"[{L["ConnRejected"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Core rejected connection {From}.{FromPin} -> {To}.{ToPin}",
+                source.Node.Name, source.Name, target.Node.Name, target.Name);
+            return false;
+        }
+
+        if (!connected)
+        {
+            StatusText = L["ErrPinOccupied"];
+            Log($"[{L["ConnRejected"]}] {L["ErrPinOccupied"]}", "ERROR");
+            return false;
+        }
         Connections.Add(new ConnectionViewModel(source, target));
         _logger.LogTrace("Connected {From}.{FromPin} -> {To}.{ToPin}", source.Node.Name, source.Name, target.Node.Name, target.Name);
+        return true;
     }
     /// <summary>Remove the connection in the Core layer and delete the visual wire.</summary>
     private void Teardown(ConnectionViewModel connection)
@@ -395,17 +533,42 @@ public partial class MainViewModel : ViewModelBase
         return null;
     }
     [RelayCommand]
-    public void RemoveConnection(ConnectionViewModel connection) => Teardown(connection);
+    public void RemoveConnection(ConnectionViewModel connection)
+    {
+        if (!CanEditGraphNow()) return;
+        Teardown(connection);
+    }
     [RelayCommand]
     private void RemoveSelectedConnections()
     {
+        if (!CanEditGraphNow()) return;
         var selected = Connections.Where(c => c.IsSelected).ToList();
         foreach (var c in selected) Teardown(c);
     }
+    /// <summary>
+    /// Guard for structural edits (delete a node, clear the canvas) and for changing wires: mutating
+    /// the graph while a node is still starting or running would remove it from the manager, after
+    /// which StopAsync can never stop it — the run task and its resources (ports, sockets, files)
+    /// would leak. Changing a wire mid-run can also deliver a sample to the wrong target. Reject the
+    /// edit with an error instead of leaking / misdelivering silently.
+    /// </summary>
+    public bool CanEditGraphNow()
+    {
+        if (!_nodeManager.Instances.Any(n => n.Connecting || n.State == NodeState.Running))
+            return true;
+
+        var message = L["StopBeforeEdit"];
+        StatusText = message;
+        Log($"[{L["ErrorPrefix"]}] {message}", "ERROR");
+        _logger.LogError("{Message}", message);
+        return false;
+    }
+
     /// <summary>Delete key: remove selected wires first, then the selected node.</summary>
     [RelayCommand]
     public void DeleteSelection()
     {
+        if (!CanEditGraphNow()) return;
         foreach (var c in SelectedConnections.ToList())
         {
             SelectedConnections.Remove(c);
@@ -420,6 +583,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void RemoveNode(NodeViewModel node)
     {
+        if (!CanEditGraphNow()) return;
         // 1. Remove the node instance from the PluginLoader container (PluginLoader also releases its pins).
         if (node.Runtime?.RuntimeNode is { } instance)
             _pluginLoader.DeleteNodeInstance(instance);
@@ -484,7 +648,7 @@ public partial class MainViewModel : ViewModelBase
     }
     /// <summary>Whether the current user is logged in as Admin (Admin-only features gate on this).</summary>
     [ObservableProperty]
-    private bool _isAdmin = true; // Dev: default account is Admin so admin-only UI is available on open.
+    private bool _isAdmin; // Default to non-admin: admin-only UI must be unlocked explicitly.
     /// <summary>Bottom-right lock icon: unlocked (🔓) for Admin, locked (🔒) for all other accounts.</summary>
     public string LockIcon => IsAdmin ? "🔓" : "🔒";
     partial void OnIsAdminChanged(bool value)
@@ -494,7 +658,7 @@ public partial class MainViewModel : ViewModelBase
     }
     /// <summary>Whether the right node-library Sidebar is visible (Admin only).</summary>
     [ObservableProperty]
-    private bool _isSidebarVisible = true; // Dev: default to open.
+    private bool _isSidebarVisible; // Admin-only panel starts closed until login.
     /// <summary>Toggle the right node-library Sidebar (Admin only).</summary>
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
@@ -519,7 +683,16 @@ public partial class MainViewModel : ViewModelBase
     private void OpenNodeParameters(NodeViewModel? node)
     {
         if (node is null) return;
-        DialogRequested?.Invoke(this, new NodeParamDlgViewModel(node));
+        if (!CanEditGraphNow()) return;
+        var dialog = new NodeParamDlgViewModel(node);
+        // Parameter / display-name edits must mark the document dirty and persist through the same
+        // debounced auto-save path as structural changes.
+        dialog.NodeChanged += (_, _) =>
+        {
+            MarkDirty();
+            ScheduleAutoSave();
+        };
+        DialogRequested?.Invoke(this, dialog);
     }
     [RelayCommand]
     private void ToggleLogPanel() => IsLogPanelOpen = !IsLogPanelOpen;
@@ -535,6 +708,9 @@ public partial class MainViewModel : ViewModelBase
             RawMessage = message,
         });
 
+    /// <summary>Release GUI subscriptions once the window is actually closing.</summary>
+    public void DisposeBroadcastDemo() => _broadcastDemo.Dispose();
+
     [RelayCommand]
     private void ClearLog() => UiLogStore.Clear();
     /// <summary>Raised when the clear-canvas confirmation dialog should be shown (View layer listens to open a window).</summary>
@@ -543,6 +719,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ClearGraph()
     {
+        if (!CanEditGraphNow()) return;
         var dialog = new ConfirmDialogViewModel(
             "Clear Canvas",
             "Clear the entire canvas and all underlying data? This cannot be undone.",
@@ -550,10 +727,24 @@ public partial class MainViewModel : ViewModelBase
         dialog.RequestClose += (_, confirmed) =>
         {
             if (!confirmed) return;
-            Nodes.Clear();
-            Connections.Clear();
-            SelectedNode = null;
-            _graph.Clear();
+            if (!CanEditGraphNow()) return;
+            // Suppress the collection-change auto-save while the visual and Core graphs are
+            // temporarily out of sync, then persist the actually-cleared graph once.
+            _autoSaveTimer.Stop();
+            _suppressAutoSave = true;
+            try
+            {
+                Nodes.Clear();
+                Connections.Clear();
+                SelectedNode = null;
+                _graph.Clear();
+            }
+            finally
+            {
+                _suppressAutoSave = false;
+            }
+            MarkDirty();
+            AutoSaveNow();
             Log("Canvas cleared.");
             _logger.LogTrace("Canvas cleared.");
         };
@@ -572,7 +763,9 @@ public partial class MainViewModel : ViewModelBase
             {
                 var values = n.Parameters.ToDictionary(p => p.Key, p => p.ToValue());
                 n.Runtime.RuntimeNode.Configure(values);
-                _graph.UpdateNode(n.Runtime, n.Name, n.Priority, n.Location.X, n.Location.Y, values);
+                // The display name is user-editable; pass it (not the type id) so saving/autosave
+                // never overwrites the canvas title with e.g. "node.llm.react".
+                _graph.UpdateNode(n.Runtime, n.DisplayName, n.Priority, n.Location.X, n.Location.Y, values);
             }
         }
     }
@@ -588,70 +781,122 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public void LoadGraphFromDocument(GraphDocument doc)
     {
-        Nodes.Clear();
-        Connections.Clear();
-        _graph.Clear();
-        var map = new Dictionary<string, NodeViewModel>();
-        foreach (var spec in doc.Nodes)
+        _autoSaveTimer.Stop();
+        var wasLoading = _isLoading;
+        _isLoading = true;
+        var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+        try
         {
-            // Create a contract-layer instance; NodeModel and EditorGraph share the same instance.
-            // name (type id) now lives inside the logic blob (no longer duplicated on the outer node object).
-            var name = spec.Logic?["name"]?.GetValue<string>()
-                ?? throw new InvalidOperationException($"Node '{spec.Id}' is missing name in logic.");
-            var displayName = spec.Logic?["displayName"]?.GetValue<string>() ?? "";
-            var instanceId = spec.Logic?["instanceId"]?.GetValue<int>() ?? 0;
-            var dependsOn = spec.Logic?["dependsOn"]?.GetValue<int>() ?? 0;
-            // PluginLoader now owns restore: create node/pin instances, reserve the saved
-            // instance id, set dependsOn and deserialize the logic blob.
-            var instance = _pluginLoader.CreateNodeInstance(name, instanceId, dependsOn, spec.Logic);
-            var node = new NodeViewModel(new NodeModel(instance))
+            Nodes.Clear();
+            Connections.Clear();
+            _graph.Clear();
+            foreach (var spec in doc.Nodes)
             {
-                DisplayName = displayName,
-                Location = new Point(spec.X, spec.Y)
-            };
-            // Reflect restored logical values into the property panel (best effort).
-            var restored = new Dictionary<string, object?>();
-            foreach (var p in instance.NodeParameters)
-            {
-                if (!string.IsNullOrEmpty(p.Name))
-                    restored[p.Name] = p.Value;
+                if (string.IsNullOrEmpty(spec.Id) || !nodeIds.Add(spec.Id))
+                    throw new InvalidDataException($"Duplicate or empty node id: '{spec.Id}'.");
+                // Create a contract-layer instance; NodeModel and EditorGraph share the same instance.
+                // name (type id) now lives inside the logic blob (no longer duplicated on the outer node object).
+                var name = JsonValueReader.GetString(spec.Logic, "name");
+                if (string.IsNullOrEmpty(name))
+                    throw new InvalidOperationException($"Node '{spec.Id}' is missing name in logic.");
+                var displayName = JsonValueReader.GetString(spec.Logic, "displayName") ?? "";
+                var instanceId = JsonValueReader.GetInt(spec.Logic, "instanceId");
+                var dependsOn = JsonValueReader.GetInt(spec.Logic, "dependsOn");
+                // PluginLoader now owns restore: create node/pin instances, reserve the saved
+                // instance id, set dependsOn and deserialize the logic blob.
+                var instance = _pluginLoader.CreateNodeInstance(name, instanceId, dependsOn, spec.Logic);
+                var node = new NodeViewModel(new NodeModel(instance))
+                {
+                    DisplayName = displayName,
+                    Priority = spec.Priority,
+                    Location = new Point(spec.X, spec.Y)
+                };
+                // Reflect restored logical values into the property panel (best effort).
+                var restored = new Dictionary<string, object?>();
+                foreach (var p in instance.NodeParameters)
+                {
+                    if (!string.IsNullOrEmpty(p.Name))
+                        restored[p.Name] = p.Value;
+                }
+                node.ApplyParameterValues(restored);
+                // The Core layer builds a runtime node from the same instance. Pin ids are assigned
+                // after the whole document has been read (see EnsurePinIds below), so a later node's
+                // restored id can never collide with an id allocated for an earlier node.
+                node.Runtime = _graph.AddNode(instance, spec.X, spec.Y,
+                    node.Parameters.ToDictionary(p => p.Key, p => p.ToValue()),
+                    spec.Id, displayName, spec.Priority, assignPinIds: false);
+                node.Id = node.Runtime.Id;
+                HookSelection(node);
+                Nodes.Add(node);
             }
-            node.ApplyParameterValues(restored);
-            // The Core layer builds a runtime node from the same instance.
-            node.Runtime = _graph.AddNode(instance, spec.X, spec.Y,
-                node.Parameters.ToDictionary(p => p.Key, p => p.ToValue()),
-                spec.Id, displayName);
-            node.Id = node.Runtime.Id;
-            HookSelection(node);
-            Nodes.Add(node);
-            map[spec.Id] = node;
-        }
-        // Restore connections by pin instance id. Core locates the runtime pins; the UI only
-        // maps them back to the visual PinViewModels so a wire can be drawn.
-        foreach (var spec in doc.Connections)
-        {
-            var from = _graph.FindPinById(spec.FromPinId);
-            var to = _graph.FindPinById(spec.ToPinId);
-            if (from is null || to is null) continue;
-            if (!from.Value.IsOutput || to.Value.IsOutput) continue;
-            var sourceNode = Nodes.FirstOrDefault(n => n.Id == from.Value.Node.Id);
-            var targetNode = Nodes.FirstOrDefault(n => n.Id == to.Value.Node.Id);
-            if (sourceNode is null || targetNode is null) continue;
-            var source = sourceNode.Outputs.FirstOrDefault(p => p.Name == from.Value.PinName);
-            var target = targetNode.Inputs.FirstOrDefault(p => p.Name == to.Value.PinName);
-            if (source is null || target is null) continue;
-            if (_graph.TryConnectByPinId(spec.FromPinId, spec.ToPinId))
+            // Every node restored its saved pin ids first; now hand out ids for the remaining pins.
+            _graph.EnsurePinIds();
+            // Restore connections by pin instance id. Core locates the runtime pins; the UI only
+            // maps them back to the visual PinViewModels so a wire can be drawn.
+            foreach (var spec in doc.Connections)
+            {
+                var from = _graph.FindPinById(spec.FromPinId);
+                var to = _graph.FindPinById(spec.ToPinId);
+                if (from is null || to is null)
+                    throw new InvalidDataException(
+                        $"Connection {spec.FromPinId} -> {spec.ToPinId} references a pin that does not exist.");
+                if (!from.Value.IsOutput || to.Value.IsOutput)
+                    throw new InvalidDataException(
+                        $"Connection {spec.FromPinId} -> {spec.ToPinId} is not output -> input.");
+                var sourceNode = Nodes.FirstOrDefault(n => n.Id == from.Value.Node.Id);
+                var targetNode = Nodes.FirstOrDefault(n => n.Id == to.Value.Node.Id);
+                if (sourceNode is null || targetNode is null)
+                    throw new InvalidDataException(
+                        $"Connection {spec.FromPinId} -> {spec.ToPinId} references a missing node.");
+                var source = sourceNode.Outputs.FirstOrDefault(p => p.Name == from.Value.PinName);
+                var target = targetNode.Inputs.FirstOrDefault(p => p.Name == to.Value.PinName);
+                if (source is null || target is null)
+                    throw new InvalidDataException(
+                        $"Connection {spec.FromPinId} -> {spec.ToPinId} references an unknown pin name.");
+                if (!_graph.TryConnectByPinId(spec.FromPinId, spec.ToPinId))
+                    throw new InvalidDataException(
+                        $"Connection {spec.FromPinId} -> {spec.ToPinId} could not be restored (pin already connected?).");
                 Connections.Add(new ConnectionViewModel(source, target));
+            }
+        }
+        catch
+        {
+            // A node / parameter / pin failed halfway through the document: roll the canvas back to
+            // an empty state instead of leaving a half-built graph that can neither run nor be
+            // repaired from the UI. The caller logs the original exception.
+            _pluginLoader.ClearInstances();
+            _graph.Clear();
+            Nodes.Clear();
+            Connections.Clear();
+            throw;
+        }
+        finally
+        {
+            _isLoading = wasLoading;
         }
     }
     // ---------- Run / save / load ----------
     [RelayCommand]
     private async Task RunAsync()
     {
-        if (IsBusy) return;
-        // Validate BEFORE starting, so a validation failure doesn't flash the indicator.
-        var graph = ToGraph();
-        var validationErrors = WorkflowValidation.Validate(_registry, graph);
+        if (IsBusy || _shuttingDown) return;
+        // Validate BEFORE starting, so a validation failure doesn't flash the indicator. ToGraph
+        // runs user/plugin Configure code and can throw; keep it inside a catch so the async
+        // command never leaves an unobserved exception on the UI dispatcher.
+        WorkflowGraph graph;
+        IReadOnlyList<string> validationErrors;
+        try
+        {
+            graph = ToGraph();
+            validationErrors = WorkflowValidation.Validate(_registry, graph);
+        }
+        catch (Exception ex)
+        {
+            StatusText = L["ValidationFailed"];
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Preparing the workflow failed: {Message}", ex.Message);
+            return;
+        }
         if (validationErrors.Count > 0)
         {
             StatusText = L["ValidationFailed"];
@@ -659,6 +904,7 @@ public partial class MainViewModel : ViewModelBase
                 Log($"[{L["ErrorPrefix"]}] {err}", "ERROR");
             return;
         }
+        if (_shuttingDown) return;
         // Do NOT light the "running" indicator here: it is derived from the nodes' real state further
         // down (and every 300 ms afterwards), so it turns green only once every node is started.
         _runFailureNotified = false;
@@ -668,6 +914,13 @@ public partial class MainViewModel : ViewModelBase
         // Yield to the UI thread so the Stop icon renders before the run starts.
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
             () => { }, Avalonia.Threading.DispatcherPriority.Render);
+        if (_shuttingDown)
+        {
+            _runCts?.Dispose();
+            _runCts = null;
+            return;
+        }
+        _runInProgress = true;
         try
         {
             var contexts = BuildNodeContexts();
@@ -703,7 +956,10 @@ public partial class MainViewModel : ViewModelBase
         finally
         {
             RefreshRunState();
-            _runCts?.Dispose();
+            _runInProgress = false;
+            // NodeInstanceManager owns the linked token source it created from this parent. Do not
+            // dispose the parent while background runs may still be alive; Stop/auto-stop cancels
+            // the manager's linked source instead. Dropping the reference is enough.
             _runCts = null;
         }
     }
@@ -727,11 +983,27 @@ public partial class MainViewModel : ViewModelBase
             StatusText = L["Ready"];
         }
     }
+
+    /// <summary>Stop an active workflow from the window-close path without throwing.</summary>
+    public async Task StopForShutdownAsync()
+    {
+        _shuttingDown = true;
+        _autoSaveTimer.Stop();
+        // The UI flags are refreshed every 300 ms, so a close issued immediately after Start could
+        // otherwise see CanStop == false while nodes are already initializing/launching. Use the
+        // explicit in-progress flag as well; StopAsync serializes behind Start on the lifecycle gate.
+        if (!CanStop && !_runInProgress) return;
+        await Stop();
+    }
+
+    /// <summary>Allow the editor to be used again when the close sequence is aborted (save failed).</summary>
+    public void CancelShutdown() => _shuttingDown = false;
+
     /// <summary>
     /// Re-derive the run indicator from the nodes' real runtime state, and mirror every node's state
     /// onto its view-model first so the canvas header indicators and the status bar can never
     /// disagree. "Running" means every canvas node was started successfully (initialized, Run
-    /// returned without errors) and has not been stopped �?one-shot nodes that already finished their
+    /// returned without errors) and has not been stopped — one-shot nodes that already finished their
     /// work still count. While any node is still connecting the indicator shows "starting" (this holds
     /// for every node type, not just socket clients), and a failed node shows "failed".
     /// </summary>
@@ -741,9 +1013,16 @@ public partial class MainViewModel : ViewModelBase
 
         bool allRunning = Nodes.Count > 0 && Nodes.All(n => n.Started);
         bool starting = !allRunning && Nodes.Any(n => n.Connecting);
-        bool failed = !allRunning && !starting && Nodes.Any(n => n.Failed);
+        // Isolated failures are contained by NodeInstanceManager: the failed node stays Failed but
+        // the other nodes keep running. Do not report that as a whole-workflow failure (the old
+        // logic did, which also disabled Stop and made the next Run stop the remaining nodes).
+        bool isolated = Nodes.Any(n =>
+            n.Failed && n.Model.Node.ErrorPolicy.Mode == AgentFlow.Contracts.NodeFailureMode.Isolate)
+            && Nodes.Any(n => n.Started || n.Connecting);
+        bool failed = !allRunning && !starting && !isolated && Nodes.Any(n => n.Failed);
+        bool partiallyRunning = isolated && !allRunning;
 
-        IsRunning = allRunning;
+        IsRunning = allRunning || partiallyRunning;
         IsStarting = starting;
         IsRunFailed = failed;
 
@@ -751,6 +1030,17 @@ public partial class MainViewModel : ViewModelBase
         {
             RunningText = L["RunStateRunning"];
             RunningIconBrush = RunningIndicatorBrush;
+        }
+        else if (partiallyRunning)
+        {
+            RunningText = L["RunStateIsolated"];
+            RunningIconBrush = StartingIndicatorBrush;
+            if (!_runFailureNotified)
+            {
+                _runFailureNotified = true;
+                StatusText = L["RunIsolated"];
+                _logger.LogWarning("A node failed but was isolated; the remaining nodes keep running.");
+            }
         }
         else if (starting)
         {
@@ -763,12 +1053,12 @@ public partial class MainViewModel : ViewModelBase
             RunningIconBrush = FailedIndicatorBrush;
             Dot1Opacity = Dot2Opacity = Dot3Opacity = 0;
             PulseBlur = 0;
-            // A failed node stops the whole workflow automatically; report it once in the status line.
+            // A fail-fast failure stops the whole workflow automatically; report it once.
             if (!_runFailureNotified)
             {
                 _runFailureNotified = true;
                 StatusText = L["RunFailed"];
-                _logger.LogWarning("Run failed: a node failed to start, the workflow was stopped automatically.");
+                _logger.LogWarning("Run failed: a node failed and the workflow was stopped automatically.");
             }
         }
         else
@@ -794,13 +1084,40 @@ public partial class MainViewModel : ViewModelBase
         return contexts;
     }
     [RelayCommand]
-    private async void Save()
+    private async Task Save() => await SaveCurrentAsync();
+
+    /// <summary>
+    /// Save to the currently opened file, or to the configured store when the document has never
+    /// been saved to a path. Returns false on failure; callers (Save command, close prompt) keep the
+    /// dirty flag set so the user can retry instead of silently losing edits.
+    /// </summary>
+    public async Task<bool> SaveCurrentAsync()
     {
-        SyncGraphState();
-        await _store.SaveAsync(GraphSerializer.Serialize(_graph));
-        IsDirty = false;
-        StatusText = $"{L["SavedTo"]}: {_store.Description}";
-        _logger.LogTrace("Saved graph to {Target}", _store.Description);
+        if (!CanEditGraphNow()) return false;
+        _autoSaveTimer.Stop();
+        var version = _changeVersion;
+        try
+        {
+            await SaveSnapshotAsync();
+            if (_changeVersion != version)
+            {
+                // A change landed while the write was in flight; the snapshot on disk is already
+                // stale, so keep the dirty flag and let the user/auto-save write again.
+                return false;
+            }
+            IsDirty = false;
+            var target = string.IsNullOrEmpty(CurrentFilePath) ? _store.Description : CurrentFilePath;
+            StatusText = $"{L["SavedTo"]}: {target}";
+            _logger.LogTrace("Saved graph to {Target}", target);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"{L["ErrorPrefix"]}: {ex.Message}";
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Saving workflow failed.");
+            return false;
+        }
     }
     /// <summary>Raised when the user clicks the Save-As button; the View layer opens a file picker.</summary>
     public event EventHandler<string>? SaveAsRequested;
@@ -815,14 +1132,27 @@ public partial class MainViewModel : ViewModelBase
     /// Persist the current graph to an explicit path chosen by the user.
     /// Called by the View layer after the file picker returns a valid path.
     /// </summary>
-    public void SaveToPath(string path)
+    public bool SaveToPath(string path)
     {
-        SyncGraphState();
-        GraphSerializer.Save(_graph, path);
-        CurrentFilePath = path;
-        IsDirty = false;
-        StatusText = $"{L["SavedTo"]}: {path}";
-        _logger.LogTrace("Saved graph to {Path}", path);
+        if (!CanEditGraphNow()) return false;
+        _autoSaveTimer.Stop();
+        try
+        {
+            SyncGraphState();
+            GraphSerializer.Save(_graph, path);
+            CurrentFilePath = path;
+            IsDirty = false;
+            StatusText = $"{L["SavedTo"]}: {path}";
+            _logger.LogTrace("Saved graph to {Path}", path);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"{L["ErrorPrefix"]}: {ex.Message}";
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Saving workflow to {Path} failed.", path);
+            return false;
+        }
     }
     /// <summary>Raised when the user clicks the Open button; the View layer opens a file picker.</summary>
     public event EventHandler? OpenRequested;
@@ -835,33 +1165,58 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public void LoadFromPath(string path)
     {
-        var doc = GraphDeserializer.Load(path);
-        LoadGraphFromDocument(doc);
-        CurrentFilePath = path;
-        IsDirty = false;
-        StatusText = $"{L["LoadedFrom"]}: {path}";
-        _logger.LogTrace("Loaded graph from {Path} ({NodeCount} nodes)", path, Nodes.Count);
+        if (!CanEditGraphNow()) return;
+        var previousPath = CurrentFilePath;
+        var previousDirty = IsDirty;
+        string? backup = null;
+        try
+        {
+            SyncGraphState();
+            backup = GraphSerializer.Serialize(_graph);
+            var doc = GraphDeserializer.Load(path);
+            LoadGraphFromDocument(doc);
+            CurrentFilePath = path;
+            IsDirty = false;
+            StatusText = $"{L["LoadedFrom"]}: {path}";
+            _logger.LogTrace("Loaded graph from {Path} ({NodeCount} nodes)", path, Nodes.Count);
+        }
+        catch (Exception ex)
+        {
+            // Loading is destructive (LoadGraphFromDocument clears before parsing). Restore the
+            // in-memory document so a malformed/corrupt file cannot silently erase the open graph.
+            if (backup is not null)
+            {
+                try
+                {
+                    LoadGraphFromDocument(GraphDeserializer.Deserialize(backup));
+                    CurrentFilePath = previousPath;
+                    IsDirty = previousDirty;
+                    _logger.LogWarning("Restored the previous graph after a failed load: {Message}", ex.Message);
+                }
+                catch (Exception restoreEx)
+                {
+                    // The backup itself is not loadable (very unlikely): at least do not leave the
+                    // previous file association pointing at a now-empty canvas that Save could overwrite.
+                    CurrentFilePath = string.Empty;
+                    _logger.LogError(restoreEx, "Restoring the previous graph failed.");
+                }
+            }
+            StatusText = L["LoadFailed"];
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Loading workflow from {Path} failed.", path);
+        }
     }
     [RelayCommand]
     private void Load()
     {
+        if (!CanEditGraphNow()) return;
         var path = Path.Combine(AppContext.BaseDirectory, "workflow.json");
         if (!File.Exists(path))
         {
             StatusText = L["NoWorkflowFile"];
             return;
         }
-        try
-        {
-            LoadGraphFromDocument(GraphDeserializer.Load(path));
-            CurrentFilePath = path;
-            StatusText = $"{L["LoadedFrom"]}: {path}";
-        }
-        catch (Exception ex)
-        {
-            StatusText = L["LoadFailed"];
-            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
-        }
+        LoadFromPath(path);
     }
 }
 

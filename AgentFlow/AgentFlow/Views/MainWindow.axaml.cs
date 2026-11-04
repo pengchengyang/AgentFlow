@@ -62,35 +62,62 @@ public partial class MainWindow : Window
             BeginMoveDrag(e);
     }
 
+    private bool _allowClose;
+    private bool _closing;
+
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
 
-        // Only prompt when there are unsaved changes.
-        if (DataContext is not MainWindowViewModel mvm || mvm.Main is not { IsDirty: true })
-            return;
-
-        e.Cancel = true;
-
-        var dialog = new CloseConfirmDlgViewModel(
-            "Unsaved Changes",
-            "The current workflow has unsaved changes. What would you like to do?");
-
-        var win = new CloseConfirmDlgWindow { DataContext = dialog };
-        int result = await win.ShowDialog<int>(this);
-
-        switch (result)
+        if (_allowClose) return;
+        if (DataContext is not MainWindowViewModel mvm || mvm.Main is null) return;
+        if (_closing)
         {
-            case 1: // Discard / exit without saving
-                mvm.Main.IsDirty = false;
-                Close();
-                break;
-            case 2: // Save then exit
-                var path = Path.Combine(AppContext.BaseDirectory, "workflow.json");
-                mvm.Main.SaveToPath(path);
-                Close();
-                break;
-            // case 0 (Cancel): do nothing, window stays open.
+            e.Cancel = true;
+            return;
+        }
+
+        _closing = true;
+        e.Cancel = true;
+        var main = mvm.Main;
+        try
+        {
+            // Ask about unsaved changes first; the workflow keeps running while the user decides.
+            bool saveRequested = false;
+            if (main.IsDirty)
+            {
+                var dialog = new CloseConfirmDlgViewModel(
+                    "Unsaved Changes",
+                    "The current workflow has unsaved changes. What would you like to do?");
+                var win = new CloseConfirmDlgWindow { DataContext = dialog };
+                int result = await win.ShowDialog<int>(this);
+
+                if (result == 0) return;             // Cancel: keep the window open.
+                saveRequested = result == 2;
+            }
+
+            // Stop first: saving while nodes run is rejected by the edit gate, and the window must
+            // never close while nodes still own ports/sockets/files.
+            await main.StopForShutdownAsync();
+            if (saveRequested && !await main.SaveCurrentAsync())
+            {
+                // Save failed: keep the window, and let the user keep editing / start again.
+                main.CancelShutdown();
+                return;
+            }
+            main.IsDirty = false;
+            main.DisposeBroadcastDemo();
+            _allowClose = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            main.CancelShutdown();
+            main.StatusText = $"{main.L["ErrorPrefix"]}: {ex.Message}";
+        }
+        finally
+        {
+            _closing = false;
         }
     }
 }

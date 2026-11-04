@@ -26,14 +26,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
+    <ProjectReference Include="..\BroadcastKit\BroadcastKit.csproj" />
+    <ProjectReference Include="..\BroadcastKit.Contracts\BroadcastKit.Contracts.csproj" />
     <ProjectReference Include="..\Hosting.Logging\Hosting.Logging.csproj" />
   </ItemGroup>
-  <Target Name="CopyPlugins" AfterTargets="Build">
-    <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
-    </ItemGroup>
-    <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
-  </Target>
+
+  <!-- The GUI library is not an app: plugin distribution is owned by the host projects
+       (AgentFlow.Desktop, AgentFlow.Cli) via Directory.Build.targets. -->
 </Project>
 
 

@@ -7,6 +7,7 @@
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using AgentFlow.Contracts;
 using AgentFlow.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -50,6 +51,9 @@ public partial class NodeParamDlgViewModel : ViewModelBase
 
     /// <summary>Title-bar subtitle: node name · instance id.</summary>
     public string Subtitle => $"{Title} · #{Node.InstanceId}";
+
+    /// <summary>Raised after edited values have been written back, so the editor can mark itself dirty.</summary>
+    public event EventHandler? NodeChanged;
 
     /// <summary>Zones shown in the left-hand navigation list.</summary>
     public ObservableCollection<ParameterZoneNode> Zones { get; } = new();
@@ -220,6 +224,7 @@ public partial class NodeParamDlgViewModel : ViewModelBase
     private void Confirm()
     {
         WriteBack();
+        IsDirty = false;
         RequestClose?.Invoke(this, true);
     }
 
@@ -282,6 +287,7 @@ public partial class NodeParamDlgViewModel : ViewModelBase
         OnPropertyChanged(nameof(Caption));
         OnPropertyChanged(nameof(Subtitle));
         OnPropertyChanged(nameof(DialogTitle));
+        NodeChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private static void AddRow(
@@ -318,18 +324,35 @@ public partial class NodeParamDlgViewModel : ViewModelBase
         {
             if (type == typeof(string)) return raw;
             if (type == typeof(bool)) return bool.Parse(raw);
-            if (type == typeof(int)) return int.Parse(raw);
-            if (type == typeof(long)) return long.Parse(raw);
-            if (type == typeof(double)) return double.Parse(raw);
-            if (type == typeof(float)) return float.Parse(raw);
+            if (type == typeof(int)) return ParseInt(raw);
+            if (type == typeof(long)) return ParseLong(raw);
+            if (type == typeof(double)) return ParseDouble(raw);
+            if (type == typeof(float)) return (float)ParseDouble(raw);
             if (type.IsEnum) return Enum.Parse(type, raw);
-            return Convert.ChangeType(raw, type);
+            return Convert.ChangeType(raw, type, CultureInfo.InvariantCulture);
         }
         catch
         {
             return raw;   // Fall back to the raw string; the node handles it.
         }
     }
+
+    // Parameter text is persisted culture-invariantly ("0.2"); also accept a local decimal comma
+    // while editing, then store the typed invariant value.
+    private static int ParseInt(string raw) =>
+        int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var invariant)
+            ? invariant
+            : int.Parse(raw, NumberStyles.Integer, CultureInfo.CurrentCulture);
+
+    private static long ParseLong(string raw) =>
+        long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var invariant)
+            ? invariant
+            : long.Parse(raw, NumberStyles.Integer, CultureInfo.CurrentCulture);
+
+    private static double ParseDouble(string raw) =>
+        double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var invariant)
+            ? invariant
+            : double.Parse(raw, NumberStyles.Float, CultureInfo.CurrentCulture);
 }
 
 /// <summary>A zone: the top-level section listed on the dialog's left-hand side.</summary>

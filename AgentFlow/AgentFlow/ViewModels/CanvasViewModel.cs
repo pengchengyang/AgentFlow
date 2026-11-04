@@ -121,6 +121,7 @@ public partial class CanvasViewModel : ViewModelBase
     // ---- Connecting (output pin drag) ----
     public void BeginConnect(PinViewModel outPin, Point pointer)
     {
+        if (!_main.CanEditGraphNow()) return;
         _connecting = true;
         _connectSource = outPin;
         _pointer = pointer;
@@ -146,6 +147,10 @@ public partial class CanvasViewModel : ViewModelBase
     // ---- Node dragging ----
     public void BeginDrag(NodeViewModel node, Point pointer)
     {
+        // Moving a node while the workflow is running would rewrite its coordinates through the
+        // auto-save path (and, via SyncGraphState, reconfigure the running instance). Use the same
+        // stop-before-edit gate as delete/connect/clear.
+        if (!_main.CanEditGraphNow()) return;
         _draggingNode = true;
         _dragNode = node;
         _dragOffset = pointer - node.Location;

@@ -12,6 +12,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 
 using System.Linq;
@@ -29,6 +30,10 @@ public partial class App : Application
         IsDarkTheme = !IsDarkTheme;
         var app = Current as App;
         if (app == null) return;
+
+        // Fluent controls follow the theme variant; the app's own color dictionary follows the
+        // matching palette. Previously only the colors changed and Fluent controls stayed light.
+        app.RequestedThemeVariant = IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
 
         // Clear the resource dictionary and reload the corresponding theme
         app.Resources.MergedDictionaries.Clear();

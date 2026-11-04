@@ -15,8 +15,8 @@ namespace AgentFlow.Core;
 
 /// <summary>
 /// Plugin loader: scans a directory for dlls via reflection, discovers [Node] + BaseNode
-/// implementations and registers them. Uses isolated AssemblyLoadContexts so plugins
-/// stay decoupled from the UI process (unload support can be added later).
+/// implementations and registers them. Uses isolated collectible AssemblyLoadContexts so plugins
+/// stay decoupled from the UI process; <see cref="UnloadAll"/> releases them once the graph is empty.
 /// Besides type discovery it is the <b>single source of truth for node instances</b>: every
 /// managed node instance created via <see cref="CreateNodeInstance"/> is tracked in
 /// <see cref="Instances"/>. Each instance gets a compact <see cref="int"/> id in the range 1000..5000
@@ -29,7 +29,20 @@ public sealed class PluginLoader
     private readonly List<AssemblyLoadContext> _contexts = new();
     private readonly List<BaseNode> _instances = new();
     private readonly object _gate = new();
+    private readonly NodeIdPool _nodeIds = new();
     private NodeRegistry? _registry;
+
+    /// <summary>
+    /// Assemblies that must resolve from the host's default ALC. Plugins may reference these
+    /// libraries directly, but each plugin ALC must not load its own copy: static singletons and
+    /// generic type identity would then split into per-plugin worlds.
+    /// </summary>
+    private static readonly HashSet<string> SharedAssemblyNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "AgentFlow.Contracts",
+        "BroadcastKit",
+        "BroadcastKit.Contracts"
+    };
 
 
     public PluginLoader(ILogger logger) => _logger = logger;
@@ -41,18 +54,44 @@ public sealed class PluginLoader
         get { lock (_gate) return SortByDependenciesLocked(); }
     }
 
-    /// <summary>Scan all dlls in the directory and register discovered nodes.</summary>
+    /// <summary>
+    /// Scan all dlls in the directory and register discovered nodes.
+    /// </summary>
+    /// <remarks>
+    /// A missing or empty directory, a plugin assembly that fails to load, and a directory that
+    /// yields no node types at all are all reported at error level: a host with zero node types
+    /// is unusable (empty palette, an empty workflow cannot run, and a saved workflow cannot be
+    /// restored), so this must be visible in the log rather than a silent no-op.
+    /// </remarks>
     public void LoadFromDirectory(string pluginDir, NodeRegistry registry)
     {
         _registry = registry;
-        if (!Directory.Exists(pluginDir))
+        var fullDir = Path.GetFullPath(pluginDir);
+        if (!Directory.Exists(fullDir))
         {
-            _logger.LogWarning("Plugin directory does not exist: {Dir}", pluginDir);
+            _logger.LogError(
+                "Plugin directory not found: {Dir}. No node types are available; check that the deployment contains the plugins folder.",
+                fullDir);
             return;
         }
 
-        var fullDir = Path.GetFullPath(pluginDir);
+        var dlls = new List<string>();
         foreach (var dll in Directory.EnumerateFiles(fullDir, "*.dll"))
+        {
+            dlls.Add(dll);
+        }
+
+        if (dlls.Count == 0)
+        {
+            _logger.LogError(
+                "Plugin directory is empty: {Dir}. No node types are available; check that the deployment contains the plugins folder.",
+                fullDir);
+            return;
+        }
+
+        var nodeTypesBefore = registry.Nodes.Count;
+        var failedDlls = new List<string>();
+        foreach (var dll in dlls)
         {
             try
             {
@@ -60,8 +99,28 @@ public sealed class PluginLoader
             }
             catch (Exception ex)
             {
+                failedDlls.Add(Path.GetFileName(dll));
                 _logger.LogError(ex, "Failed to load plugin: {Dll}", dll);
             }
+        }
+
+        var nodeTypesLoaded = registry.Nodes.Count - nodeTypesBefore;
+        if (nodeTypesLoaded == 0)
+        {
+            // Every assembly failed, or the folder holds assemblies that are not plugin assemblies.
+            _logger.LogError(
+                "No node types were registered from the {DllCount} plugin assemblies in {Dir} ({FailedCount} failed to load). The application has no usable components.",
+                dlls.Count, fullDir, failedDlls.Count);
+            return;
+        }
+
+        if (failedDlls.Count > 0)
+        {
+            // Some plugins failed while others work: still an error, because a workflow that needs the
+            // broken component cannot be loaded or run, and the cause must not drown in a passing run.
+            _logger.LogError(
+                "Loaded {NodeTypes} node types from {Dir}, but {FailedCount} of {DllCount} plugin assemblies failed to load: {FailedDlls}",
+                nodeTypesLoaded, fullDir, failedDlls.Count, dlls.Count, string.Join(", ", failedDlls));
         }
     }
 
@@ -78,7 +137,7 @@ public sealed class PluginLoader
         EnsurePinsCreated(instance, registry.Get(name));
         lock (_gate)
         {
-            instance.InstanceId = NodeIdPool.Allocate();
+            instance.InstanceId = _nodeIds.Allocate();
             _instances.Add(instance);
         }
         _logger.LogTrace("PluginLoader: created node instance #{InstanceId} ({Name})",
@@ -103,12 +162,12 @@ public sealed class PluginLoader
         {
             if (instanceId > 0)
             {
-                NodeIdPool.Reserve(instanceId);
+                _nodeIds.Reserve(instanceId);
                 instance.InstanceId = instanceId;
             }
             else
             {
-                instance.InstanceId = NodeIdPool.Allocate();
+                instance.InstanceId = _nodeIds.Allocate();
             }
             instance.DependsOn = dependsOn;
             _instances.Add(instance);
@@ -133,7 +192,7 @@ public sealed class PluginLoader
             if (idx < 0) return false;
             var instance = _instances[idx];
             _instances.RemoveAt(idx);
-            NodeIdPool.Release(instance.InstanceId);
+            _nodeIds.Release(instance.InstanceId);
             ReleasePins(instance);
         }
         _logger.LogTrace("PluginLoader: deleted node instance #{InstanceId}", instanceId);
@@ -147,7 +206,7 @@ public sealed class PluginLoader
         lock (_gate)
         {
             if (!_instances.Remove(instance)) return false;
-            NodeIdPool.Release(instance.InstanceId);
+            _nodeIds.Release(instance.InstanceId);
             ReleasePins(instance);
         }
         _logger.LogTrace("PluginLoader: deleted node instance #{InstanceId} ({DisplayName})",
@@ -189,22 +248,16 @@ public sealed class PluginLoader
     }
 
     /// <summary>
-    /// Release every pin owned by the node: clear any bidirectional ConnectedPin references.
-    /// (Pin ids need no bookkeeping: they are assigned lazily per document, only when saving.)
+    /// Release every pin owned by the node: clear wiring (targets + ConnectedPin), the latest
+    /// received value and any bound execution context, so a reused instance starts clean.
+    /// (Pin ids are per-document, assigned when the node is added / saved.)
     /// </summary>
     private static void ReleasePins(BaseNode node)
     {
         foreach (var pin in node.InputPins)
-            ReleasePin(pin);
+            pin.ResetRuntimeState();
         foreach (var pin in node.OutputPins)
-            ReleasePin(pin);
-    }
-
-    private static void ReleasePin(BasePin pin)
-    {
-        if (pin.ConnectedPin is { } other && ReferenceEquals(other.ConnectedPin, pin))
-            other.ConnectedPin = null;
-        pin.ConnectedPin = null;
+            pin.ResetRuntimeState();
     }
 
     /// <summary>Remove all managed node instances (e.g. before loading a fresh workflow).</summary>
@@ -213,64 +266,58 @@ public sealed class PluginLoader
         lock (_gate)
         {
             _instances.Clear();
-            NodeIdPool.Reset();
+            _nodeIds.Reset();
         }
+    }
+
+    /// <summary>
+    /// Unload every plugin AssemblyLoadContext and clear the registry. Only valid when no node
+    /// instances are alive; a live type reference would make the collectible context unloadable.
+    /// </summary>
+    public void UnloadAll()
+    {
+        lock (_gate)
+        {
+            if (_instances.Count > 0)
+                throw new InvalidOperationException(
+                    "Cannot unload plugins while node instances still exist; clear the graph first.");
+            _nodeIds.Reset();
+        }
+
+        foreach (var context in _contexts)
+        {
+            try { context.Unload(); }
+            catch (Exception ex) { _logger.LogError(ex, "Failed to unload plugin context: {Name}", context.Name); }
+        }
+        _contexts.Clear();
+        _registry?.Clear();
+        _registry = null;
     }
 
     /// <summary>Return instances in dependency order (caller holds <see cref="_gate"/>).</summary>
-    private List<BaseNode> SortByDependenciesLocked()
-    {
-        var byId = _instances.ToDictionary(n => n.InstanceId);
-        var dependents = new Dictionary<int, List<BaseNode>>();
-        var indegree = _instances.ToDictionary(n => n, _ => 0);
-
-        foreach (var node in _instances)
-        {
-            if (node.DependsOn == 0 || !byId.TryGetValue(node.DependsOn, out var dependency))
-                continue;
-
-            if (!dependents.TryGetValue(dependency.InstanceId, out var list))
-            {
-                list = new List<BaseNode>();
-                dependents[dependency.InstanceId] = list;
-            }
-
-            list.Add(node);
-            indegree[node]++;
-        }
-
-        var queue = new Queue<BaseNode>(_instances.Where(n => indegree[n] == 0));
-        var sorted = new List<BaseNode>(_instances.Count);
-
-        while (queue.Count > 0)
-        {
-            var node = queue.Dequeue();
-            sorted.Add(node);
-
-            if (!dependents.TryGetValue(node.InstanceId, out var next))
-                continue;
-
-            foreach (var dependent in next)
-            {
-                indegree[dependent]--;
-                if (indegree[dependent] == 0)
-                    queue.Enqueue(dependent);
-            }
-        }
-
-        if (sorted.Count < _instances.Count)
-            sorted.AddRange(_instances.Where(n => !sorted.Contains(n)));
-
-        return sorted;
-    }
+    private List<BaseNode> SortByDependenciesLocked() => WorkflowOrdering.SortByDependencies(_instances);
 
     private void LoadAssembly(string dllPath, NodeRegistry registry)
     {
-        // One collectible ALC per plugin dll; Contracts resolves to the shared default context.
+        // One collectible ALC per plugin dll; host-owned shared libraries resolve to default.
         var alc = new AssemblyLoadContext(Path.GetFileNameWithoutExtension(dllPath), isCollectible: true);
         alc.Resolving += (_, name) =>
         {
-            // Resolve plugin dependencies from the plugin directory first.
+            // Host-owned shared assemblies always come from the default ALC. This is what lets
+            // plugins reference BroadcastKit and use the host's TopicBus.Instance singleton.
+            if (name.Name is not null && SharedAssemblyNames.Contains(name.Name))
+            {
+                try
+                {
+                    return AssemblyLoadContext.Default.LoadFromAssemblyName(name);
+                }
+                catch (FileNotFoundException)
+                {
+                    return null;
+                }
+            }
+
+            // Resolve private plugin dependencies from the plugin directory.
             var candidate = Path.Combine(Path.GetDirectoryName(dllPath)!, name.Name + ".dll");
             return File.Exists(candidate) ? alc.LoadFromAssemblyPath(Path.GetFullPath(candidate)) : null;
         };
@@ -278,6 +325,11 @@ public sealed class PluginLoader
 
         var asm = alc.LoadFromAssemblyPath(dllPath);
 
+        // Collect descriptors first, then register atomically for this assembly. A duplicate type
+        // name throws before any of this DLL's types are added, so a failed load cannot leave a
+        // half-registered plugin behind.
+        var descriptors = new List<NodeDescriptor>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var type in asm.GetTypes())
         {
             if (!typeof(BaseNode).IsAssignableFrom(type) || type.IsAbstract)
@@ -287,11 +339,19 @@ public sealed class PluginLoader
             if (Activator.CreateInstance(type) is not BaseNode probe)
                 continue;
 
-            registry.Register(new NodeDescriptor(
-                probe.Name, probe.DisplayName ?? "", probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
+            if (!names.Add(probe.Name) || registry.Contains(probe.Name))
+                throw new InvalidOperationException(
+                    $"Duplicate node type '{probe.Name}' in plugin '{Path.GetFileName(dllPath)}'.");
 
+            descriptors.Add(new NodeDescriptor(
+                probe.Name, probe.DisplayName ?? "", probe.Category, type, probe.InputPins, probe.OutputPins, probe.Parameters));
+        }
+
+        foreach (var descriptor in descriptors)
+        {
+            registry.Register(descriptor);
             _logger.LogTrace("Registered node: {Name} ({DisplayName}) <- {Dll}",
-                probe.Name, probe.DisplayName, Path.GetFileName(dllPath));
+                descriptor.Name, descriptor.DisplayName, Path.GetFileName(dllPath));
         }
     }
 }

@@ -37,9 +37,7 @@ public static class LogicDeserializer
         // New format is the logic object itself. A legacy wrapper containing a "logic" key
         // is also accepted for files saved before the top-level rename.
         var logic = json["logic"] as JsonObject ?? json;
-        node.DependsOn = logic.TryGetPropertyValue("dependsOn", out var deps) && deps is not null
-            ? deps.GetValue<int>()
-            : 0;
+        node.DependsOn = JsonValueReader.GetInt(logic, "dependsOn");
         node.DeserializeParameters(logic);
     }
 
@@ -62,14 +60,15 @@ public static class LogicDeserializer
         foreach (var item in pins)
         {
             if (item is not JsonObject obj) continue;
-            var name = obj["name"]?.GetValue<string>();
+            var name = JsonValueReader.GetString(obj, "name");
             if (string.IsNullOrEmpty(name)) continue;
 
             var pin = node.InputPins.FirstOrDefault(p => p.Name == name)
                       ?? node.OutputPins.FirstOrDefault(p => p.Name == name);
             if (pin is null) continue;
 
-            if (obj["id"]?.GetValue<int>() is int savedId && savedId > 0)
+            var savedId = JsonValueReader.GetInt(obj, "id");
+            if (savedId > 0)
                 pin.RestoreId(savedId);
         }
     }

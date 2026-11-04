@@ -1,0 +1,6 @@
+# Source files are UTF-8 without BOM, so every tool (editor, formatter, codemod, CI check)
+# reads and writes the same bytes. Keep this file at the repository root.
+root = true
+
+[*]
+charset = utf-8

@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System.Collections.ObjectModel;
+using System.Globalization;
 using AgentFlow.Contracts;
 using AgentFlow.Core;
 using AgentFlow.Models;
@@ -126,18 +127,35 @@ public partial class ParameterViewModel : ViewModelBase
         {
             if (t == typeof(string)) return Value;
             if (t == typeof(bool)) return bool.Parse(Value);
-            if (t == typeof(int)) return int.Parse(Value);
-            if (t == typeof(long)) return long.Parse(Value);
-            if (t == typeof(double)) return double.Parse(Value);
-            if (t == typeof(float)) return float.Parse(Value);
+            if (t == typeof(int)) return ParseInt(Value);
+            if (t == typeof(long)) return ParseLong(Value);
+            if (t == typeof(double)) return ParseDouble(Value);
+            if (t == typeof(float)) return (float)ParseDouble(Value);
             if (t.IsEnum) return Enum.Parse(t, Value);
-            return Convert.ChangeType(Value, t);
+            return Convert.ChangeType(Value, t, CultureInfo.InvariantCulture);
         }
         catch
         {
             return Value;   // Fall back to string; the node handles it.
         }
     }
+
+    // Numeric parameters are written culture-invariantly ("0.2"), but a user editing on de-DE may
+    // still type "0,2": try invariant first, then the current culture, and only then fall back.
+    private static int ParseInt(string text) =>
+        int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var invariant)
+            ? invariant
+            : int.Parse(text, NumberStyles.Integer, CultureInfo.CurrentCulture);
+
+    private static long ParseLong(string text) =>
+        long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var invariant)
+            ? invariant
+            : long.Parse(text, NumberStyles.Integer, CultureInfo.CurrentCulture);
+
+    private static double ParseDouble(string text) =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var invariant)
+            ? invariant
+            : double.Parse(text, NumberStyles.Float, CultureInfo.CurrentCulture);
 }
 
 /// <summary>

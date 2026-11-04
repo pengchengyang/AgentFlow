@@ -10,6 +10,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\AgentFlow\Assets\avalonia-logo.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
+    <!-- This project owns the plugin pipeline; see Directory.Build.targets. -->
+    <PluginHost>true</PluginHost>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,20 +28,5 @@
     <ProjectReference Include="@(PluginProjects)" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
-  <!-- Dev build: copy plugin DLLs next to the desktop output so the app finds them. -->
-  <Target Name="CopyPlugins" AfterTargets="Build">
-    <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
-    </ItemGroup>
-    <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
-  </Target>
-
-  <!-- Publish: plugins are pure managed DLLs (RID-independent), so just copy them into
-       the publish output's plugins/ folder. This runs for every RID (linux-x64 etc.). -->
-  <Target Name="PublishPlugins" AfterTargets="Publish">
-    <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
-    </ItemGroup>
-    <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(PublishDir)plugins" SkipUnchangedFiles="true" />
-  </Target>
+  <!-- Plugin distribution (build + publish) is owned by Directory.Build.targets. -->
 </Project>

@@ -40,7 +40,9 @@ public sealed class LocalWorkflowStore : IWorkflowStore
 
     public Task SaveAsync(string json)
     {
-        File.WriteAllText(_path, json);
+        var temp = _path + ".tmp";
+        File.WriteAllText(temp, json);
+        File.Move(temp, _path, overwrite: true);
         return Task.CompletedTask;
     }
 }
@@ -64,22 +66,17 @@ public sealed class HttpWorkflowStore : IWorkflowStore
 
     public async Task<string?> LoadAsync()
     {
-        try
-        {
-            var response = await _http.GetAsync(_endpoint);
-            if (!response.IsSuccessStatusCode)
-                return null; // nothing stored yet (e.g. 404)
-            return await response.Content.ReadAsStringAsync();
-        }
-        catch
-        {
-            return null; // backend not reachable -> start empty
-        }
+        using var response = await _http.GetAsync(_endpoint);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null; // nothing stored yet
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
     }
 
     public async Task SaveAsync(string json)
     {
         using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-        await _http.PostAsync(_endpoint, content);
+        using var response = await _http.PostAsync(_endpoint, content);
+        response.EnsureSuccessStatusCode();
     }
 }

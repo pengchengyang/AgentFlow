@@ -3,7 +3,15 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
     <ProjectReference Include="..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
+    <!-- Shared plugin dependency: Node.Broadcast.Demo references BroadcastKit, so the host
+         (even though the CLI no longer uses TopicBus itself) must provide this assembly. -->
+    <ProjectReference Include="..\BroadcastKit\BroadcastKit.csproj" />
+    <ProjectReference Include="..\BroadcastKit.Contracts\BroadcastKit.Contracts.csproj" />
     <ProjectReference Include="..\Hosting.Logging\Hosting.Logging.csproj" />
+    <!-- Build the plugin projects as part of this project; they are not referenced
+         assemblies (they are loaded from plugins/ at runtime). -->
+    <PluginProjects Include="..\plugins\**\*.csproj" />
+    <ProjectReference Include="@(PluginProjects)" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 
@@ -17,14 +25,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x64</Platforms>
+    <!-- This project owns the plugin pipeline; see Directory.Build.targets. -->
+    <PluginHost>true</PluginHost>
   </PropertyGroup>
 
-  <Target Name="CopyPlugins" AfterTargets="Build">
-    <ItemGroup>
-      <PluginDlls Include="..\plugins\**\bin\$(Configuration)\net8.0\*.dll" Exclude="..\plugins\**\bin\$(Configuration)\net8.0\AgentFlow.*.dll" />
-    </ItemGroup>
-    <Copy SourceFiles="@(PluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
-  </Target>
+  <!-- Plugin distribution (build + publish) is owned by Directory.Build.targets. -->
 </Project>
-
-

@@ -25,13 +25,24 @@ public sealed class WorkflowEngine
     private readonly NodeRegistry _registry;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
+    private readonly NodeServiceRegistry? _services;
     private WorkflowRun? _prepared;
     private WorkflowGraph? _preparedGraph;
 
-    public WorkflowEngine(NodeRegistry registry, ILoggerFactory loggerFactory)
+    /// <summary>Whether any node in the prepared run has failed (FailFast stop or Isolate).</summary>
+    public bool HasFailedNodes => _prepared?.Manager.Instances.Any(n => n.Failed) ?? false;
+
+    /// <summary>Whether any node is still connecting/running (or failed but not yet reset).</summary>
+    public bool IsActive => _prepared?.Manager.Instances.Any(n => n.State != NodeState.Idle) ?? false;
+
+    public WorkflowEngine(
+        NodeRegistry registry,
+        ILoggerFactory loggerFactory,
+        NodeServiceRegistry? services = null)
     {
         _registry = registry;
         _loggerFactory = loggerFactory;
+        _services = services;
         _logger = loggerFactory.CreateLogger(nameof(WorkflowEngine));
     }
 
@@ -42,11 +53,22 @@ public sealed class WorkflowEngine
         await run.Manager.InitializeAsync(run.GetContext, ct);
     }
 
-    /// <summary>Run every node in the workflow once, in execution order (uses <see cref="NodeInstanceManager"/>).</summary>
+    /// <summary>
+    /// Run every node in the workflow once to completion (initialize first, then run) and always
+    /// stop afterwards so the nodes release their resources. Uses <see cref="NodeInstanceManager"/>.
+    /// </summary>
     public async Task RunAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
         var run = Prepare(graph);
-        await run.Manager.RunAsync(run.GetContext, ct);
+        try
+        {
+            await run.Manager.InitializeAsync(run.GetContext, ct);
+            await run.Manager.RunAsync(run.GetContext, ct);
+        }
+        finally
+        {
+            await run.Manager.StopAsync(run.GetContext, CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -66,7 +88,19 @@ public sealed class WorkflowEngine
     public async Task StopAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
         _logger.LogTrace("WorkflowEngine: stop.");
-        var run = Prepare(graph);
+        WorkflowRun run;
+        try
+        {
+            run = Prepare(graph);
+        }
+        catch (Exception ex)
+        {
+            // The graph failed validation / wiring / registration before a prepared run existed,
+            // so there is nothing to stop. Do not replay the same error from the CLI's finally block.
+            _logger.LogDebug("Stop skipped for an unprepared workflow: {Message}", ex.Message);
+            return;
+        }
+
         await run.Manager.StopAsync(run.GetContext, ct);
     }
 
@@ -98,52 +132,45 @@ public sealed class WorkflowEngine
         foreach (var spec in graph.Nodes)
         {
             var node = _registry.CreateInstance(spec.Name);
-            node.Configure(NormalizeParameters(spec.Parameters));
+            node.Configure(ParameterConversion.Normalize(spec.Parameters));
+            // Restore the identity fields the same way the GUI does (the built-in parameters are
+            // carried inside spec.Parameters), so DependsOn ordering works in headless mode too.
+            var instanceId = WorkflowValidation.ToInt(spec.Parameters.GetValueOrDefault("InstanceId"));
+            if (instanceId > 0) node.InstanceId = instanceId;
+            node.DependsOn = WorkflowValidation.ToInt(spec.Parameters.GetValueOrDefault("DependsOn"));
             instances[spec.Id] = node;
             contexts[spec.Id] = new NodeContext(
                 spec.Id, node,
-                _loggerFactory.CreateLogger($"Node:{spec.Id}"));
+                _loggerFactory.CreateLogger($"Node:{spec.Id}"),
+                _services);
             _logger.LogTrace("Instantiated node {Id} ({Name})", spec.Id, spec.Name);
         }
 
-        // 2. Wire the graph: output.Connect(input) -- output pins hold input pin references.
+        // 2. Wire the graph: output.ConnectTo(input) -- output pins keep a snapshot of targets.
         foreach (var conn in graph.Connections)
         {
             var output = contexts[conn.FromNode].GetOutputPin(conn.FromPin);
             var input = contexts[conn.ToNode].GetInputPin(conn.ToPin);
-            output.Connect(input);
+            output.ConnectTo(input);
             _logger.LogTrace("Wired: {From}.{FromPin} -> {To}.{ToPin}",
                 conn.FromNode, conn.FromPin, conn.ToNode, conn.ToPin);
         }
 
-        // 3. Topological sort (Kahn) with startup-priority tie-break (ALC-inspired).
-        var order = WorkflowValidation.TopologicalSort(graph);
-        _logger.LogTrace("Execution order: {Order}", string.Join(" -> ", order));
+        // 3. Start order: the wire topological order (with Priority tie-break) is the base, and the
+        // same DependsOn ordering the GUI uses (via PluginLoader) is applied on top. A DependsOn
+        // edge therefore always wins, while otherwise-independent nodes keep their priority/wiring
+        // order — previously headless mode ignored DependsOn entirely.
+        var wireOrder = WorkflowValidation.TopologicalSort(graph);
+        var topoInstances = wireOrder.Select(id => instances[id]).ToList();
+        var order = WorkflowOrdering.SortByDependencies(topoInstances);
+        _logger.LogTrace("Execution order: {Order}",
+            string.Join(" -> ", order.Select(n => n.InstanceId)));
 
         // 4. Build the same unified NodeInstanceManager used by the AgentFlow GUI.
-        var orderedInstances = order.Select(id => instances[id]).ToList();
-        var manager = new NodeInstanceManager(orderedInstances);
+        var manager = new NodeInstanceManager(order, _loggerFactory.CreateLogger(nameof(NodeInstanceManager)));
         var nodeIds = instances.ToDictionary(kv => kv.Value, kv => kv.Key);
         return new WorkflowRun(manager, node => contexts[nodeIds[node]]);
     }
-
-    /// <summary>JSON-deserialized parameter values are JsonElements; convert to native types.</summary>
-    private static IReadOnlyDictionary<string, object?> NormalizeParameters(
-        IReadOnlyDictionary<string, object?> parameters) =>
-        parameters.ToDictionary(kv => kv.Key, kv => Normalize(kv.Value));
-
-    private static object? Normalize(object? value) =>
-        value is JsonElement je
-            ? je.ValueKind switch
-            {
-                JsonValueKind.String => je.GetString(),
-                JsonValueKind.Number => je.TryGetInt64(out var l) ? l : je.GetDouble(),
-                JsonValueKind.True => true,
-                JsonValueKind.False => false,
-                JsonValueKind.Null => null,
-                _ => je.ToString()
-            }
-            : value;
 
     /// <summary>Prepared graph state: the manager plus the context factory bound to its instances.</summary>
     private sealed class WorkflowRun
@@ -160,36 +187,50 @@ public sealed class WorkflowEngine
     }
 
     /// <summary>
-    /// Node execution context: owns all runtime pins of one node.
+    /// Node execution context: owns the node's pins for the duration of one run.
     /// SetOutput -> output pin.Send (pushes to downstream Receive);
     /// GetInput -> reads the latest value received by the input pin.
     /// </summary>
     private sealed class NodeContext : INodeContext
     {
         private readonly string _nodeId;
-        private readonly Dictionary<string, RuntimeInputPin> _inputs = new();
-        private readonly Dictionary<string, RuntimeOutputPin> _outputs = new();
+        private readonly BaseNode _node;
+        private readonly NodeServiceRegistry? _services;
+        private readonly Dictionary<string, BasePin> _inputs = new();
+        private readonly Dictionary<string, BasePin> _outputs = new();
 
         public ILogger Logger { get; }
 
-        public NodeContext(string nodeId, BaseNode node, ILogger logger)
+        public NodeContext(
+            string nodeId,
+            BaseNode node,
+            ILogger logger,
+            NodeServiceRegistry? services)
         {
             _nodeId = nodeId;
+            _node = node;
+            _services = services;
             Logger = logger;
 
             foreach (var pin in node.InputPins)
-                _inputs[pin.Name] = new RuntimeInputPin(pin, node, this);
+            {
+                pin.Context = this;
+                _inputs[pin.Name] = pin;
+            }
 
             foreach (var pin in node.OutputPins)
-                _outputs[pin.Name] = new RuntimeOutputPin(pin, node);
+            {
+                pin.Context = this;
+                _outputs[pin.Name] = pin;
+            }
         }
 
-        public RuntimeInputPin GetInputPin(string name) =>
+        public BasePin GetInputPin(string name) =>
             _inputs.TryGetValue(name, out var p)
                 ? p
                 : throw new InvalidOperationException($"Node {_nodeId} has no input pin: {name}");
 
-        public RuntimeOutputPin GetOutputPin(string name) =>
+        public BasePin GetOutputPin(string name) =>
             _outputs.TryGetValue(name, out var p)
                 ? p
                 : throw new InvalidOperationException($"Node {_nodeId} has no output pin: {name}");
@@ -197,11 +238,32 @@ public sealed class WorkflowEngine
         public T? GetInput<T>(string pinName) =>
             _inputs.TryGetValue(pinName, out var pin) && pin.Value is T t ? t : default;
 
+        public bool HasInput(string pinName) =>
+            _inputs.TryGetValue(pinName, out var pin) && pin.HasValue;
+
+        public bool TryGetInput<T>(string pinName, out T? value)
+        {
+            if (_inputs.TryGetValue(pinName, out var pin) && pin.Value is T typed)
+            {
+                value = typed;
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        public Task<Sample?> WaitForInputAsync(
+            string pinName,
+            TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default) =>
+            GetInputPin(pinName).WaitForValueAsync(timeout, cancellationToken);
+
         public void SetOutput(string pinName, Sample? value)
         {
             var pin = GetOutputPin(pinName);
             Logger.LogTrace("Pin {Node}.{Pin} sent {Value} ({Count} downstream)",
-                _nodeId, pinName, value, pin.Targets.Count);
+                _nodeId, pinName, value, pin.TargetCount);
             pin.SendSample(value);   // The output pin calls Receive on every connected input pin.
         }
 
@@ -221,7 +283,8 @@ public sealed class WorkflowEngine
             {
                 return (T)(object)EmptyAgentToolProvider.Instance;
             }
-            return default;
+            var service = _services?.Get<T>(_node);
+            return service is T typed ? typed : default;
         }
 
         private static readonly OllamaClientFactory LlmFactory = new();

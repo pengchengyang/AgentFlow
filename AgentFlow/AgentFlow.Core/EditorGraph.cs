@@ -12,10 +12,10 @@ using Microsoft.Extensions.Logging;
 namespace AgentFlow.Core;
 
 /// <summary>
-/// An editor-time graph node: holds a <see cref="BaseNode"/> instance and all of
-/// its runtime pins (inputs / outputs). Wiring is maintained directly on
-/// <see cref="RuntimeOutputPin.Targets"/> — the output pin keeps references to the
-/// connected input pins, and data flows through Send → Receive.
+/// An editor-time graph node: holds a <see cref="BaseNode"/> instance and exposes its own
+/// contract pins (<see cref="BasePin"/>, the single pin type used for both declaration and
+/// runtime wiring). Wiring is maintained directly on the output pin's target snapshot, and
+/// data flows through <c>SendSample</c> → <c>ReceiveSample</c>.
 /// </summary>
 public sealed class EditorNode
 {
@@ -39,10 +39,10 @@ public sealed class EditorNode
     public Dictionary<string, object?> Parameters { get; set; } = new();
 
     /// <summary>All input pins, indexed by name.</summary>
-    public IReadOnlyDictionary<string, RuntimeInputPin> Inputs { get; }
+    public IReadOnlyDictionary<string, BasePin> Inputs { get; }
 
     /// <summary>All output pins, indexed by name.</summary>
-    public IReadOnlyDictionary<string, RuntimeOutputPin> Outputs { get; }
+    public IReadOnlyDictionary<string, BasePin> Outputs { get; }
 
     public EditorNode(
         string id,
@@ -64,15 +64,16 @@ public sealed class EditorNode
         RuntimeNode = runtimeNode;
         Parameters = parameters is null ? new() : new Dictionary<string, object?>(parameters);
 
-        var inputs = new Dictionary<string, RuntimeInputPin>(StringComparer.Ordinal);
-        var outputs = new Dictionary<string, RuntimeOutputPin>(StringComparer.Ordinal);
+        var inputs = new Dictionary<string, BasePin>(StringComparer.Ordinal);
+        var outputs = new Dictionary<string, BasePin>(StringComparer.Ordinal);
 
-        // Use the node instance's own pins (created by its constructor) rather than the
-        // shared probe pins, so every node instance keeps unique pin ids/values.
+        // The node instance's own pins are the single pin type: the editor wires these objects
+        // directly (no runtime wrapper), so a plugin that calls BasePin.SendSample reaches the
+        // downstream node through the same object the engine uses.
         foreach (var pin in runtimeNode.InputPins)
-            inputs[pin.Name] = new RuntimeInputPin(pin, runtimeNode);
+            inputs[pin.Name] = pin;
         foreach (var pin in runtimeNode.OutputPins)
-            outputs[pin.Name] = new RuntimeOutputPin(pin, runtimeNode);
+            outputs[pin.Name] = pin;
 
         Inputs = inputs;
         Outputs = outputs;
@@ -95,8 +96,8 @@ public sealed class EditorConnection
         ToPin = toPin;
     }
 
-    public RuntimeOutputPin SourcePin => FromNode.Outputs[FromPin];
-    public RuntimeInputPin TargetPin => ToNode.Inputs[ToPin];
+    public BasePin SourcePin => FromNode.Outputs[FromPin];
+    public BasePin TargetPin => ToNode.Inputs[ToPin];
 }
 
 /// <summary>
@@ -111,13 +112,30 @@ public sealed class EditorGraph
     private readonly PluginLoader _pluginLoader;
     private readonly ILogger _logger;
 
+    /// <summary>Host-provided services resolved by node contexts (for example a broadcast facade).</summary>
+    private NodeServiceRegistry? _services;
+
     /// <summary>This document's pin-id allocator: ids only need to be unique inside this document.</summary>
     private readonly PinIdAllocator _pinIds = new();
+
+    /// <summary>
+    /// Host services available to node contexts. Set it once before running nodes; contexts created
+    /// later resolve the services through <see cref="INodeContext.GetService{T}"/>.
+    /// </summary>
+    public NodeServiceRegistry? Services
+    {
+        get => _services;
+        set => _services = value;
+    }
 
     public List<EditorNode> Nodes { get; } = new();
     public List<EditorConnection> Connections { get; } = new();
 
     /// <summary>Raised on connect / disconnect / node add-remove / property change so the GUI can refresh visuals such as IsConnected.</summary>
+    /// <summary>Raised before a node's plugin instance is deleted/clear, so hosts can release node-scoped services.</summary>
+    public event Action<BaseNode>? NodeRemoving;
+
+    /// <summary>Raised whenever the graph structure or node state changes.</summary>
     public event Action? GraphChanged;
 
     public EditorGraph(NodeRegistry registry, ILoggerFactory loggerFactory, PluginLoader pluginLoader)
@@ -127,7 +145,10 @@ public sealed class EditorGraph
         _logger = loggerFactory.CreateLogger(nameof(EditorGraph));
     }
 
-    /// <summary>Create an editor node instance from a node type. <paramref name="id"/> is preserved so IDs stay stable on load.</summary>
+    /// <summary>Create an editor node instance from a node type. <paramref name="id"/> is preserved so IDs stay stable on load.
+    /// <paramref name="assignPinIds"/> is false while a document is still being loaded: assigning ids
+    /// before every node has restored its saved ids could collide, so the loader calls
+    /// <see cref="EnsurePinIds"/> once after all nodes exist.</summary>
     public EditorNode AddNode(
         BaseNode instance,
         double x,
@@ -135,7 +156,8 @@ public sealed class EditorGraph
         IReadOnlyDictionary<string, object?>? parameters = null,
         string? id = null,
         string? name = null,
-        int priority = 0)
+        int priority = 0,
+        bool assignPinIds = true)
     {
         var descriptor = _registry.Get(instance.Name);
         if (parameters is not null && parameters.Count > 0)
@@ -153,13 +175,19 @@ public sealed class EditorGraph
             priority,
             parameters);
         Nodes.Add(node);
+        // Assign pin ids as soon as the node exists (not only before a save): the pin id is the
+        // identity of the single pin type at runtime, and an unsaved document must not leave every
+        // pin on id 0 (which would make id-based lookups ambiguous). While loading a document the
+        // loader disables this and calls EnsurePinIds once after every node restored its ids.
+        if (assignPinIds)
+            EnsurePinIds();
         _logger.LogTrace("EditorGraph: added node {Id} ({Name})", node.Id, node.Name);
         GraphChanged?.Invoke();
         return node;
     }
 
     /// <summary>Establish a connection: the output pin saves a reference to the input pin.</summary>
-    public void Connect(EditorNode fromNode, string fromPin, EditorNode toNode, string toPin)
+    public bool Connect(EditorNode fromNode, string fromPin, EditorNode toNode, string toPin)
     {
         if (!fromNode.Outputs.TryGetValue(fromPin, out var output))
             throw new InvalidOperationException($"Node {fromNode.Name} has no output pin: {fromPin}");
@@ -169,18 +197,30 @@ public sealed class EditorGraph
         // One-to-one rule: if either pin is already connected, simply don't connect (no exception).
         if (Connections.Any(c =>
                 ReferenceEquals(c.ToNode, toNode) && c.ToPin == toPin))
-            return;
+            return false;
         if (Connections.Any(c =>
                 ReferenceEquals(c.FromNode, fromNode) && c.FromPin == fromPin))
-            return;
+            return false;
 
-        // Type check + reference (RuntimeOutputPin.Connect validates the type and adds to _targets)
-        output.Connect(input);
+        // Type check + reference (BasePin.ConnectTo validates the type and stores the target).
+        try
+        {
+            output.ConnectTo(input);
+        }
+        catch (PinWiringException)
+        {
+            // The visual connection list and the core pin state can disagree (e.g. a rejected
+            // restore); report "not connected" instead of throwing out of a bool API.
+            return false;
+        }
+        if (!ReferenceEquals(input.ConnectedPin, output))
+            return false;
 
         Connections.Add(new EditorConnection(fromNode, fromPin, toNode, toPin));
         _logger.LogTrace("EditorGraph: wired {From}.{FromPin} -> {To}.{ToPin}",
             fromNode.Id, fromPin, toNode.Id, toPin);
         GraphChanged?.Invoke();
+        return true;
     }
 
     /// <summary>Remove a connection: the output pin drops its reference to the input pin.</summary>
@@ -189,7 +229,7 @@ public sealed class EditorGraph
         var output = conn.SourcePin;
         var input = conn.TargetPin;
 
-        output.Disconnect(input);
+        output.DisconnectFrom(input);
 
         Connections.Remove(conn);
         _logger.LogTrace("EditorGraph: unwired {From}.{FromPin} -> {To}.{ToPin}",
@@ -215,7 +255,7 @@ public sealed class EditorGraph
 
     /// <summary>
     /// Establish a connection from saved pin instance ids. The output pin's ConnectedPin
-    /// and the input pin's ConnectedPin are both set by <see cref="RuntimeOutputPin.Connect"/>.
+    /// and the input pin's ConnectedPin are both set by <see cref="BasePin.ConnectTo(BasePin)"/>.
     /// </summary>
     public bool TryConnectByPinId(int fromPinId, int toPinId)
     {
@@ -224,8 +264,7 @@ public sealed class EditorGraph
         if (from is null || to is null) return false;
         if (!from.Value.IsOutput || to.Value.IsOutput) return false;
 
-        Connect(from.Value.Node, from.Value.PinName, to.Value.Node, to.Value.PinName);
-        return true;
+        return Connect(from.Value.Node, from.Value.PinName, to.Value.Node, to.Value.PinName);
     }
 
     /// <summary>Remove a node and all of its wires.</summary>
@@ -238,6 +277,7 @@ public sealed class EditorGraph
             Disconnect(c);
 
         Nodes.Remove(node);
+        NodeRemoving?.Invoke(node.RuntimeNode);
         _pluginLoader.DeleteNodeInstance(node.RuntimeNode);
         _logger.LogTrace("EditorGraph: removed node {Id}", node.Id);
         GraphChanged?.Invoke();
@@ -268,6 +308,19 @@ public sealed class EditorGraph
         var graph = new WorkflowGraph();
         foreach (var node in Nodes)
         {
+            // The runtime instance is the source of truth for identity fields. Include the
+            // built-in General parameters the engine/validation expects (InstanceId, DependsOn,
+            // DisplayName, Name, Uuid); BaseNode.Parameters intentionally filters them out.
+            var parameters = new Dictionary<string, object?>(node.Parameters);
+            if (node.RuntimeNode is { } runtime)
+            {
+                parameters["Name"] = runtime.Name;
+                parameters["Uuid"] = runtime.Uuid;
+                parameters["InstanceId"] = runtime.InstanceId;
+                parameters["DisplayName"] = runtime.DisplayName ?? "";
+                parameters["DependsOn"] = runtime.DependsOn;
+            }
+
             graph.Nodes.Add(new NodeSpec
             {
                 Id = node.Id,
@@ -276,7 +329,7 @@ public sealed class EditorGraph
                 Priority = node.Priority,
                 X = node.X,
                 Y = node.Y,
-                Parameters = new Dictionary<string, object?>(node.Parameters)
+                Parameters = parameters
             });
         }
 
@@ -298,7 +351,10 @@ public sealed class EditorGraph
     public void Clear()
     {
         foreach (var conn in Connections.ToList())
-            conn.SourcePin.Disconnect(conn.TargetPin);
+            conn.SourcePin.DisconnectFrom(conn.TargetPin);
+
+        foreach (var node in Nodes.ToList())
+            NodeRemoving?.Invoke(node.RuntimeNode);
 
         Connections.Clear();
         Nodes.Clear();
@@ -315,16 +371,15 @@ public sealed class EditorGraph
     /// <summary>
     /// Assign the persistent pin ids this document will write to disk.
     /// <para>
-    /// Pin ids are only needed for persistence (they link connections to pins in the saved JSON), so
-    /// they are allocated lazily here — once per save, for pins that do not have an id yet — instead
-    /// of at pin construction inside a process-wide pool. Ids restored from an existing document are
-    /// merely observed, which keeps them stable across saves and makes loading tolerant of sparse ids.
+    /// Pin ids are needed for persistence (they link connections to pins in the saved JSON) and
+    /// are also now the identity of the single pin type used at runtime, so they are assigned
+    /// when a node is added to the graph as well as right before saving. Pins that already carry
+    /// an id (restored documents / previous saves) are merely observed, which keeps them stable.
     /// </para>
     /// </summary>
     public void EnsurePinIds()
     {
-        // The pin definition owns the persisted id (logic.pins[] is serialized from the definitions),
-        // while runtime pins mirror it so the connection endpoints written into the document match.
+        // The node instance's own pins (the only pin type) own the persisted id.
         IEnumerable<BasePin> Definitions()
         {
             foreach (var node in Nodes)
@@ -336,31 +391,30 @@ public sealed class EditorGraph
         }
 
         // Pass 1: take the highest already known id into account (restored documents, previous saves).
+        // A duplicate saved id would make FindPinById ambiguous, so reject it explicitly.
+        var seen = new HashSet<int>();
         foreach (var pin in Definitions())
-            if (pin.Id != 0) _pinIds.Observe(pin.Id);
+        {
+            if (pin.Id == 0) continue;
+            if (!seen.Add(pin.Id))
+                throw new InvalidOperationException(
+                    $"Duplicate pin id {pin.Id} in the workflow document; every pin id must be unique.");
+            _pinIds.Observe(pin.Id);
+        }
 
-        // Pass 2: give a fresh id to every pin created since the last save.
+        // Pass 2: give a fresh id to every pin created since the last assignment.
         foreach (var pin in Definitions())
             if (pin.Id == 0) pin.AssignId(_pinIds.Allocate());
-
-        // Keep each runtime pin in sync with the definition it wraps.
-        foreach (var node in Nodes)
-        {
-            foreach (var pin in node.Inputs.Values) pin.AssignId(pin.Definition.Id);
-            foreach (var pin in node.Outputs.Values) pin.AssignId(pin.Definition.Id);
-        }
     }
 
-    /// <summary>
-    /// Build an <see cref="INodeContext"/> bound to the editor node that owns the given
+    /// <summary>Build an <see cref="INodeContext"/> bound to the editor node that owns the given
     /// runtime instance. Used by <see cref="NodeInstanceManager"/> so UI commands run the
-    /// actual on-canvas node instances through the same wired runtime pins.
-    /// </summary>
+    /// actual on-canvas node instances through the same wired pins.</summary>
     public INodeContext CreateContext(BaseNode runtimeNode)
     {
         var node = Nodes.FirstOrDefault(n => ReferenceEquals(n.RuntimeNode, runtimeNode))
             ?? throw new InvalidOperationException($"No editor node for instance #{runtimeNode.InstanceId}.");
-        var ctx = new EditorNodeContext(node, _logger);
+        var ctx = new EditorNodeContext(node, _logger, _services);
         foreach (var pin in node.Inputs.Values)
             pin.Context = ctx;
         foreach (var pin in node.Outputs.Values)
@@ -372,16 +426,41 @@ public sealed class EditorGraph
     private sealed class EditorNodeContext : INodeContext
     {
         private readonly EditorNode _node;
+        private readonly NodeServiceRegistry? _services;
         public ILogger Logger { get; }
 
-        public EditorNodeContext(EditorNode node, ILogger logger)
+        public EditorNodeContext(EditorNode node, ILogger logger, NodeServiceRegistry? services)
         {
             _node = node;
+            _services = services;
             Logger = logger;
         }
 
         public T? GetInput<T>(string pinName) =>
             _node.Inputs.TryGetValue(pinName, out var pin) && pin.Value is T t ? t : default;
+
+        public bool HasInput(string pinName) =>
+            _node.Inputs.TryGetValue(pinName, out var pin) && pin.HasValue;
+
+        public bool TryGetInput<T>(string pinName, out T? value)
+        {
+            if (_node.Inputs.TryGetValue(pinName, out var pin) && pin.Value is T typed)
+            {
+                value = typed;
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        public Task<Sample?> WaitForInputAsync(
+            string pinName,
+            TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default) =>
+            _node.Inputs.TryGetValue(pinName, out var pin)
+                ? pin.WaitForValueAsync(timeout, cancellationToken)
+                : throw new InvalidOperationException($"Node '{_node.Id}' has no input pin: {pinName}");
 
         public void SetOutput(string pinName, Sample? value)
         {
@@ -406,7 +485,8 @@ public sealed class EditorGraph
             {
                 return (T)(object)EmptyAgentToolProvider.Instance;
             }
-            return default;
+            var service = _services?.Get<T>(_node.RuntimeNode);
+            return service is T typed ? typed : default;
         }
 
         private static readonly OllamaClientFactory LlmFactory = new();

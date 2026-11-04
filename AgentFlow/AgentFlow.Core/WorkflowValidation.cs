@@ -5,6 +5,8 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Text.Json;
+
 namespace AgentFlow.Core;
 
 /// <summary>
@@ -18,13 +20,13 @@ public static class WorkflowValidation
     public static IReadOnlyList<string> Validate(NodeRegistry registry, WorkflowGraph graph)
     {
         var errors = new List<string>();
-        var nodesById = graph.Nodes.ToDictionary(n => n.Id);
+        var nodesById = new Dictionary<string, NodeSpec>(StringComparer.OrdinalIgnoreCase);
 
-        // Duplicate ids / unknown types.
-        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Build the id index first with TryAdd: ToDictionary would throw ArgumentException on the
+        // first duplicate id, so the "Duplicate node id" error below would never be collected.
         foreach (var node in graph.Nodes)
         {
-            if (!seenIds.Add(node.Id))
+            if (!nodesById.TryAdd(node.Id, node))
                 errors.Add($"Duplicate node id '{node.Id}'.");
             if (!registry.Contains(node.Name))
                 errors.Add($"Node '{node.Id}' references unknown type '{node.Name}'.");
@@ -87,6 +89,31 @@ public static class WorkflowValidation
             }
         }
 
+        // DependsOn (startup dependency) checks: the referenced instance id must exist in the graph,
+        // must not be the node itself, and the dependency graph must not contain a cycle.
+        var byInstanceId = new Dictionary<int, NodeSpec>();
+        foreach (var node in graph.Nodes)
+        {
+            var instanceId = ToInt(GetParameter(node, "InstanceId"));
+            if (instanceId == 0) continue;
+            if (!byInstanceId.TryAdd(instanceId, node))
+                errors.Add($"Duplicate node instance id #{instanceId} ('{byInstanceId[instanceId].Id}' and '{node.Id}').");
+        }
+
+        foreach (var node in graph.Nodes)
+        {
+            var instanceId = ToInt(GetParameter(node, "InstanceId"));
+            var dependsOn = ToInt(GetParameter(node, "DependsOn"));
+            if (dependsOn == 0) continue;
+            if (dependsOn == instanceId)
+                errors.Add($"Node '{node.Id}' depends on itself (DependsOn = {dependsOn}).");
+            else if (!byInstanceId.ContainsKey(dependsOn))
+                errors.Add($"Node '{node.Id}' depends on missing node instance #{dependsOn}.");
+        }
+
+        foreach (var cycle in FindDependencyCycles(graph, byInstanceId))
+            errors.Add(cycle);
+
         // Cycle detection.
         try
         {
@@ -106,6 +133,9 @@ public static class WorkflowValidation
     /// </summary>
     public static List<string> TopologicalSort(WorkflowGraph graph)
     {
+        if (graph.Nodes.Select(n => n.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != graph.Nodes.Count)
+            throw new InvalidOperationException("Duplicate node ids; cannot topologically sort.");
+
         var indegree = graph.Nodes.ToDictionary(n => n.Id, _ => 0);
         foreach (var c in graph.Connections)
             indegree[c.ToNode]++;
@@ -133,6 +163,57 @@ public static class WorkflowValidation
         }
 
         return order;
+    }
+
+    /// <summary>Read a built-in parameter value (exact key first, then case-insensitive).</summary>
+    private static object? GetParameter(NodeSpec node, string name)
+        => node.Parameters.TryGetValue(name, out var value)
+            ? value
+            : node.Parameters.FirstOrDefault(kv => string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)).Value;
+
+    /// <summary>Convert a built-in parameter value (native, JSON element or numeric string) to an int.</summary>
+    internal static int ToInt(object? value) => value switch
+    {
+        int i => i,
+        long l => (int)Math.Clamp(l, int.MinValue, int.MaxValue),
+        string s when int.TryParse(s, out var parsed) => parsed,
+        JsonElement je when je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out var n) => n,
+        JsonElement je when je.ValueKind == JsonValueKind.String && int.TryParse(je.GetString(), out var s2) => s2,
+        _ => 0,
+    };
+
+    /// <summary>Report one message per DependsOn cycle, each cycle only once.</summary>
+    private static IEnumerable<string> FindDependencyCycles(
+        WorkflowGraph graph,
+        IReadOnlyDictionary<int, NodeSpec> byInstanceId)
+    {
+        var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var start in graph.Nodes)
+        {
+            var path = new List<string>();
+            var index = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var node = start;
+            while (true)
+            {
+                if (index.TryGetValue(node.Id, out var begin))
+                {
+                    var cycle = path.Skip(begin).ToList();
+                    var key = string.Join(" -> ", cycle.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+                    if (reported.Add(key))
+                        yield return $"DependsOn cycle: {string.Join(" -> ", cycle)} -> {node.Id}.";
+                    break;
+                }
+
+                index[node.Id] = path.Count;
+                path.Add(node.Id);
+
+                var dependsOn = ToInt(GetParameter(node, "DependsOn"));
+                if (dependsOn == 0) break;
+                if (!byInstanceId.TryGetValue(dependsOn, out var target)) break;
+                if (string.Equals(target.Id, node.Id, StringComparison.OrdinalIgnoreCase)) break;
+                node = target;
+            }
+        }
     }
 }
 

@@ -13,6 +13,8 @@ namespace AgentFlow.Views;
 
 public partial class MainView : UserControl
 {
+    private MainViewModel? _viewModel;
+
     public MainView()
     {
         InitializeComponent();
@@ -21,6 +23,17 @@ public partial class MainView : UserControl
 
     private void OnDataContextChanged(object? sender, System.EventArgs e)
     {
+        if (_viewModel is not null)
+        {
+            _viewModel.DialogRequested -= OnDialogRequested;
+            _viewModel.ClearRequested -= OnClearRequested;
+            _viewModel.ConfirmRequested -= OnClearRequested;
+            _viewModel.LoginRequested -= OnLoginRequested;
+            _viewModel.SaveAsRequested -= OnSaveAsRequested;
+            _viewModel.OpenRequested -= OnOpenRequested;
+            _viewModel = null;
+        }
+
         if (DataContext is MainViewModel vm)
         {
             vm.DialogRequested += OnDialogRequested;
@@ -29,6 +42,7 @@ public partial class MainView : UserControl
             vm.LoginRequested += OnLoginRequested;
             vm.SaveAsRequested += OnSaveAsRequested;
             vm.OpenRequested += OnOpenRequested;
+            _viewModel = vm;
         }
     }
 
@@ -65,46 +79,65 @@ public partial class MainView : UserControl
     /// <summary>Open a native Save-As picker; default folder is the executable directory, default name is the suggested timestamped file.</summary>
     private async void OnSaveAsRequested(object? sender, string suggestedFileName)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel?.StorageProvider is null) return;
-
-        var startDir = await topLevel.StorageProvider.TryGetFolderFromPathAsync(AppContext.BaseDirectory);
-        var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        try
         {
-            Title = "Save Workflow",
-            SuggestedStartLocation = startDir,
-            SuggestedFileName = suggestedFileName,
-            DefaultExtension = "json",
-            FileTypeChoices = new[]
-            {
-                new FilePickerFileType("JSON Workflow") { Patterns = new[] { "*.json" } }
-            }
-        });
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel?.StorageProvider is null) return;
 
-        if (file?.TryGetLocalPath() is { } path && DataContext is MainViewModel vm)
-            vm.SaveToPath(path);
+            var startDir = await topLevel.StorageProvider.TryGetFolderFromPathAsync(AppContext.BaseDirectory);
+            var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Save Workflow",
+                SuggestedStartLocation = startDir,
+                SuggestedFileName = suggestedFileName,
+                DefaultExtension = "json",
+                FileTypeChoices = new[]
+                {
+                    new FilePickerFileType("JSON Workflow") { Patterns = new[] { "*.json" } }
+                }
+            });
+
+            if (file?.TryGetLocalPath() is { } path && DataContext is MainViewModel vm)
+                vm.SaveToPath(path);
+        }
+        catch (Exception ex)
+        {
+            // A platform file picker can fail independently of the workflow; report it without
+            // tearing down the app from an async-void event handler.
+            if (DataContext is MainViewModel vm)
+                vm.StatusText = $"{vm.L["ErrorPrefix"]}: {ex.Message}";
+        }
     }
+
 
     /// <summary>Open a native file-open picker; default folder is the executable directory. Loads the chosen workflow.</summary>
     private async void OnOpenRequested(object? sender, System.EventArgs e)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel?.StorageProvider is null) return;
-
-        var startDir = await topLevel.StorageProvider.TryGetFolderFromPathAsync(AppContext.BaseDirectory);
-        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        try
         {
-            Title = "Open Workflow",
-            SuggestedStartLocation = startDir,
-            AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("JSON Workflow") { Patterns = new[] { "*.json" } }
-            }
-        });
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel?.StorageProvider is null) return;
 
-        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path && DataContext is MainViewModel vm)
-            vm.LoadFromPath(path);
+            var startDir = await topLevel.StorageProvider.TryGetFolderFromPathAsync(AppContext.BaseDirectory);
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Open Workflow",
+                SuggestedStartLocation = startDir,
+                AllowMultiple = false,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("JSON Workflow") { Patterns = new[] { "*.json" } }
+                }
+            });
+
+            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path && DataContext is MainViewModel vm)
+                vm.LoadFromPath(path);
+        }
+        catch (Exception ex)
+        {
+            if (DataContext is MainViewModel vm)
+                vm.StatusText = $"{vm.L["ErrorPrefix"]}: {ex.Message}";
+        }
     }
 }
 

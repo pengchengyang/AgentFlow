@@ -40,10 +40,11 @@ public partial class LogPanelView : UserControl
         if (props.IsRightButtonPressed)
         {
             if ((e.Source as StyledElement)?.DataContext is UiLogEntry clicked
-                && !LogListBox.SelectedItems.Contains(clicked))
+                && LogListBox.SelectedItems is { } selected
+                && !selected.Contains(clicked))
             {
-                LogListBox.SelectedItems.Clear();
-                LogListBox.SelectedItems.Add(clicked);
+                selected.Clear();
+                selected.Add(clicked);
             }
             return;
         }
@@ -78,9 +79,6 @@ public partial class LogPanelView : UserControl
         if (isDouble)
         {
             _hasLastEmptyPress = false;
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "agentflow_logtoggle.log"),
-                DateTime.Now.ToString("HH:mm:ss.fff") + " toggle" + Environment.NewLine);
             if (DataContext is ViewModels.LogPanelViewModel vm && vm.ToggleExpandedCommand.CanExecute(null))
                 vm.ToggleExpandedCommand.Execute(null);
         }
@@ -100,10 +98,20 @@ public partial class LogPanelView : UserControl
 
     private async void CopySelected()
     {
-        var text = BuildClipboardText(LogListBox.SelectedItems.OfType<UiLogEntry>());
-        if (string.IsNullOrEmpty(text)) return;
-        if (TopLevel.GetTopLevel(this) is { } top && top.Clipboard is { } cb)
-            await cb.SetTextAsync(text);
+        try
+        {
+            var selected = LogListBox.SelectedItems;
+            if (selected is null) return;
+            var text = BuildClipboardText(selected.OfType<UiLogEntry>());
+            if (string.IsNullOrEmpty(text)) return;
+            if (TopLevel.GetTopLevel(this) is { } top && top.Clipboard is { } cb)
+                await cb.SetTextAsync(text);
+        }
+        catch (Exception ex)
+        {
+            // Clipboard can be unavailable (headless / remote session); never crash the UI.
+            System.Diagnostics.Debug.WriteLine($"CopySelected failed: {ex.Message}");
+        }
     }
 
     private static string BuildClipboardText(System.Collections.Generic.IEnumerable<UiLogEntry> entries)

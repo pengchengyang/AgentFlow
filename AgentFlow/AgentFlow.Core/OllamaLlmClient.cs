@@ -20,7 +20,12 @@ namespace AgentFlow.Core;
 /// </summary>
 public sealed class OllamaLlmClient : ILLMClient
 {
-    private readonly HttpClient _http;
+    // One process-wide HttpClient. Per-client HttpClients were never disposed (ILLMClient has no
+    // IDisposable contract) and leaked sockets/connections each time a node asked for a client.
+    private static readonly HttpClient SharedHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
+
+    private readonly Uri _baseUri;
+    private readonly TimeSpan _timeout;
     private readonly string _model;
     private readonly double? _temperature;
 
@@ -28,7 +33,7 @@ public sealed class OllamaLlmClient : ILLMClient
     public string Model => _model;
 
     /// <summary>Endpoint this client sends every request to.</summary>
-    public string Endpoint => _http.BaseAddress?.ToString().TrimEnd('/') ?? "";
+    public string Endpoint => _baseUri.ToString().TrimEnd('/');
 
     /// <summary>
     /// 创建一个 Ollama 客户端。
@@ -43,11 +48,8 @@ public sealed class OllamaLlmClient : ILLMClient
         double? temperature = null,
         TimeSpan? timeout = null)
     {
-        _http = new HttpClient
-        {
-            BaseAddress = new Uri(OllamaClientFactory.ResolveBaseUrl(baseUrl)),
-            Timeout = OllamaClientFactory.ResolveTimeout(timeout),
-        };
+        _baseUri = new Uri(OllamaClientFactory.ResolveBaseUrl(baseUrl));
+        _timeout = OllamaClientFactory.ResolveTimeout(timeout);
         _model = OllamaClientFactory.ResolveModel(model);
         _temperature = temperature;
     }
@@ -67,13 +69,19 @@ public sealed class OllamaLlmClient : ILLMClient
             Options = _temperature is { } temperature ? new ChatOptions { Temperature = temperature } : null,
         };
 
-        var response = await _http.PostAsJsonAsync("api/chat", request, ct).ConfigureAwait(false);
+        using var timeoutCts = new CancellationTokenSource(_timeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        // Build from the full endpoint string so a base URL with a path prefix (e.g. a reverse
+        // proxy at http://host/ollama) still resolves to http://host/ollama/api/chat.
+        var endpoint = new Uri(Endpoint + "/api/chat");
+
+        using var response = await SharedHttp.PostAsJsonAsync(endpoint, request, linked.Token).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             // Ollama answers a missing model with 404 + {"error":"model \"x\" not found, ..."}.
             // Surface that text instead of only the status code; it is the difference between
             // "wrong model name on this machine" and "wrong endpoint".
-            var detail = await ReadErrorAsync(response, ct).ConfigureAwait(false);
+            var detail = await ReadErrorAsync(response, linked.Token).ConfigureAwait(false);
             throw new HttpRequestException(
                 $"Ollama request failed: HTTP {(int)response.StatusCode} ({response.ReasonPhrase}) " +
                 $"for model '{_model}' at {Endpoint}." + (detail is null ? "" : $" Provider said: {detail}"),
@@ -81,7 +89,7 @@ public sealed class OllamaLlmClient : ILLMClient
                 statusCode: response.StatusCode);
         }
 
-        var result = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: ct).ConfigureAwait(false);
+        var result = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: linked.Token).ConfigureAwait(false);
         return result?.Message?.Content ?? "";
     }
 
@@ -90,6 +98,7 @@ public sealed class OllamaLlmClient : ILLMClient
     {
         string body;
         try { body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; } // caller cancellation / timeout must not look like a provider error
         catch { return null; }
         if (string.IsNullOrWhiteSpace(body)) return null;
 

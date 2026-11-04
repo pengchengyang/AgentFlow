@@ -74,17 +74,27 @@ public static class EditorJsonLoader
 
     private static WorkflowGraph Build(EditorDocument doc, NodeRegistry registry)
     {
+        if (doc.Version != "1.0")
+            throw new InvalidDataException(
+                $"Unsupported editor document version '{doc.Version}'; this build supports 1.0.");
+        if (doc.Nodes is null || doc.Connections is null)
+            throw new InvalidDataException("Editor document has null nodes/connections.");
+
         var graph = new WorkflowGraph();
 
         // pin id -> (node id, pin name, is output). Resolved purely from the JSON logic.pins
         // tables (direction from the instantiated node by name), mirroring the editor's
         // FindPinById without allocating any pin id.
         var pinMap = new Dictionary<int, (string NodeId, string PinName, bool IsOutput)>();
+        var nodeIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var spec in doc.Nodes)
         {
+            if (string.IsNullOrEmpty(spec.Id) || !nodeIds.Add(spec.Id))
+                throw new InvalidDataException($"Duplicate or empty node id: '{spec.Id}'.");
+
             var logic = spec.Logic;
-            var name = logic?["name"]?.GetValue<string>() ?? "";
+            var name = JsonValueReader.GetString(logic, "name") ?? "";
             if (string.IsNullOrEmpty(name))
                 throw new InvalidDataException($"Node '{spec.Id}' has no logic.name.");
 
@@ -112,13 +122,27 @@ public static class EditorJsonLoader
             {
                 foreach (var item in pins)
                 {
-                    if (item is not JsonObject pinObj) continue;
-                    var pinName = pinObj["name"]?.GetValue<string>();
-                    var id = pinObj["id"]?.GetValue<int>();
-                    if (string.IsNullOrEmpty(pinName) || id is null) continue;
+                    if (item is not JsonObject pinObj)
+                        throw new InvalidDataException($"Node '{spec.Id}' has a non-object entry in logic.pins.");
 
+                    var pinName = JsonValueReader.GetString(pinObj, "name");
+                    var id = JsonValueReader.GetInt(pinObj, "id");
+                    if (string.IsNullOrEmpty(pinName) || id <= 0)
+                        throw new InvalidDataException(
+                            $"Node '{spec.Id}' has a pin with a missing name or non-positive id ({id}).");
+
+                    var isInput = instance.InputPins.Any(p => p.Name == pinName);
                     var isOutput = instance.OutputPins.Any(p => p.Name == pinName);
-                    pinMap[id.Value] = (spec.Id, pinName, isOutput);
+                    if (!isInput && !isOutput)
+                        throw new InvalidDataException(
+                            $"Node '{spec.Id}' declares unknown pin '{pinName}'.");
+                    if (isInput && isOutput)
+                        throw new InvalidDataException(
+                            $"Node '{spec.Id}' pin '{pinName}' exists as both input and output.");
+
+                    if (!pinMap.TryAdd(id, (spec.Id, pinName, isOutput)))
+                        throw new InvalidDataException(
+                            $"Duplicate pin id {id} on node '{spec.Id}' (already used by '{pinMap[id].NodeId}').");
                 }
             }
         }
@@ -127,9 +151,18 @@ public static class EditorJsonLoader
         // output pin and target an input pin (the editor guarantees this).
         foreach (var conn in doc.Connections)
         {
-            if (!pinMap.TryGetValue(conn.FromPinId, out var from)) continue;
-            if (!pinMap.TryGetValue(conn.ToPinId, out var to)) continue;
-            if (!from.IsOutput || to.IsOutput) continue;
+            if (!pinMap.TryGetValue(conn.FromPinId, out var from))
+                throw new InvalidDataException(
+                    $"Connection references missing source pin id {conn.FromPinId}.");
+            if (!pinMap.TryGetValue(conn.ToPinId, out var to))
+                throw new InvalidDataException(
+                    $"Connection references missing target pin id {conn.ToPinId}.");
+            if (!from.IsOutput || to.IsOutput)
+                throw new InvalidDataException(
+                    $"Connection {conn.FromPinId} -> {conn.ToPinId} is not output -> input.");
+            if (string.Equals(from.NodeId, to.NodeId, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Connection {conn.FromPinId} -> {conn.ToPinId} connects a node to itself.");
 
             graph.Connections.Add(new ConnectionSpec
             {

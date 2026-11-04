@@ -36,6 +36,8 @@ public sealed class Loc : ObservableObject
         ["RunCompleted"] = ("Completed", "运行完成"),
         ["RunCancelled"] = ("Cancelled", "已取消"),
         ["RunFailed"] = ("Failed", "运行失败"),
+        ["RunStateIsolated"] = ("Running (node failed, isolated)", "运行中（节点失败，已隔离）"),
+        ["RunIsolated"] = ("A node failed and was isolated; the remaining nodes keep running.", "有节点失败并已隔离，其余节点继续运行。"),
         ["SavedTo"] = ("Saved", "已保存"),
         ["LoadedFrom"] = ("Loaded", "已加载"),
         ["NoWorkflowFile"] = ("workflow.json not found", "没有找到 workflow.json"),
@@ -50,6 +52,7 @@ public sealed class Loc : ObservableObject
         ["DisplayName"] = ("Display Name", "显示名称"),
         ["Priority"] = ("Priority", "优先级"),
         ["ValidationFailed"] = ("Validation failed", "校验失败"),
+        ["StopBeforeEdit"] = ("Stop the workflow before editing nodes", "请先停止工作流再编辑节点"),
 
         ["SaveAs"] = ("Save As...", "另存为..."),
         ["OpenWorkflow"] = ("Open Workflow...", "打开工作流..."),

@@ -30,8 +30,14 @@ public static class GraphDeserializer
     public static GraphDocument Deserialize(string json)
     {
         ArgumentException.ThrowIfNullOrEmpty(json);
-        return JsonSerializer.Deserialize<GraphDocument>(json, Options)
+        var doc = JsonSerializer.Deserialize<GraphDocument>(json, Options)
             ?? throw new InvalidDataException("Graph JSON is empty or malformed.");
+        if (doc.Version != "1.0")
+            throw new InvalidDataException(
+                $"Unsupported graph version '{doc.Version}'; this build supports 1.0.");
+        if (doc.Nodes is null || doc.Connections is null)
+            throw new InvalidDataException("Graph JSON has null nodes/connections.");
+        return doc;
     }
 
     /// <summary>Read a graph JSON file and deserialize it into a <see cref="GraphDocument"/>.</summary>

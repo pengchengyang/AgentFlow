@@ -7,6 +7,7 @@
 
 using System.Text.Json.Nodes;
 using System.Text.Json;
+using System.Threading;
 
 namespace AgentFlow.Contracts;
 
@@ -27,8 +28,12 @@ public abstract class BaseNode
     private bool _commandsInitialized;
 
     // Runtime lifecycle state (see State / Running). Never serialized.
-    private bool _running;
-    private NodeState _state = NodeState.Idle;
+    // One volatile bit field keeps State and Running consistent for cross-thread readers (the
+    // editor polls the indicator from another thread); 0 = Idle + not running.
+    private const int StateBitsMask = 0b11;
+    private const int RunningFlag = 1 << 2;
+    private readonly object _stateGate = new();
+    private int _runtimeState;
 
     /// <summary>Names of the built-in General parameters that every node owns (not shown in the property-panel <see cref="Parameters"/> list).</summary>
     private static readonly HashSet<string> BuiltInParamNames = new(StringComparer.Ordinal)
@@ -55,6 +60,20 @@ public abstract class BaseNode
     public int DependsOn { get; set; }
 
     /// <summary>
+    /// Whether this node instance may be started again after <see cref="Stop"/>. The default is
+    /// true; a node that permanently owns a disposable resource (and cannot rebuild it in
+    /// <see cref="Initialize"/>) should override this and return false so the host can recreate it.
+    /// </summary>
+    public virtual bool IsReusable => true;
+
+    /// <summary>
+    /// Failure policy for this node. The default <see cref="NodeErrorPolicy.FailFast"/> stops the
+    /// whole workflow exactly like the historical behaviour; <see cref="NodeErrorPolicy.Isolate"/>
+    /// or <see cref="NodeErrorPolicy.Retry"/> opt into node-level isolation / retries.
+    /// </summary>
+    public virtual NodeErrorPolicy ErrorPolicy => NodeErrorPolicy.FailFast;
+
+    /// <summary>
     /// Runtime-only state: true while this node is currently executing (i.e. doing work right now).
     /// This value is intentionally NOT serialized into JSON. Setting it to true moves
     /// <see cref="State"/> to <see cref="NodeState.Running"/>; setting it back to false does NOT end
@@ -63,13 +82,21 @@ public abstract class BaseNode
     /// </summary>
     public bool Running
     {
-        get => _running;
+        get => (Volatile.Read(ref _runtimeState) & RunningFlag) != 0;
         set
         {
-            if (_running == value) return;
-            _running = value;
-            if (value && _state is NodeState.Idle or NodeState.Connecting)
-                _state = NodeState.Running;
+            lock (_stateGate)
+            {
+                var current = Volatile.Read(ref _runtimeState);
+                var isRunning = (current & RunningFlag) != 0;
+                if (isRunning == value) return;
+
+                var state = (NodeState)(current & StateBitsMask);
+                if (value && state is NodeState.Idle or NodeState.Connecting)
+                    state = NodeState.Running;
+
+                Volatile.Write(ref _runtimeState, (int)state | (value ? RunningFlag : 0));
+            }
         }
     }
 
@@ -78,30 +105,26 @@ public abstract class BaseNode
     /// Runtime-only, never serialized. Every node has it, so the editor can tell "still starting"
     /// apart from "running" and from "failed".
     /// </summary>
-    public NodeState State => _state;
+    public NodeState State => (NodeState)(Volatile.Read(ref _runtimeState) & StateBitsMask);
 
     /// <summary>True while the node is starting up and has not become operational yet.</summary>
-    public bool Connecting => _state == NodeState.Connecting;
+    public bool Connecting => State == NodeState.Connecting;
 
     /// <summary>True when this node's last start / run failed.</summary>
-    public bool Failed => _state == NodeState.Failed;
+    public bool Failed => State == NodeState.Failed;
 
     /// <summary>
     /// Mark the node as starting up (initializing / connecting / waiting for a resource).
     /// Call this at the beginning of a start sequence, before the node is operational.
     /// </summary>
-    public void SetConnecting()
-    {
-        _running = false;
-        _state = NodeState.Connecting;
-    }
+    public void SetConnecting() => MutateState(NodeState.Connecting, running: false);
 
     /// <summary>
     /// Mark the node as started (initialized and its <see cref="Run"/> returned without errors).
     /// This only moves <see cref="State"/>; <see cref="Running"/> keeps describing whether the node is
     /// executing right now, so a one-shot node that already finished stays started but not executing.
     /// </summary>
-    public void SetRunning() => _state = NodeState.Running;
+    public void SetRunning() => MutateState(NodeState.Running, running: null);
 
     /// <summary>
     /// Mark the node as no longer running. An existing <see cref="NodeState.Failed"/> is preserved
@@ -109,22 +132,34 @@ public abstract class BaseNode
     /// </summary>
     public void SetIdle()
     {
-        _running = false;
-        if (_state != NodeState.Failed) _state = NodeState.Idle;
+        lock (_stateGate)
+        {
+            var state = State == NodeState.Failed ? NodeState.Failed : NodeState.Idle;
+            Volatile.Write(ref _runtimeState, (int)state);
+        }
     }
 
     /// <summary>Mark this node's start / run as failed (the exception itself is logged by the manager).</summary>
-    public void SetFailed()
-    {
-        _running = false;
-        _state = NodeState.Failed;
-    }
+    public void SetFailed() => MutateState(NodeState.Failed, running: false);
 
     /// <summary>Reset the lifecycle state to <see cref="NodeState.Idle"/> (used after a stop).</summary>
-    public void ResetState()
+    public void ResetState() => MutateState(NodeState.Idle, running: false);
+
+    private void MutateState(NodeState? state, bool? running)
     {
-        _running = false;
-        _state = NodeState.Idle;
+        lock (_stateGate)
+        {
+            var current = Volatile.Read(ref _runtimeState);
+            var currentState = (NodeState)(current & StateBitsMask);
+            var currentRunning = (current & RunningFlag) != 0;
+            var nextState = state ?? currentState;
+            var nextRunning = running ?? currentRunning;
+
+            if (nextState == currentState && nextRunning == currentRunning)
+                return;
+
+            Volatile.Write(ref _runtimeState, (int)nextState | (nextRunning ? RunningFlag : 0));
+        }
     }
 
     /// <summary>
@@ -149,11 +184,20 @@ public abstract class BaseNode
     /// <summary>All output pin definitions (the right-hand ports), append via <see cref="AddOutputPin"/>.</summary>
     public IReadOnlyList<BasePin> OutputPins => _outputPins;
 
-    /// <summary>Append an input pin to the input list.</summary>
-    public void AddInputPin(BasePin pin) => _inputPins.Add(pin);
+    /// <summary>Append an input pin to the input list. The pin is bound to this node so a
+    /// received sample is routed to <see cref="ReceiveSample"/>.</summary>
+    public void AddInputPin(BasePin pin)
+    {
+        pin.Owner = this;
+        _inputPins.Add(pin);
+    }
 
     /// <summary>Append an output pin to the output list.</summary>
-    public void AddOutputPin(BasePin pin) => _outputPins.Add(pin);
+    public void AddOutputPin(BasePin pin)
+    {
+        pin.Owner = this;
+        _outputPins.Add(pin);
+    }
 
     /// <summary>
     /// Commands declared by this node for the editor right-click menu. The list is initialised
@@ -296,13 +340,13 @@ public abstract class BaseNode
     /// </summary>
     public void DeserializeParameters(JsonObject json)
     {
-        var uuid = json["uuid"]?.GetValue<string>();
+        var uuid = ReadJsonString(json, "uuid");
         if (!string.IsNullOrEmpty(uuid))
             Uuid = uuid;
-        var instanceId = json["instanceId"]?.GetValue<int>();
+        var instanceId = ReadJsonInt(json, "instanceId");
         if (instanceId.HasValue)
             InstanceId = instanceId.Value;
-        var displayName = json["displayName"]?.GetValue<string>();
+        var displayName = ReadJsonString(json, "displayName");
         if (displayName is not null)
             DisplayName = displayName;
         DeserializeGroupedParameters(json);
@@ -412,9 +456,7 @@ public abstract class BaseNode
                             if (np is null)
                                 continue;
 
-                            np.Value = param.Value is null
-                                ? null
-                                : JsonSerializer.Deserialize(param.Value.ToJsonString(), np.Type);
+                            np.Value = TryConvertValue(param.Value, np.Type);
                         }
                     }
                     break;
@@ -459,9 +501,7 @@ public abstract class BaseNode
             }
 
             var valueNode = obj["value"] ?? obj["Value"];
-            np.Value = valueNode is null
-                ? null
-                : JsonSerializer.Deserialize(valueNode.ToJsonString(), np.Type);
+            np.Value = TryConvertValue(valueNode, np.Type);
 
             if ((obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() is bool editable)
                 np.IsEditable = editable;
@@ -493,7 +533,11 @@ public abstract class BaseNode
         return null;
     }
 
-    /// <summary>One-time setup before a run starts. Nodes must implement this.</summary>
+    /// <summary>
+    /// One-time setup before a run starts. Called once for every start (including a later start of
+    /// a reused instance), so it must (re)create every runtime resource the node needs — channels,
+    /// sockets, cancellation sources, clients. Do not rely on fields left over from the previous run.
+    /// </summary>
     public abstract Task Initialize(INodeContext context, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -508,7 +552,10 @@ public abstract class BaseNode
 
     /// <summary>
     /// Stop body: release every resource the node acquired (sockets, threads, files, timers) and set
-    /// <see cref="Running"/> to false. Called for every node on Stop and after a failed start.
+    /// <see cref="Running"/> to false. Called for every node on Stop and after a failed start; it must
+    /// be idempotent and safe to call more than once. When the instance is reused, the next
+    /// <see cref="Initialize"/> is responsible for rebuilding whatever this freed — a node that cannot
+    /// support that returns false from <see cref="IsReusable"/>.
     /// </summary>
     public abstract Task Stop(INodeContext context, CancellationToken cancellationToken = default);
 
@@ -535,6 +582,57 @@ public abstract class BaseNode
         if (command.CanExecute?.Invoke() == false)
             return;
         await command.Execute(context, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Read a string field tolerantly (missing / malformed kind → null).</summary>
+    private static string? ReadJsonString(JsonObject json, string key)
+    {
+        var node = json[key];
+        return node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+    }
+
+    /// <summary>Read an int field tolerantly (number or numeric string; missing / malformed → null).</summary>
+    private static int? ReadJsonInt(JsonObject json, string key)
+    {
+        var node = json[key];
+        if (node is not JsonValue value)
+            return null;
+
+        if (value.TryGetValue<int>(out var number))
+            return number;
+        if (value.TryGetValue<long>(out var longNumber))
+            return (int)Math.Clamp(longNumber, int.MinValue, int.MaxValue);
+        if (value.TryGetValue<string>(out var text) && int.TryParse(text, out var parsed))
+            return parsed;
+        return null;
+    }
+
+    /// <summary>
+    /// Convert a saved parameter value without throwing: a JSON null for a value type yields the
+    /// type's default, and a wrong-kind value (e.g. a string for an int) is left unconverted (null)
+    /// instead of aborting the whole document load.
+    /// </summary>
+    private static object? TryConvertValue(JsonNode? node, Type type)
+    {
+        if (node is null)
+            return null;
+
+        if (type.IsValueType
+            && node is JsonValue probe
+            && probe.TryGetValue<JsonElement>(out var element)
+            && element.ValueKind == JsonValueKind.Null)
+        {
+            return Activator.CreateInstance(type);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize(node.ToJsonString(), type);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }
 

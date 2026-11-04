@@ -32,6 +32,9 @@ public sealed class SerializedNode
     public double X { get; set; }
     public double Y { get; set; }
 
+    /// <summary>Start-up priority (lower runs earlier); persisted so ordering survives reload.</summary>
+    public int Priority { get; set; }
+
     /// <summary>
     /// Logical parameters produced by <see cref="AgentFlow.Core.LogicSerializer"/>
     /// (uuid, displayName, instanceId + subclass data), plus the node's display <c>name</c> as
@@ -85,7 +88,12 @@ public static class GraphSerializer
     public static void Save(EditorGraph graph, string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        File.WriteAllText(path, Serialize(graph));
+        var json = Serialize(graph);
+        // Atomic replace: a crash mid-write must not leave a truncated workflow.json that can
+        // neither be opened by the GUI nor run by the CLI.
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, json);
+        File.Move(temp, path, overwrite: true);
     }
 
     private static GraphDocument BuildDocument(EditorGraph graph)
@@ -108,6 +116,7 @@ public static class GraphSerializer
                 Id = node.Id,
                 X = node.X,
                 Y = node.Y,
+                Priority = node.Priority,
                 Logic = logic
             });
         }

@@ -51,9 +51,6 @@ public sealed class NodeDescriptor
     /// <summary>UI-facing parameters (no dependency on <see cref="AgentFlow.Contracts"/>).</summary>
     public IReadOnlyList<ParameterDescriptor> Parameters { get; }
 
-    /// <summary>Original contract pin definitions used to build runtime pins with their hooks.</summary>
-    internal IReadOnlyList<BasePin> RuntimePins { get; }
-
     public NodeDescriptor(
         string name,
         string displayName,
@@ -69,7 +66,6 @@ public sealed class NodeDescriptor
         NodeType = nodeType;
 
         var runtime = inputPins.Concat(outputPins).ToList();
-        RuntimePins = runtime;
         InputPins = inputPins
             .Select(p => new PinDescriptor(p.Name, p.DataType, (AgentFlow.Core.PinDirection)p.Direction, p.Required))
             .ToList();
@@ -92,7 +88,13 @@ public sealed class NodeRegistry
 
     public IReadOnlyCollection<NodeDescriptor> Nodes => _nodes.Values;
 
-    public void Register(NodeDescriptor descriptor) => _nodes[descriptor.Name] = descriptor;
+    public void Register(NodeDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        if (!_nodes.TryAdd(descriptor.Name, descriptor))
+            throw new InvalidOperationException(
+                $"Duplicate node type '{descriptor.Name}'. Each node type name must be globally unique.");
+    }
 
     public NodeDescriptor Get(string name) =>
         _nodes.TryGetValue(name, out var d)
@@ -101,10 +103,41 @@ public sealed class NodeRegistry
 
     public bool Contains(string name) => _nodes.ContainsKey(name);
 
-    /// <summary>Create a node instance.</summary>
-    public BaseNode CreateInstance(string name) =>
-        (BaseNode)(Activator.CreateInstance(Get(name).NodeType)
+    /// <summary>Remove every registered type (used when unloading plugins).</summary>
+    public void Clear() => _nodes.Clear();
+
+    /// <summary>
+    /// Create a node instance and make sure it owns every pin declared by its descriptor. The
+    /// plugin loader does this defensively for GUI-created instances; headless callers (CLI /
+    /// WorkflowEngine) go through the registry directly and must get the same pin set.
+    /// </summary>
+    public BaseNode CreateInstance(string name)
+    {
+        var descriptor = Get(name);
+        var node = (BaseNode)(Activator.CreateInstance(descriptor.NodeType)
             ?? throw new InvalidOperationException($"Cannot instantiate node: {name}"));
+        if (!string.Equals(node.Name, descriptor.Name, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Node type '{descriptor.Name}' instantiated an object whose Name is '{node.Name}'.");
+
+        foreach (var pin in descriptor.InputPins)
+        {
+            if (!node.InputPins.Any(p => p.Name == pin.Name))
+                node.AddInputPin(new BasePin(
+                    pin.Name, pin.DataType,
+                    (AgentFlow.Contracts.PinDirection)pin.Direction, pin.Required));
+        }
+        foreach (var pin in descriptor.OutputPins)
+        {
+            if (!node.OutputPins.Any(p => p.Name == pin.Name))
+                node.AddOutputPin(new BasePin(
+                    pin.Name, pin.DataType,
+                    (AgentFlow.Contracts.PinDirection)pin.Direction, pin.Required));
+        }
+        foreach (var pin in node.InputPins) pin.Owner = node;
+        foreach (var pin in node.OutputPins) pin.Owner = node;
+        return node;
+    }
 }
 
 

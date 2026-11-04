@@ -80,8 +80,8 @@ public sealed class ReActAgentNode : BaseNode
         if (parameters.TryGetValue("Model", out var m) && m is not null) Param("Model").Value = m.ToString() ?? "";
         if (parameters.TryGetValue("Endpoint", out var ep) && ep is not null) Param("Endpoint").Value = ep.ToString() ?? "";
         if (parameters.TryGetValue("SystemPrompt", out var sp) && sp is not null) Param("SystemPrompt").Value = sp.ToString() ?? DefaultSystemPrompt;
-        if (parameters.TryGetValue("MaxSteps", out var ms) && ms is not null) Param("MaxSteps").Value = Convert.ToInt32(ms);
-        if (parameters.TryGetValue("Temperature", out var t) && t is not null) Param("Temperature").Value = Convert.ToDouble(t);
+        if (parameters.TryGetValue("MaxSteps", out var ms) && ms is not null) Param("MaxSteps").Value = ParameterValues.GetInt(ms, 5);
+        if (parameters.TryGetValue("Temperature", out var t) && t is not null) Param("Temperature").Value = ParameterValues.GetDouble(t, 0.2);
     }
 
     /// <summary>Look up a declared parameter by name.</summary>
@@ -90,7 +90,7 @@ public sealed class ReActAgentNode : BaseNode
     /// <summary>Capture the question arriving on the Question input pin.</summary>
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (pin.Id == _inPin.Id && value is StringSample ss && ss.StringValue is { } s)
+        if (pin.Name == _inPin.Name && value is StringSample ss && ss.StringValue is { } s)
             _question = s;
     }
 
@@ -145,7 +145,8 @@ public sealed class ReActAgentNode : BaseNode
             if (llm is null || tools is null)
             {
                 context.Logger.LogWarning("ReActAgent: ILLMClient or IAgentToolProvider not available on the context.");
-                SetAnswer(context, "Agent not configured: LLM or tool services are unavailable.");
+                const string answer = "Agent not configured: LLM or tool services are unavailable.";
+                SetAnswer(context, answer);
                 return;
             }
 
@@ -154,7 +155,7 @@ public sealed class ReActAgentNode : BaseNode
                 EndpointOrHostDefault(), temperature);
 
             var systemPrompt = Param("SystemPrompt").Value?.ToString() ?? DefaultSystemPrompt;
-            var maxSteps = Convert.ToInt32(Param("MaxSteps").Value ?? 5);
+            var maxSteps = ParameterValues.GetInt(Param("MaxSteps").Value, 5);
             var question = string.IsNullOrWhiteSpace(_question)
                 ? Param("SystemPrompt").Value?.ToString() ?? ""
                 : _question;
@@ -257,13 +258,12 @@ public sealed class ReActAgentNode : BaseNode
         return true;
     }
 
-    /// <summary>Push the final answer to the Answer output pin (and the context output).</summary>
+    /// <summary>Push the final answer to the Answer output pin (the definition pin is the single send API).</summary>
     private void SetAnswer(INodeContext context, string answer)
     {
         var sample = StringSample.CreateSample();
         sample.SetValue(answer, "Answer");
         _outPin.SendSample(sample);
-        context.SetOutput("Answer", sample);
     }
 }
 

@@ -14,19 +14,32 @@ using Microsoft.Extensions.Logging;
 namespace Node.SocketServer;
 
 /// <summary>
-/// TCP multi-client server node, modelled on <c>TcpMultiServer</c>: bind to <c>Port</c>,
-/// then a single background thread runs a <c>while</c> loop that accepts clients. Every
-/// accepted client gets its own read task (tracked by id in a concurrent dictionary) that
-/// reads raw bytes and emits each message on the <c>Received</c> output pin, replying with
-/// the non-empty <c>Send1..Send4</c> input values (or the <c>Response</c> parameter).
+/// TCP multi-client server node. Messages are newline-delimited UTF-8 text (one message per
+/// line). Each accepted client is tracked until its read loop ends, so Stop can wait for all
+/// client work to finish before the node is torn down.
 /// </summary>
 public sealed class SocketServerNode : BaseNode
 {
-    private readonly ConcurrentDictionary<Guid, TcpClient> _clients = new();
+    private const string ProtocolVersion = "1";
+    private const int MaxMessageLength = 8192;
+    private const int MaxClientsLimit = 1024;
+    private const int DefaultMaxClients = 32;
+    private const int DefaultReadTimeoutSeconds = 60;
+    private const int DefaultWriteTimeoutSeconds = 10;
+
+    private readonly ConcurrentDictionary<Guid, ClientSession> _clients = new();
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _acceptTask;
-    private const int BufferSize = 4096;
+    private readonly SemaphoreSlim _stopLock = new(1, 1);
+    private int _readTimeoutSeconds = DefaultReadTimeoutSeconds;
+    private int _writeTimeoutSeconds = DefaultWriteTimeoutSeconds;
+    private long _acceptedClients;
+    private long _rejectedClients;
+    private long _receivedMessages;
+    private long _sentMessages;
+    private long _droppedMessages;
+    private long _clientErrors;
 
     private readonly object _sendLock = new();
     private string _send1 = "";
@@ -35,7 +48,7 @@ public sealed class SocketServerNode : BaseNode
     private string _send4 = "";
 
     public override string Name => "Socket Server";
-    public override string? DisplayName { get; set; } = string.Empty;
+    public override string DisplayName { get; set; } = string.Empty;
     public override string Category => "Network";
 
     /// <summary>Send1 input pin, kept as a property so its parameter value can be saved.</summary>
@@ -69,6 +82,7 @@ public sealed class SocketServerNode : BaseNode
         AddInputPin(Send4Pin);
         AddOutputPin(ReceivedPin);
     }
+
     /// <summary>Declare the node's parameters.</summary>
     protected override void AddParam()
     {
@@ -76,13 +90,22 @@ public sealed class SocketServerNode : BaseNode
         AddParameter(new NodeParameter("Host", typeof(string), "0.0.0.0", isEditable: true, group: "Settings", zone: "General"));
         AddParameter(new NodeParameter("Port", typeof(int), 9000, isEditable: true, group: "Settings", zone: "General"));
         AddParameter(new NodeParameter("Response", typeof(string), "pong", isEditable: true, group: "Settings", zone: "General"));
+        AddParameter(new NodeParameter("MaxClients", typeof(int), DefaultMaxClients, isEditable: true, group: "Settings", zone: "General"));
+        AddParameter(new NodeParameter("ReadTimeoutSeconds", typeof(int), DefaultReadTimeoutSeconds, isEditable: true, group: "Settings", zone: "General"));
+        AddParameter(new NodeParameter("WriteTimeoutSeconds", typeof(int), DefaultWriteTimeoutSeconds, isEditable: true, group: "Settings", zone: "General"));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
         if (parameters.TryGetValue("Host", out var h) && h is not null) Param("Host").Value = h.ToString() ?? "";
-        if (parameters.TryGetValue("Port", out var p) && p is not null) Param("Port").Value = Convert.ToInt32(p);
+        if (parameters.TryGetValue("Port", out var p) && p is not null) Param("Port").Value = ParameterValues.GetInt(p, 9000);
         if (parameters.TryGetValue("Response", out var r) && r is not null) Param("Response").Value = r.ToString() ?? "";
+        if (parameters.TryGetValue("MaxClients", out var m) && m is not null)
+            Param("MaxClients").Value = ParameterValues.GetInt(m, DefaultMaxClients);
+        if (parameters.TryGetValue("ReadTimeoutSeconds", out var rt) && rt is not null)
+            Param("ReadTimeoutSeconds").Value = ParameterValues.GetInt(rt, DefaultReadTimeoutSeconds);
+        if (parameters.TryGetValue("WriteTimeoutSeconds", out var wt) && wt is not null)
+            Param("WriteTimeoutSeconds").Value = ParameterValues.GetInt(wt, DefaultWriteTimeoutSeconds);
     }
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
@@ -92,157 +115,432 @@ public sealed class SocketServerNode : BaseNode
         if (value is not StringSample ss || ss.StringValue is not { } s) return;
         lock (_sendLock)
         {
-            if (pin.Id == Send1Pin.Id) _send1 = s;
-            else if (pin.Id == Send2Pin.Id) _send2 = s;
-            else if (pin.Id == Send3Pin.Id) _send3 = s;
-            else if (pin.Id == Send4Pin.Id) _send4 = s;
+            if (pin.Name == Send1Pin.Name) _send1 = s;
+            else if (pin.Name == Send2Pin.Name) _send2 = s;
+            else if (pin.Name == Send3Pin.Name) _send3 = s;
+            else if (pin.Name == Send4Pin.Name) _send4 = s;
         }
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
-        // Bind to any address (as in TcpMultiServer); Host is kept as a node-standard param.
-        _listener = new TcpListener(IPAddress.Any, Convert.ToInt32(Param("Port").Value));
-        _listener.Start();
-        context.Logger.LogTrace("SocketServer listening on port {Port}",
-            ((IPEndPoint)_listener.LocalEndpoint).Port);
+        if (_listener is not null)
+            return Task.CompletedTask;
+
+        SetConnecting();
+
+        var port = ParameterValues.GetInt(Param("Port").Value, 9000);
+        if (port is < 1 or > 65535)
+        {
+            SetFailed();
+            throw new InvalidOperationException($"SocketServer Port must be between 1 and 65535 (got {port}).");
+        }
+
+        var host = Param("Host").Value?.ToString()?.Trim() ?? "";
+        IPAddress address;
+        try
+        {
+            address = ResolveBindAddress(host);
+        }
+        catch (Exception ex)
+        {
+            SetFailed();
+            context.Logger.LogError(ex, "SocketServer has an invalid Host value: {Host}", host);
+            throw;
+        }
+
+        try
+        {
+            _listener = new TcpListener(address, port);
+            _listener.Start();
+        }
+        catch (Exception ex)
+        {
+            _listener?.Stop();
+            _listener = null;
+            SetFailed();
+            context.Logger.LogError(ex, "SocketServer could not bind to {Host}:{Port}.", host, port);
+            throw new InvalidOperationException($"SocketServer could not bind to {host}:{port}.", ex);
+        }
+
+        context.Logger.LogInformation(
+            "SocketServer listening on {Endpoint} (protocol v{Version})",
+            ((IPEndPoint)_listener.LocalEndpoint).ToString(), ProtocolVersion);
         return Task.CompletedTask;
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
+        if (_listener is null)
+        {
+            SetFailed();
+            throw new InvalidOperationException("SocketServer must be initialized before Run.");
+        }
+
+        SetConnecting();
+        var maxClients = ReadBoundedInt(context, "MaxClients", DefaultMaxClients, 1, MaxClientsLimit);
+        _readTimeoutSeconds = ReadBoundedInt(
+            context, "ReadTimeoutSeconds", DefaultReadTimeoutSeconds, 1, 3600);
+        _writeTimeoutSeconds = ReadBoundedInt(
+            context, "WriteTimeoutSeconds", DefaultWriteTimeoutSeconds, 1, 120);
+        Interlocked.Exchange(ref _acceptedClients, 0);
+        Interlocked.Exchange(ref _rejectedClients, 0);
+        Interlocked.Exchange(ref _receivedMessages, 0);
+        Interlocked.Exchange(ref _sentMessages, 0);
+        Interlocked.Exchange(ref _droppedMessages, 0);
+        Interlocked.Exchange(ref _clientErrors, 0);
+
         Running = true;
         _cts = new CancellationTokenSource();
-        _acceptTask = Task.Run(() => AcceptLoopAsync(context, _cts.Token));
+        _acceptTask = Task.Run(() => AcceptLoopAsync(context, _cts.Token, maxClients));
+        context.Logger.LogInformation(
+            "SocketServer protocol v{Version}: maxClients={MaxClients}, readTimeout={ReadTimeout}s, writeTimeout={WriteTimeout}s",
+            ProtocolVersion, maxClients, _readTimeoutSeconds, _writeTimeoutSeconds);
         return Task.CompletedTask;
     }
 
     /// <summary>One thread, one <c>while</c> loop: keep accepting clients until stopped.</summary>
-    private async Task AcceptLoopAsync(INodeContext context, CancellationToken ct)
+    private async Task AcceptLoopAsync(INodeContext context, CancellationToken ct, int maxClients)
     {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var client = await _listener!.AcceptTcpClientAsync(ct);
-                _ = Task.Run(() => HandleClientAsync(context, client, ct)); // per-client task, non-blocking
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Stopped / cancelled.
-        }
-        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
-        {
-            context.Logger.LogTrace("SocketServer stopped: {Message}", ex.Message);
-        }
-    }
-
-    /// <summary>Read bytes from one client, emit each message, and reply to that client.</summary>
-    private async Task HandleClientAsync(INodeContext context, TcpClient client, CancellationToken ct)
-    {
-        var id = Guid.NewGuid();
-        _clients.TryAdd(id, client);
-        var ep = (IPEndPoint?)client.Client.RemoteEndPoint;
-        var address = ep?.Address.ToString() ?? "?";
-        context.Logger.LogTrace("SocketServer client connected: {Id} ({Address})", id, address);
-
-        try
-        {
-            using var stream = client.GetStream();
-            var buffer = new byte[BufferSize];
-
-            while (!ct.IsCancellationRequested && client.Connected)
-            {
-                int read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
-                if (read == 0)
-                    break; // peer closed
-
-                var msg = Encoding.UTF8.GetString(buffer, 0, read);
-                if (msg != null)
-                {
-                    var rp = new StringSample(); rp.SetValue(msg, "Received"); ReceivedPin.SendSample(rp);
-                }
-                var ro = new StringSample(); ro.SetValue(msg, "Received"); context.SetOutput("Received", ro);
-                context.Logger.LogTrace("SocketServer received from {Id}: {Msg}", id, msg);
-
-                var reply = GetReply();
-                if (!string.IsNullOrEmpty(reply))
-                    await SendToAsync(id, msg);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            context.Logger.LogWarning("SocketServer client {Id} error: {Message}", id, ex.Message);
-        }
-        finally
-        {
-            _clients.TryRemove(id, out _);
-            client.Dispose();
-            context.Logger.LogTrace("SocketServer client disconnected: {Id}", id);
-        }
-    }
-
-    /// <summary>Snapshot of the current reply payload (Send1..4, or Response when all empty).</summary>
-    private string GetReply()
-    {
-        lock (_sendLock)
-        {
-            var sends = new[] { _send1, _send2, _send3, _send4 }
-                .Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-            if (sends.Count == 0)
-                return Param("Response").Value?.ToString() ?? "";
-            return string.Join("\n", sends);
-        }
-    }
-
-    /// <summary>Send a message to a specific client.</summary>
-    private async Task SendToAsync(Guid clientId, string message)
-    {
-        if (!_clients.TryGetValue(clientId, out var client) || !client.Connected)
+        var listener = _listener;
+        if (listener is null)
             return;
 
         try
         {
-            var bytes = Encoding.UTF8.GetBytes(message);
-            await client.GetStream().WriteAsync(bytes);
+            while (!ct.IsCancellationRequested)
+            {
+                TcpClient client;
+                try
+                {
+                    client = await listener.AcceptTcpClientAsync(ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                if (_clients.Count >= maxClients)
+                {
+                    Interlocked.Increment(ref _rejectedClients);
+                    context.Logger.LogWarning(
+                        "SocketServer rejected a client: MaxClients ({MaxClients}) reached.", maxClients);
+                    client.Dispose();
+                    continue;
+                }
+
+                var id = Guid.NewGuid();
+                var session = new ClientSession(client);
+                if (!_clients.TryAdd(id, session))
+                {
+                    client.Dispose();
+                    session.WriteLock.Dispose();
+                    session.Completion.TrySetResult(true);
+                    context.Logger.LogWarning("SocketServer could not track a newly accepted client.");
+                    continue;
+                }
+
+                _ = Task.Run(() => RunClientAsync(context, id, session, ct));
+            }
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Single failure does not affect others.
+            // Normal stop.
+        }
+        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
+        {
+            if (ct.IsCancellationRequested)
+                context.Logger.LogTrace("SocketServer listener stopped: {Message}", ex.Message);
+            else
+            {
+                context.Logger.LogError(ex, "SocketServer accept loop stopped unexpectedly.");
+                SetFailed();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                context.Logger.LogError(ex, "SocketServer accept loop failed.");
+                SetFailed();
+            }
         }
     }
 
-    /// <summary>Broadcast a message to all connected clients.</summary>
-    private async Task BroadcastAsync(string message)
+    private async Task RunClientAsync(INodeContext context, Guid id, ClientSession session, CancellationToken ct)
     {
-        var bytes = Encoding.UTF8.GetBytes(message);
-        foreach (var client in _clients.Values)
+        Interlocked.Increment(ref _acceptedClients);
+        try
         {
-            try { await client.GetStream().WriteAsync(bytes); }
-            catch { /* single failure does not affect others */ }
+            await HandleClientAsync(context, id, session, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Normal stop.
+        }
+        catch (Exception ex)
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                Interlocked.Increment(ref _clientErrors);
+                context.Logger.LogWarning("SocketServer client {Id} failed: {Message}", id, ex.Message);
+            }
+        }
+        finally
+        {
+            _clients.TryRemove(id, out _);
+            session.Client.Dispose();
+            session.WriteLock.Dispose();
+            session.Completion.TrySetResult(true);
+            context.Logger.LogTrace("SocketServer client disconnected: {Id}", id);
+        }
+    }
+
+    /// <summary>Read newline-delimited messages from one client and reply on the same client.</summary>
+    private async Task HandleClientAsync(INodeContext context, Guid id, ClientSession session, CancellationToken ct)
+    {
+        var ep = (IPEndPoint?)session.Client.Client.RemoteEndPoint;
+        var address = ep?.Address.ToString() ?? "?";
+        context.Logger.LogTrace("SocketServer client connected: {Id} ({Address})", id, address);
+
+        using var stream = session.Client.GetStream();
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+
+        while (!ct.IsCancellationRequested)
+        {
+            string? line;
+            try
+            {
+                line = await ReadLineWithTimeoutAsync(reader, _readTimeoutSeconds, ct);
+            }
+            catch (TimeoutException ex)
+            {
+                context.Logger.LogWarning(
+                    "SocketServer client {Id} read timeout: {Message}", id, ex.Message);
+                break;
+            }
+
+            if (line is null)
+                break; // peer closed
+
+            if (line.Length == 0)
+            {
+                context.Logger.LogTrace("SocketServer ignored an empty line from {Id}.", id);
+                continue;
+            }
+
+            if (line.Length > MaxMessageLength)
+            {
+                Interlocked.Increment(ref _droppedMessages);
+                context.Logger.LogWarning(
+                    "SocketServer dropped an oversized line from {Id} ({Length} characters; max {Max}).",
+                    id, line.Length, MaxMessageLength);
+                continue;
+            }
+
+            var received = StringSample.CreateSample();
+            received.SetValue(line, "Received");
+            ReceivedPin.SendSample(received);
+            Interlocked.Increment(ref _receivedMessages);
+            context.Logger.LogTrace("SocketServer received from {Id}: {Msg}", id, line);
+
+            foreach (var reply in GetReplies())
+                await SendToAsync(context, id, reply, ct);
+        }
+    }
+
+    /// <summary>Snapshot of the current reply payloads (Send1..4, or Response when all empty).</summary>
+    private IReadOnlyList<string> GetReplies()
+    {
+        lock (_sendLock)
+        {
+            var sends = new[] { _send1, _send2, _send3, _send4 }
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToArray();
+            if (sends.Length > 0)
+                return sends;
+
+            var response = Param("Response").Value?.ToString() ?? "";
+            return string.IsNullOrWhiteSpace(response) ? Array.Empty<string>() : new[] { response };
+        }
+    }
+
+    /// <summary>Send one line to a specific client, serialized per client.</summary>
+    private async Task SendToAsync(INodeContext context, Guid clientId, string message, CancellationToken ct)
+    {
+        if (!_clients.TryGetValue(clientId, out var session))
+            return;
+
+        var line = NormalizeLine(message);
+        if (line.Length == 0 || line.Length > MaxMessageLength)
+            return;
+
+        var acquired = false;
+        try
+        {
+            await session.WriteLock.WaitAsync(ct);
+            acquired = true;
+
+            var bytes = Encoding.UTF8.GetBytes(line + "\n");
+            await WriteWithTimeoutAsync(session.Client.GetStream(), bytes, _writeTimeoutSeconds, ct);
+            Interlocked.Increment(ref _sentMessages);
+            context.Logger.LogTrace("SocketServer sent to {Id}: {Msg}", clientId, line);
+        }
+        catch (TimeoutException ex)
+        {
+            context.Logger.LogDebug("SocketServer send timeout for {Id}: {Message}", clientId, ex.Message);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
+        {
+            if (!ct.IsCancellationRequested)
+                context.Logger.LogDebug("SocketServer could not send to {Id}: {Message}", clientId, ex.Message);
+        }
+        finally
+        {
+            if (acquired)
+            {
+                try { session.WriteLock.Release(); }
+                catch (ObjectDisposedException) { /* The session was torn down while sending. */ }
+            }
         }
     }
 
     public override async Task Stop(INodeContext context, CancellationToken ct = default)
     {
-        _cts?.Cancel();
-        _listener?.Stop();
-        foreach (var client in _clients.Values)
-            client.Dispose();
-        _clients.Clear();
-
-        if (_acceptTask is not null)
+        await _stopLock.WaitAsync();
+        try
         {
-            try { await _acceptTask; } catch { /* already terminated */ }
+            var cts = _cts;
+            _cts = null;
+            try { cts?.Cancel(); } catch (ObjectDisposedException) { }
+
+            _listener?.Stop();
+            _listener = null;
+
+            // Stop accepting first, so no new client session can be added after the snapshot below.
+            var accept = _acceptTask;
             _acceptTask = null;
+            if (accept is not null)
+            {
+                try
+                {
+                    await accept.WaitAsync(TimeSpan.FromSeconds(2));
+                }
+                catch (TimeoutException)
+                {
+                    context.Logger.LogWarning("SocketServer accept loop did not stop within 2s.");
+                }
+                catch
+                {
+                    // Already terminated.
+                }
+            }
+
+            var sessions = _clients.Values.ToArray();
+            foreach (var session in sessions)
+                session.Client.Dispose();
+
+            if (sessions.Length > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(sessions.Select(s => s.Completion.Task))
+                        .WaitAsync(TimeSpan.FromSeconds(2));
+                }
+                catch (TimeoutException)
+                {
+                    context.Logger.LogWarning("SocketServer client tasks did not stop within 2s.");
+                }
+                catch
+                {
+                    // Client tasks catch their own failures; the completion source only reports done.
+                }
+            }
+
+            _clients.Clear();
+            cts?.Dispose();
+            SetIdle();
+            context.Logger.LogInformation(
+                "SocketServer stopped: accepted={Accepted} rejected={Rejected} sent={Sent} received={Received} dropped={Dropped} errors={Errors}",
+                Interlocked.Read(ref _acceptedClients),
+                Interlocked.Read(ref _rejectedClients),
+                Interlocked.Read(ref _sentMessages),
+                Interlocked.Read(ref _receivedMessages),
+                Interlocked.Read(ref _droppedMessages),
+                Interlocked.Read(ref _clientErrors));
         }
-        _cts?.Dispose();
-        _cts = null;
-        Running = false;
+        finally
+        {
+            _stopLock.Release();
+        }
+    }
+
+    private int ReadBoundedInt(INodeContext context, string name, int fallback, int min, int max)
+    {
+        var value = ParameterValues.GetInt(Param(name).Value, fallback);
+        if (value < min || value > max)
+        {
+            context.Logger.LogWarning(
+                "SocketServer parameter {Name}={Value} is outside [{Min}, {Max}]; using the nearest valid value.",
+                name, value, min, max);
+            value = Math.Clamp(value, min, max);
+        }
+        return value;
+    }
+
+    private static async Task<string?> ReadLineWithTimeoutAsync(
+        StreamReader reader, int timeoutSeconds, CancellationToken ct)
+    {
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        try
+        {
+            return await reader.ReadLineAsync(linkedCts.Token).AsTask();
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"no data received for {timeoutSeconds}s");
+        }
+    }
+
+    private static async Task WriteWithTimeoutAsync(
+        NetworkStream stream, byte[] bytes, int timeoutSeconds, CancellationToken ct)
+    {
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        try
+        {
+            await stream.WriteAsync(bytes, linkedCts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"write did not complete within {timeoutSeconds}s");
+        }
+    }
+
+    private static IPAddress ResolveBindAddress(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host) || host is "0.0.0.0" or "*")
+            return IPAddress.Any;
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            return IPAddress.Loopback;
+        if (IPAddress.TryParse(host, out var address))
+            return address;
+
+        throw new InvalidOperationException(
+            $"SocketServer Host '{host}' is not a local IP address. Use 0.0.0.0, 127.0.0.1 or a local IP.");
+    }
+
+    private static string NormalizeLine(string value) =>
+        value.Replace('\r', ' ').Replace('\n', ' ');
+
+    private sealed class ClientSession
+    {
+        public ClientSession(TcpClient client) => Client = client;
+
+        public TcpClient Client { get; }
+        public SemaphoreSlim WriteLock { get; } = new(1, 1);
+        public TaskCompletionSource<bool> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }
-
-
-
-

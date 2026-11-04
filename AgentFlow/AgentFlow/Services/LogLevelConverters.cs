@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="LogLevelConverters.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 // </copyright>

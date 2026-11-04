@@ -1,17 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
   <!--
-    For every plugin project (IsPlugin=true), after it builds, copy its output dll
-    into each app's run-directory plugins folder, overwriting any stale dll.
+    ================================================================================
+    Plugin distribution (fixes the "stale / mismatched plugin DLL" class of bugs).
+    ================================================================================
+    A host project opts in with <PluginHost>true</PluginHost> and lists every plugin
+    project in @(PluginProjects). The host then owns its plugins/ output folder:
+
+      * ordinary build (not publish):
+          - plugin projects stay incremental (no forced full rebuild of all plugins);
+          - the host's $(OutDir)plugins folder is emptied and refilled with exactly the
+            plugin assemblies produced by this build.
+        Skipped during the build phase of a publish run (_IsPublishing is true there;
+        publish handles the plugins in its own targets below).
+
+      * publish (with build):
+          - every plugin project's bin\$(Configuration) folder is removed right before
+            the host build starts, so the ProjectReference build recompiles the plugins
+            from scratch;
+          - after publish, $(PublishDir)plugins is emptied and refilled with exactly the
+            plugin assemblies produced by that build.
+      * publish with NoBuild=true (the no build switch):
+          - the Build phase does not run, so the publish target itself removes the plugin
+            bin folders, builds the plugin projects, then fills $(PublishDir)plugins.
+      * A locked (app running) or missing file fails the build; nothing is skipped with
+        ContinueOnError.
+
+    Note: the item lists below use different names per target, because items defined in
+    one target stay visible to later targets of the same project build and would
+    accumulate otherwise.
+
+    Do not publish AgentFlow.Desktop and AgentFlow.Cli in the same build: the publish
+    step cleans the plugin bin folders, and concurrent publishers would race.
   -->
-  <Target Name="CopyPluginToRunDirs" AfterTargets="Build" Condition="'$(IsPlugin)' == 'true'">
+
+  <Target Name="CleanPluginBinariesOnPublish"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' == 'true' and '$(NoBuild)' != 'true'">
     <ItemGroup>
-      <_PluginDestDirs Include="$(MSBuildThisFileDirectory)AgentFlow\bin\$(Configuration)\$(TargetFramework)\plugins" />
-      <_PluginDestDirs Include="$(MSBuildThisFileDirectory)AgentFlow.Desktop\bin\$(Configuration)\$(TargetFramework)\plugins" />
-      <_PluginDestDirs Include="$(MSBuildThisFileDirectory)AgentFlow.Cli\bin\$(Configuration)\$(TargetFramework)\plugins" />
+      <_CleanPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
+      <_CleanPluginBinDirs Include="@(_CleanPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)')" />
+      <_CleanPluginObjDirs Include="@(_CleanPluginProjects->'%(RootDir)%(Directory)obj\$(Configuration)')" />
     </ItemGroup>
-    <Copy SourceFiles="$(TargetPath)"
-          DestinationFolder="%(_PluginDestDirs.Identity)"
-          SkipUnchangedFiles="true" />
+    <Message Importance="High"
+             Text="Publishing plugins: removing plugin build output, so the plugins are rebuilt from scratch." />
+    <RemoveDir Directories="@(_CleanPluginBinDirs);@(_CleanPluginObjDirs)" />
+  </Target>
+
+  <Target Name="CopyPluginsToBuildOutput"
+          AfterTargets="Build"
+          Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' != 'true'">
+    <ItemGroup>
+      <_BuildPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
+      <_BuildPluginDlls Include="@(_BuildPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)\net8.0\%(Filename).dll')" />
+      <_BuildMissingPluginDlls Include="@(_BuildPluginDlls)" Condition="!Exists('%(FullPath)')" />
+    </ItemGroup>
+    <Error Condition="'@(_BuildPluginDlls)' == ''"
+           Text="$(MSBuildProjectName) has PluginHost=true but @(PluginProjects) is empty: no plugin assemblies to copy." />
+    <Error Condition="'@(_BuildMissingPluginDlls)' != ''"
+           Text="Plugin assemblies were not produced by this build: @(_BuildMissingPluginDlls). Build $(MSBuildProjectName) (or the solution) without the no build switch, and keep the plugin project name equal to its assembly name." />
+    <RemoveDir Directories="$(OutDir)plugins" Condition="Exists('$(OutDir)plugins')" />
+    <MakeDir Directories="$(OutDir)plugins" />
+    <Copy SourceFiles="@(_BuildPluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="false" />
+    <Message Importance="normal" Text="Copied plugin assemblies to $(OutDir)plugins" />
+  </Target>
+
+  <Target Name="PublishFreshPlugins"
+          AfterTargets="Publish"
+          Condition="'$(PluginHost)' == 'true'">
+    <ItemGroup>
+      <_PublishPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
+      <_PublishPluginBinDirs Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)')" />
+      <_PublishPluginObjDirs Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)obj\$(Configuration)')" />
+      <_PublishPluginDlls Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)\net8.0\%(Filename).dll')" />
+    </ItemGroup>
+    <Error Condition="'@(_PublishPluginDlls)' == ''"
+           Text="$(MSBuildProjectName) has PluginHost=true but @(PluginProjects) is empty: nothing to publish." />
+
+    <!-- A publish run with NoBuild=true skips the Build phase: rebuild the plugins here.
+         (In a normal publish the plugins were just rebuilt by the host build, and asking
+         MSBuild to build an already-built project again would be skipped as up to date.) -->
+    <RemoveDir Directories="@(_PublishPluginBinDirs);@(_PublishPluginObjDirs)" Condition="'$(NoBuild)' == 'true'" />
+    <MSBuild Projects="@(_PublishPluginProjects)"
+             Targets="Build"
+             Condition="'$(NoBuild)' == 'true'"
+             RemoveProperties="NoBuild;RuntimeIdentifier;SelfContained;PublishSelfContained"
+             Properties="Configuration=$(Configuration)" />
+
+    <ItemGroup>
+      <_PublishMissingPluginDlls Include="@(_PublishPluginDlls)" Condition="!Exists('%(FullPath)')" />
+    </ItemGroup>
+    <Error Condition="'@(_PublishMissingPluginDlls)' != ''"
+           Text="Plugin assemblies are missing when publishing: @(_PublishMissingPluginDlls)." />
+    <RemoveDir Directories="$(PublishDir)plugins" Condition="Exists('$(PublishDir)plugins')" />
+    <MakeDir Directories="$(PublishDir)plugins" />
+    <Copy SourceFiles="@(_PublishPluginDlls)" DestinationFolder="$(PublishDir)plugins" SkipUnchangedFiles="false" />
+
+    <!-- Keep the host's own build output (the exe run directly from bin) in sync too. -->
+    <RemoveDir Directories="$(OutDir)plugins" Condition="Exists('$(OutDir)')" />
+    <MakeDir Directories="$(OutDir)plugins" Condition="Exists('$(OutDir)')" />
+    <Copy SourceFiles="@(_PublishPluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="false" Condition="Exists('$(OutDir)')" />
+
+    <Message Importance="High" Text="Published plugin assemblies to $(PublishDir)plugins" />
   </Target>
 </Project>
