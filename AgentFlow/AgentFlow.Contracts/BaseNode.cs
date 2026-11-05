@@ -46,7 +46,7 @@ public abstract class BaseNode
     }
 
     /// <summary>
-    /// Node type id (globally unique, e.g. "node.socket-server"). Read-only; serialized into JSON.
+    /// Node type id (globally unique, e.g. "node.tcp-server"). Read-only; serialized into JSON.
     /// </summary>
     public abstract string Name { get; }
 

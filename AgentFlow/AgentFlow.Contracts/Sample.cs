@@ -31,7 +31,6 @@ public abstract class Sample
     public int? Int32Value;
     public long? Int64Value;
     public bool? BoolValue;
-    public decimal? DecimalValue;
     public double? DoubleValue;
     public float? FloatValue;
     public byte[]? BinValue;

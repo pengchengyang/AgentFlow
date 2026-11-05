@@ -341,7 +341,7 @@ public partial class NodeParamDlgViewModel : ViewModelBase
         }
     }
 
-    // Parameter text is persisted culture-invariantly ("0.2"); also accept a local decimal comma
+    // Parameter text is persisted culture-invariantly ("0.2"); also accept a local fractional separator
     // while editing, then store the typed invariant value.
     private static int ParseInt(string raw) =>
         int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var invariant)

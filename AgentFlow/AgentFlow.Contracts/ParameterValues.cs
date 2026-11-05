@@ -41,8 +41,6 @@ public static class ParameterValues
                 return FromDouble(f, fallback);
             case double d:
                 return FromDouble(d, fallback);
-            case decimal m:
-                return FromDouble((double)m, fallback);
             case string text:
                 return int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
                     ? parsed
@@ -84,7 +82,7 @@ public static class ParameterValues
                     _ => fallback
                 };
             default:
-                return value is int or short or byte or ushort or uint or float or double or decimal
+                return value is int or short or byte or ushort or uint or float or double
                     ? GetInt(value, fallback is >= int.MinValue and <= int.MaxValue ? (int)fallback : 0)
                     : fallback;
         }
@@ -101,8 +99,6 @@ public static class ParameterValues
                 return d;
             case float f:
                 return f;
-            case decimal m:
-                return (double)m;
             case int i:
                 return i;
             case long l:

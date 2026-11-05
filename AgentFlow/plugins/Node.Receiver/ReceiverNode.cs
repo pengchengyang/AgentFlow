@@ -18,11 +18,11 @@ public sealed class ReceiverNode : BaseNode
 {
     private static readonly string[] DataTypeOptions =
     {
-        "int32", "int64", "float", "double", "binary", "bool"
+        "string", "int32", "int64", "float", "double", "binary", "bool"
     };
 
     private readonly BasePin _inPin =
-        new("input", DataType.INT32, PinDirection.Input, required: false);
+        new("input", DataType.STRING, PinDirection.Input, required: false);
 
     private ILogger? _logger;
 
@@ -47,7 +47,7 @@ public sealed class ReceiverNode : BaseNode
     {
         base.AddParam();
         AddParameter(new NodeParameter(
-            "DataType", typeof(string), "int32",
+            "DataType", typeof(string), "string",
             isEditable: true, group: "General", zone: "ReceiverZone",
             editor: ParameterEditorKind.SingleSelect,
             options: DataTypeOptions));
@@ -56,7 +56,7 @@ public sealed class ReceiverNode : BaseNode
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
         if (parameters.TryGetValue("DataType", out var dt) && dt is not null)
-            Param("DataType").Value = ParameterValues.GetString(dt, "int32") ?? "int32";
+            Param("DataType").Value = ParameterValues.GetString(dt, "string") ?? "string";
 
         ApplyDataType(Param("DataType").Value);
     }
@@ -102,15 +102,16 @@ public sealed class ReceiverNode : BaseNode
 
     private static DataType ParseDataType(object? value)
     {
-        return (ParameterValues.GetString(value, "int32") ?? "").Trim().ToLowerInvariant() switch
+        return (ParameterValues.GetString(value, "string") ?? "").Trim().ToLowerInvariant() switch
         {
+            "string" => DataType.STRING,
             "int32" => DataType.INT32,
             "int64" => DataType.INT64,
             "float" => DataType.FLOAT,
             "double" => DataType.DOUBLE,
             "binary" => DataType.BIN,
             "bool" => DataType.BOOL,
-            _ => DataType.INT32,
+            _ => DataType.STRING,
         };
     }
 

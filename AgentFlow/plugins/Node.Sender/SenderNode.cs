@@ -14,16 +14,17 @@ namespace Node.Sender;
 /// Command-driven source node: the user invokes "Send Once", "Continuous Send" or
 /// "Stop Continuous Send" from the editor context menu. Continuous sends snapshot all
 /// parameters when the loop starts, so a running workflow never observes parameter changes.
+/// For INT32 and INT64 sources, each successful continuous send advances the value by one.
 /// </summary>
 public sealed class SenderNode : BaseNode
 {
     private static readonly string[] DataTypeOptions =
     {
-        "int32", "int64", "float", "double", "binary", "bool"
+        "string", "int32", "int64", "float", "double", "binary", "bool"
     };
 
     private readonly BasePin _outPin =
-        new("output", DataType.INT32, PinDirection.Output);
+        new("output", DataType.STRING, PinDirection.Output);
 
     private readonly object _continuousGate = new();
     private CancellationTokenSource? _continuousCts;
@@ -50,7 +51,7 @@ public sealed class SenderNode : BaseNode
     {
         base.AddParam();
         AddParameter(new NodeParameter(
-            "DataType", typeof(string), "int32",
+            "DataType", typeof(string), "string",
             isEditable: true, group: "General", zone: "SenderZone",
             editor: ParameterEditorKind.SingleSelect,
             options: DataTypeOptions));
@@ -65,7 +66,7 @@ public sealed class SenderNode : BaseNode
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
         if (parameters.TryGetValue("DataType", out var dt) && dt is not null)
-            Param("DataType").Value = ParameterValues.GetString(dt, "int32") ?? "int32";
+            Param("DataType").Value = ParameterValues.GetString(dt, "string") ?? "string";
 
         ApplyDataType(Param("DataType").Value);
     }
@@ -267,6 +268,9 @@ public sealed class SenderNode : BaseNode
                     return;
                 }
 
+                //if (dataType is DataType.INT32 or DataType.INT64)
+                //    value = IncrementIntegerValue(dataType, value);
+
                 await Task.Delay(intervalMs, ct).ConfigureAwait(false);
             }
         }
@@ -329,15 +333,16 @@ public sealed class SenderNode : BaseNode
 
     private static DataType ParseDataType(object? value)
     {
-        return (ParameterValues.GetString(value, "int32") ?? "").Trim().ToLowerInvariant() switch
+        return (ParameterValues.GetString(value, "string") ?? "").Trim().ToLowerInvariant() switch
         {
+            "string" => DataType.STRING,
             "int32" => DataType.INT32,
             "int64" => DataType.INT64,
             "float" => DataType.FLOAT,
             "double" => DataType.DOUBLE,
             "binary" => DataType.BIN,
             "bool" => DataType.BOOL,
-            _ => DataType.INT32,
+            _ => DataType.STRING,
         };
     }
 
@@ -349,6 +354,10 @@ public sealed class SenderNode : BaseNode
 
         switch (dataType)
         {
+            case DataType.STRING:
+                value = rawValue;
+                return true;
+
             case DataType.INT32:
                 if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i32))
                 {
@@ -440,6 +449,7 @@ public sealed class SenderNode : BaseNode
     {
         Sample sample = dataType switch
         {
+            DataType.STRING => StringSample.CreateSample(),
             DataType.INT32 => Int32Sample.CreateSample(),
             DataType.INT64 => Int64Sample.CreateSample(),
             DataType.FLOAT => FloatSample.CreateSample(),
@@ -455,6 +465,16 @@ public sealed class SenderNode : BaseNode
             sample.SetValue(value, "output");
 
         return sample;
+    }
+
+    private static object? IncrementIntegerValue(DataType dataType, object? value)
+    {
+        return dataType switch
+        {
+            DataType.INT32 when value is int int32 => unchecked(int32 + 1),
+            DataType.INT64 when value is long int64 => unchecked(int64 + 1),
+            _ => value,
+        };
     }
 
     private static string FormatValue(DataType dataType, object? value)

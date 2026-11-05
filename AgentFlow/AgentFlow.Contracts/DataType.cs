@@ -14,7 +14,6 @@ public enum DataType
     INT32,
     INT64,
     BOOL,
-    DECIMAL,
     FLOAT,
     DOUBLE,
     BIN,

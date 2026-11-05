@@ -169,7 +169,7 @@ public sealed class NodeInstanceManager
     /// Launch every node instance concurrently, without waiting for them to finish. Each node is
     /// first marked <see cref="NodeState.Connecting"/> (so the editor can show "starting"), then its
     /// <see cref="BaseNode.Run"/> executes on the thread pool. Because the nodes start concurrently,
-    /// a node that has to wait for a resource (e.g. a socket client retrying its connection) no
+    /// a node that has to wait for a resource (e.g. a TCP client retrying its connection) no
     /// longer blocks the startup of the nodes after it — the previous sequential loop did.
     /// A node must set <see cref="BaseNode.Running"/> = true before <see cref="BaseNode.Run"/> returns
     /// normally; otherwise the run is treated as a failed start. Once a node is running, the Core

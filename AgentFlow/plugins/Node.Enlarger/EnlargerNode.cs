@@ -17,19 +17,19 @@ public sealed class EnlargerNode : BaseNode
 {
     private static readonly string[] DataTypeOptions =
     {
-        "int32", "int64", "float", "double", "binary", "bool"
+        "string", "int32", "int64", "float", "double", "binary", "bool"
     };
 
     private readonly BasePin _inPin =
-        new("input", DataType.INT32, PinDirection.Input, required: false);
+        new("input", DataType.STRING, PinDirection.Input, required: false);
 
     private readonly BasePin[] _outPins =
     {
-        new("output1", DataType.INT32, PinDirection.Output),
-        new("output2", DataType.INT32, PinDirection.Output),
-        new("output3", DataType.INT32, PinDirection.Output),
-        new("output4", DataType.INT32, PinDirection.Output),
-        new("output5", DataType.INT32, PinDirection.Output),
+        new("output1", DataType.STRING, PinDirection.Output),
+        new("output2", DataType.STRING, PinDirection.Output),
+        new("output3", DataType.STRING, PinDirection.Output),
+        new("output4", DataType.STRING, PinDirection.Output),
+        new("output5", DataType.STRING, PinDirection.Output),
     };
 
     public EnlargerNode()
@@ -55,7 +55,7 @@ public sealed class EnlargerNode : BaseNode
     {
         base.AddParam();
         AddParameter(new NodeParameter(
-            "DataType", typeof(string), "int32",
+            "DataType", typeof(string), "string",
             isEditable: true, group: "General", zone: "EnlargerZone",
             editor: ParameterEditorKind.SingleSelect,
             options: DataTypeOptions));
@@ -64,7 +64,7 @@ public sealed class EnlargerNode : BaseNode
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
         if (parameters.TryGetValue("DataType", out var dt) && dt is not null)
-            Param("DataType").Value = ParameterValues.GetString(dt, "int32") ?? "int32";
+            Param("DataType").Value = ParameterValues.GetString(dt, "string") ?? "string";
 
         ApplyDataType(Param("DataType").Value);
     }
@@ -77,6 +77,22 @@ public sealed class EnlargerNode : BaseNode
         // The node is operational and waits for incoming samples.
         Running = true;
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Forward every non-null sample from the single input to all five output pins.
+    /// Each output pin forwards only to its connected downstream pin.
+    /// </summary>
+    public override void ReceiveSample(BasePin pin, Sample? value)
+    {
+        if (value is null)
+            return;
+
+        if (!ReferenceEquals(pin, _inPin))
+            return;
+
+        foreach (var outputPin in _outPins)
+            outputPin.SendSample(value);
     }
 
     public override Task Stop(INodeContext context, CancellationToken ct = default)
@@ -100,13 +116,14 @@ public sealed class EnlargerNode : BaseNode
     {
         return (ParameterValues.GetString(value) ?? "").Trim().ToLowerInvariant() switch
         {
+            "string" => DataType.STRING,
             "int32" => DataType.INT32,
             "int64" => DataType.INT64,
             "float" => DataType.FLOAT,
             "double" => DataType.DOUBLE,
             "binary" => DataType.BIN,
             "bool" => DataType.BOOL,
-            _ => DataType.INT32,
+            _ => DataType.STRING,
         };
     }
 }

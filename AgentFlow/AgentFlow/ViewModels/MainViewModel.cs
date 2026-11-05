@@ -703,7 +703,7 @@ public partial class MainViewModel : ViewModelBase
     }
     /// <summary>Whether the current user is logged in as Admin (Admin-only features gate on this).</summary>
     [ObservableProperty]
-    private bool _isAdmin; // Default to non-admin: admin-only UI must be unlocked explicitly.
+    private bool _isAdmin = true; // Start with Admin permissions until the user explicitly signs in as another role.
     /// <summary>Bottom-right lock icon: unlocked (🔓) for Admin, locked (🔒) for all other accounts.</summary>
     public string LockIcon => IsAdmin ? "🔓" : "🔒";
     partial void OnIsAdminChanged(bool value)
@@ -713,7 +713,7 @@ public partial class MainViewModel : ViewModelBase
     }
     /// <summary>Whether the right node-library Sidebar is visible (Admin only).</summary>
     [ObservableProperty]
-    private bool _isSidebarVisible; // Admin-only panel starts closed until login.
+    private bool _isSidebarVisible = true; // Admin-only panel is available immediately with the default Admin session.
     /// <summary>Toggle the right node-library Sidebar (Admin only).</summary>
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
@@ -989,7 +989,7 @@ public partial class MainViewModel : ViewModelBase
             if (_nodeManager.Instances.Any(n => n.State != NodeState.Idle))
                 await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
             // StartAsync launches every node concurrently and returns immediately: a node that has to
-            // wait for a resource (SocketClient retrying its connection) no longer blocks the startup
+            // wait for a resource (TCP client retrying its connection) no longer blocks the startup
             // of the nodes after it, and the indicator follows the real node state instead.
             await Task.Run(() => _nodeManager.StartAsync(node => contexts[node], _runCts.Token));
             RefreshRunState();

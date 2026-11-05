@@ -69,10 +69,14 @@ stop invariant.
 
 ## Runtime Data Flow
 
-Pins are defined by `BasePin` and owned by `BaseNode`. Output pins hold the
-connected input-pin reference; input pins forward incoming samples to
-`BaseNode.ReceiveSample`. The editor layer only draws and establishes/removes
-connections; runtime delivery is performed by the Core graph and pin objects.
+Pins are defined by `BasePin` and owned by `BaseNode`. Output pins own the
+authoritative downstream target list (`Targets`) and forward samples to those
+input pins. Input pins hold the upstream output-pin reference and forward
+incoming samples to `BaseNode.ReceiveSample`. On an output pin,
+`ConnectedPin` is a compatibility view of the single connected target; on an
+input pin it is the stored upstream reference. The editor layer only draws and
+establishes/removes connections; runtime delivery is performed by the Core
+graph and pin objects.
 
 ## Logging Policy
 
@@ -99,11 +103,17 @@ Actual runtime faults remain at `ERROR`:
 
 ## Build
 
+Plugin binaries are configuration- and platform-specific. AnyCPU builds read from
+`plugins/<PluginName>/bin/<Configuration>/net8.0`, while x64 builds read from
+`plugins/<PluginName>/bin/x64/<Configuration>/net8.0`. The host build clears and
+repopulates its own `plugins` directory after the plugin projects finish building,
+so an old copy from another platform/configuration cannot silently be used.
+
 Build the full solution with Visual Studio MSBuild:
 
 ```powershell
 & "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" `
-  "AgentFlow\AgentFlow.sln" /p:Configuration=Debug /m:1 /nr:false /nologo /v:m
+  "AgentFlow.sln" /p:Configuration=Debug /p:Platform=x64 /m:1 /nr:false /nologo /v:m
 ```
 
 Build the desktop host:
@@ -111,5 +121,43 @@ Build the desktop host:
 ```powershell
 & "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" `
   "AgentFlow\AgentFlow.Desktop\AgentFlow.Desktop.csproj" `
-  /p:Configuration=Debug /m:1 /nr:false /nologo /v:m
+  /p:Configuration=Debug /p:Platform=x64 /m:1 /nr:false /nologo /v:m
 ```
+
+Before rebuilding or starting a test run, close the running AgentFlow desktop
+process. A loaded plugin DLL is locked on Windows; the build must fail rather than
+keep serving an older assembly. After a successful build, the source plugin DLL
+and `AgentFlow.Desktop/bin/x64/Debug/net8.0/plugins` copy should have the same
+SHA-256 hash. Release x64 follows the same layout under `bin/x64/Release`.
+
+The desktop publish profile uses the `win-x64` runtime identifier and self-contained
+single-file publishing. `AgentFlow.Desktop.csproj` therefore declares `win-x64`
+in `RuntimeIdentifiers`, so a normal restore produces the runtime-specific assets
+required by the publish profile. The published `plugins` directory remains beside
+the executable and is refreshed with the same plugin assemblies used by the build.
+
+During publish, the host explicitly builds every plugin project with the active
+configuration and platform before copying plugin assemblies. This is required because
+Visual Studio's publish pipeline can evaluate project references separately, and it
+must not depend on plugin binaries being rebuilt by the host build phase alone.
+
+## Bundled Plugin Skeletons
+
+The following plugins provide the standard construction, parameters, pins, lifecycle,
+and receive hooks without implementing final business behavior yet:
+
+| Plugin | Role | Default pins |
+| --- | --- | --- |
+| `Node.FactCaller` | Fact lookup entry point | `request` string input; `fact` string output |
+| `Node.FactLogFetcher` | Fact-related log retrieval | `factId` string input; `log` string output |
+| `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
+| `Node.SpecialSettings` | Profile / settings adapter | `input` / `output` string pins |
+
+Business-specific service calls, SQL persistence, and settings transformation remain explicit
+`TODO` items in each node implementation.
+
+The TCP demo nodes expose a raw byte-stream interface. `TCP Client` and `TCP Server`
+each expose `input_string`, `input_binary`, `output_string`, and `output_binary`.
+Text inputs are UTF-8 encoded, binary inputs are sent unchanged, and received byte blocks
+are published without adding framing or automatic replies. See `docs/tcp-transport.md`.
+

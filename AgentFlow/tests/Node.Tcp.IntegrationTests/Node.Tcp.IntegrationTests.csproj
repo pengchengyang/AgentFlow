@@ -5,10 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\plugins\Node.SocketClient\Node.SocketClient.csproj" />
-    <ProjectReference Include="..\..\plugins\Node.SocketServer\Node.SocketServer.csproj" />
+    <ProjectReference Include="..\..\plugins\Node.TcpClient\Node.TcpClient.csproj" />
+    <ProjectReference Include="..\..\plugins\Node.TcpServer\Node.TcpServer.csproj" />
     <ProjectReference Include="..\..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
   </ItemGroup>
 </Project>

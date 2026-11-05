@@ -36,7 +36,7 @@ public sealed class NotEmptyConverter : IValueConverter
 
 /// <summary>
 /// Initial shown inside the component-list icon square. Takes the first letter of the node
-/// name ("Socket Client" -&gt; S, "ReAct Agent" -&gt; R). Presentation only.
+/// name ("TCP Client" -&gt; T, "ReAct Agent" -&gt; R). Presentation only.
 /// </summary>
 public sealed class LastWordInitialConverter : IValueConverter
 {

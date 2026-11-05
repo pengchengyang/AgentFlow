@@ -17,20 +17,20 @@ public sealed class ShrinkerNode : BaseNode
 {
     private static readonly string[] DataTypeOptions =
     {
-        "int32", "int64", "float", "double", "binary", "bool"
+        "string", "int32", "int64", "float", "double", "binary", "bool"
     };
 
     private readonly BasePin[] _inPins =
     {
-        new("input1", DataType.INT32, PinDirection.Input, required: false),
-        new("input2", DataType.INT32, PinDirection.Input, required: false),
-        new("input3", DataType.INT32, PinDirection.Input, required: false),
-        new("input4", DataType.INT32, PinDirection.Input, required: false),
-        new("input5", DataType.INT32, PinDirection.Input, required: false),
+        new("input1", DataType.STRING, PinDirection.Input, required: false),
+        new("input2", DataType.STRING, PinDirection.Input, required: false),
+        new("input3", DataType.STRING, PinDirection.Input, required: false),
+        new("input4", DataType.STRING, PinDirection.Input, required: false),
+        new("input5", DataType.STRING, PinDirection.Input, required: false),
     };
 
     private readonly BasePin _outPin =
-        new("output", DataType.INT32, PinDirection.Output);
+        new("output", DataType.STRING, PinDirection.Output);
 
     public ShrinkerNode()
     {
@@ -55,7 +55,7 @@ public sealed class ShrinkerNode : BaseNode
     {
         base.AddParam();
         AddParameter(new NodeParameter(
-            "DataType", typeof(string), "int32",
+            "DataType", typeof(string), "string",
             isEditable: true, group: "General", zone: "ShrinkerZone",
             editor: ParameterEditorKind.SingleSelect,
             options: DataTypeOptions));
@@ -64,7 +64,7 @@ public sealed class ShrinkerNode : BaseNode
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
         if (parameters.TryGetValue("DataType", out var dt) && dt is not null)
-            Param("DataType").Value = ParameterValues.GetString(dt, "int32") ?? "int32";
+            Param("DataType").Value = ParameterValues.GetString(dt, "string") ?? "string";
 
         ApplyDataType(Param("DataType").Value);
     }
@@ -117,13 +117,14 @@ public sealed class ShrinkerNode : BaseNode
     {
         return (ParameterValues.GetString(value) ?? "").Trim().ToLowerInvariant() switch
         {
+            "string" => DataType.STRING,
             "int32" => DataType.INT32,
             "int64" => DataType.INT64,
             "float" => DataType.FLOAT,
             "double" => DataType.DOUBLE,
             "binary" => DataType.BIN,
             "bool" => DataType.BOOL,
-            _ => DataType.INT32,
+            _ => DataType.STRING,
         };
     }
 }

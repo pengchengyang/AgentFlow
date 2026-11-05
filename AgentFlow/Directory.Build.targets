@@ -1,58 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
+  <PropertyGroup>
+    <!-- Platform-specific plugin output folders use bin\<Platform>\<Configuration> on MSBuild. -->
+    <PluginPlatformOutputPath Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != 'Any CPU'">$(Platform)\</PluginPlatformOutputPath>
+  </PropertyGroup>
   <!--
     ================================================================================
-    Plugin distribution (fixes the "stale / mismatched plugin DLL" class of bugs).
+    Plugin distribution
     ================================================================================
     A host project opts in with <PluginHost>true</PluginHost> and lists every plugin
-    project in @(PluginProjects). The host then owns its plugins/ output folder:
+    project in @(PluginProjects). The host owns its plugins/ output folder:
 
-      * ordinary build (not publish):
-          - plugin projects stay incremental (no forced full rebuild of all plugins);
-          - the host's $(OutDir)plugins folder is emptied and refilled with exactly the
-            plugin assemblies produced by this build.
-        Skipped during the build phase of a publish run (_IsPublishing is true there;
-        publish handles the plugins in its own targets below).
+      * ordinary build:
+          - plugin projects are built through their normal ProjectReferences;
+          - the host's $(OutDir)plugins folder is emptied and refilled with exactly
+            the plugin assemblies produced for the active configuration/platform.
 
-      * publish (with build):
-          - every plugin project's bin\$(Configuration) folder is removed right before
-            the host build starts, so the ProjectReference build recompiles the plugins
-            from scratch;
-          - after publish, $(PublishDir)plugins is emptied and refilled with exactly the
-            plugin assemblies produced by that build.
-      * publish with NoBuild=true (the no build switch):
-          - the Build phase does not run, so the publish target itself removes the plugin
-            bin folders, builds the plugin projects, then fills $(PublishDir)plugins.
-      * A locked (app running) or missing file fails the build; nothing is skipped with
-        ContinueOnError.
+      * publish:
+          - after the SDK publish completes, the host explicitly builds every plugin
+            project with the active Configuration and Platform;
+          - publish-only properties such as RuntimeIdentifier, SelfContained,
+            PublishSingleFile, PublishProfile and PublishDir are removed for those
+            plugin builds;
+          - $(PublishDir)plugins and $(OutDir)plugins are then emptied and refilled.
 
-    Note: the item lists below use different names per target, because items defined in
-    one target stay visible to later targets of the same project build and would
-    accumulate otherwise.
+    The explicit publish-time plugin build is required because Visual Studio's publish
+    pipeline can evaluate project references separately. Removing plugin outputs at the
+    start of a host publish made those outputs disappear without guaranteeing that the
+    same publish invocation would rebuild them.
 
-    Do not publish AgentFlow.Desktop and AgentFlow.Cli in the same build: the publish
-    step cleans the plugin bin folders, and concurrent publishers would race.
+    A locked (app running) or missing file fails the operation; nothing is skipped with
+    ContinueOnError.
+
+    Do not publish AgentFlow.Desktop and AgentFlow.Cli in the same build: both hosts
+    write to their own output folders, but plugin project builds must not run concurrently.
   -->
-
-  <Target Name="CleanPluginBinariesOnPublish"
-          BeforeTargets="PrepareForBuild"
-          Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' == 'true' and '$(NoBuild)' != 'true'">
-    <ItemGroup>
-      <_CleanPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
-      <_CleanPluginBinDirs Include="@(_CleanPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)')" />
-      <_CleanPluginObjDirs Include="@(_CleanPluginProjects->'%(RootDir)%(Directory)obj\$(Configuration)')" />
-    </ItemGroup>
-    <Message Importance="High"
-             Text="Publishing plugins: removing plugin build output, so the plugins are rebuilt from scratch." />
-    <RemoveDir Directories="@(_CleanPluginBinDirs);@(_CleanPluginObjDirs)" />
-  </Target>
 
   <Target Name="CopyPluginsToBuildOutput"
           AfterTargets="Build"
           Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' != 'true'">
     <ItemGroup>
       <_BuildPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
-      <_BuildPluginDlls Include="@(_BuildPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)\net8.0\%(Filename).dll')" />
+      <_BuildPluginDlls Include="@(_BuildPluginProjects->'%(RootDir)%(Directory)bin\$(PluginPlatformOutputPath)$(Configuration)\net8.0\%(Filename).dll')" />
       <_BuildMissingPluginDlls Include="@(_BuildPluginDlls)" Condition="!Exists('%(FullPath)')" />
     </ItemGroup>
     <Error Condition="'@(_BuildPluginDlls)' == ''"
@@ -70,22 +59,19 @@
           Condition="'$(PluginHost)' == 'true'">
     <ItemGroup>
       <_PublishPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
-      <_PublishPluginBinDirs Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)')" />
-      <_PublishPluginObjDirs Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)obj\$(Configuration)')" />
-      <_PublishPluginDlls Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)bin\$(Configuration)\net8.0\%(Filename).dll')" />
+      <_PublishPluginDlls Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)bin\$(PluginPlatformOutputPath)$(Configuration)\net8.0\%(Filename).dll')" />
     </ItemGroup>
-    <Error Condition="'@(_PublishPluginDlls)' == ''"
+    <Error Condition="'@(_PublishPluginProjects)' == ''"
            Text="$(MSBuildProjectName) has PluginHost=true but @(PluginProjects) is empty: nothing to publish." />
 
-    <!-- A publish run with NoBuild=true skips the Build phase: rebuild the plugins here.
-         (In a normal publish the plugins were just rebuilt by the host build, and asking
-         MSBuild to build an already-built project again would be skipped as up to date.) -->
-    <RemoveDir Directories="@(_PublishPluginBinDirs);@(_PublishPluginObjDirs)" Condition="'$(NoBuild)' == 'true'" />
+    <!-- Always build plugins in the publish target. Visual Studio may not rebuild
+         project references inside the same publish pipeline, especially when the SDK
+         project uses a runtime identifier or single-file publishing. -->
     <MSBuild Projects="@(_PublishPluginProjects)"
              Targets="Build"
-             Condition="'$(NoBuild)' == 'true'"
-             RemoveProperties="NoBuild;RuntimeIdentifier;SelfContained;PublishSelfContained"
-             Properties="Configuration=$(Configuration)" />
+             BuildInParallel="false"
+             RemoveProperties="NoBuild;RuntimeIdentifier;SelfContained;PublishSelfContained;PublishSingleFile;PublishReadyToRun;PublishTrimmed;PublishProfile;PublishDir;PublishProtocol;_TargetId;_IsPublishing"
+             Properties="Configuration=$(Configuration);Platform=$(Platform)" />
 
     <ItemGroup>
       <_PublishMissingPluginDlls Include="@(_PublishPluginDlls)" Condition="!Exists('%(FullPath)')" />

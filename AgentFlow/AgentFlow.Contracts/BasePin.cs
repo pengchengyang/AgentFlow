@@ -50,12 +50,35 @@ public class BasePin
     /// </summary>
     public string Uuid { get; }
 
+    private BasePin? _upstreamPin;
+
     /// <summary>
-    /// Reference to the connected pin on the opposite side. On an output pin this points to
-    /// the downstream input pin; on an input pin this points to the upstream output pin.
-    /// Set by the engine when a connection is established, and null on initialise / disconnect.
+    /// Connection reference for an input pin: the upstream output pin. For an output pin,
+    /// this property is a compatibility view over <see cref="Targets"/> and returns the only
+    /// connected input pin when the connection is one-to-one; it returns null for zero or
+    /// multiple targets. Use <see cref="Targets"/> as the authoritative downstream collection.
     /// </summary>
-    public BasePin? ConnectedPin { get; internal set; }
+    public BasePin? ConnectedPin
+    {
+        get
+        {
+            if (Direction == PinDirection.Output)
+            {
+                var targets = Volatile.Read(ref _targets);
+                return targets.Length == 1 ? targets[0] : null;
+            }
+
+            return Volatile.Read(ref _upstreamPin);
+        }
+        internal set
+        {
+            if (Direction == PinDirection.Output)
+                throw new InvalidOperationException(
+                    "Output pin connections are owned by Targets. Use ConnectTo to wire an output pin.");
+
+            Volatile.Write(ref _upstreamPin, value);
+        }
+    }
 
     /// <summary>Latest value received on this input pin (null until something arrives).</summary>
     public Sample? Value => Volatile.Read(ref _value);
@@ -261,7 +284,6 @@ public class BasePin
                     $"Input pin '{input.Name}' is already connected to '{input.ConnectedPin.Name}'.");
 
             Volatile.Write(ref _targets, new[] { input });
-            ConnectedPin = input;
             input.ConnectedPin = this;
         }
     }
@@ -277,8 +299,6 @@ public class BasePin
                 return;
 
             Volatile.Write(ref _targets, Array.Empty<BasePin>());
-            if (ReferenceEquals(ConnectedPin, input))
-                ConnectedPin = null;
             if (ReferenceEquals(input.ConnectedPin, this))
                 input.ConnectedPin = null;
         }
@@ -301,17 +321,23 @@ public class BasePin
     /// </summary>
     internal void ResetRuntimeState()
     {
-        lock (_wiringGate)
+        if (Direction == PinDirection.Output)
         {
-            foreach (var target in Volatile.Read(ref _targets))
-                if (ReferenceEquals(target.ConnectedPin, this))
-                    target.ConnectedPin = null;
+            lock (_wiringGate)
+            {
+                foreach (var target in Volatile.Read(ref _targets))
+                    if (ReferenceEquals(target.ConnectedPin, this))
+                        target.ConnectedPin = null;
 
-            Volatile.Write(ref _targets, Array.Empty<BasePin>());
-
-            if (ConnectedPin is { } opposite && ReferenceEquals(opposite.ConnectedPin, this))
-                opposite.ConnectedPin = null;
-            ConnectedPin = null;
+                Volatile.Write(ref _targets, Array.Empty<BasePin>());
+            }
+        }
+        else
+        {
+            var upstream = Volatile.Read(ref _upstreamPin);
+            if (upstream is not null)
+                upstream.DisconnectFrom(this);
+            Volatile.Write(ref _upstreamPin, null);
         }
 
         ClearValue();

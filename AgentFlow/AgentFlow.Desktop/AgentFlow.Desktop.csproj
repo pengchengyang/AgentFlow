@@ -9,6 +9,7 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\AgentFlow\Assets\avalonia-logo.ico</ApplicationIcon>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Platforms>AnyCPU;x64</Platforms>
     <!-- This project owns the plugin pipeline; see Directory.Build.targets. -->
     <PluginHost>true</PluginHost>
