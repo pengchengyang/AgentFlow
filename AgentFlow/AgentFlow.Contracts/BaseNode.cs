@@ -74,11 +74,10 @@ public abstract class BaseNode
     public virtual NodeErrorPolicy ErrorPolicy => NodeErrorPolicy.FailFast;
 
     /// <summary>
-    /// Runtime-only state: true while this node is currently executing (i.e. doing work right now).
-    /// This value is intentionally NOT serialized into JSON. Setting it to true moves
-    /// <see cref="State"/> to <see cref="NodeState.Running"/>; setting it back to false does NOT end
-    /// the running state — a node that already finished its work stays "running" until the workflow
-    /// is stopped, which is what the editor indicator reports.
+    /// Runtime-only state: true while this node is operational and able to accept work. It is
+    /// intentionally NOT serialized into JSON. A successful <see cref="Run"/> must leave this set
+    /// to true; it remains true until <see cref="Stop"/>, cancellation, or failure. Core treats a
+    /// started node that drops back to false as a workflow failure and stops the workflow.
     /// </summary>
     public bool Running
     {
@@ -120,9 +119,9 @@ public abstract class BaseNode
     public void SetConnecting() => MutateState(NodeState.Connecting, running: false);
 
     /// <summary>
-    /// Mark the node as started (initialized and its <see cref="Run"/> returned without errors).
-    /// This only moves <see cref="State"/>; <see cref="Running"/> keeps describing whether the node is
-    /// executing right now, so a one-shot node that already finished stays started but not executing.
+    /// Mark the node state as started after <see cref="Run"/> returned successfully and
+    /// <see cref="Running"/> is true. Core owns this transition; node implementations should set
+    /// <see cref="Running"/> = true once they become operational.
     /// </summary>
     public void SetRunning() => MutateState(NodeState.Running, running: null);
 
@@ -244,7 +243,10 @@ public abstract class BaseNode
     public IReadOnlyList<ParameterDefinition> Parameters =>
         _nodeParameters
             .Where(p => !string.IsNullOrEmpty(p.Name) && !BuiltInParamNames.Contains(p.Name))
-            .Select(p => new ParameterDefinition(p.Name, p.Type, p.Name, p.Value))
+            .Select(p => new ParameterDefinition(
+                p.Name, p.Type, p.Name, p.Value,
+                Editor: p.Editor,
+                Options: p.Options))
             .ToList();
 
     /// <summary>Parameters attached to this node (type + value + editable flag).</summary>
@@ -256,7 +258,46 @@ public abstract class BaseNode
     /// </summary>
     public void AddParameter(NodeParameter parameter)
     {
+        ArgumentNullException.ThrowIfNull(parameter);
+        ValidateParameter(parameter);
         _nodeParameters.Add(parameter);
+    }
+
+    /// <summary>
+    /// Shared validation for a parameter declaration. Called by <see cref="AddParameter"/> and by
+    /// the loader, so a document can never restore a malformed select-style declaration.
+    /// </summary>
+    private static void ValidateParameter(NodeParameter parameter)
+    {
+        if (parameter.Editor is not (ParameterEditorKind.MultiSelect or ParameterEditorKind.SingleSelect))
+            return;
+
+        var options = parameter.Options ?? Array.Empty<string>();
+        if (options.Count == 0)
+            throw new ArgumentException(
+                $"Select parameter '{parameter.Name}' must declare at least one option.",
+                nameof(parameter));
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var option in options)
+        {
+            if (string.IsNullOrWhiteSpace(option))
+                throw new ArgumentException(
+                    $"Select parameter '{parameter.Name}' has an empty option.",
+                    nameof(parameter));
+            if (!string.Equals(option, option.Trim(), StringComparison.Ordinal))
+                throw new ArgumentException(
+                    $"Select option '{option}' in parameter '{parameter.Name}' must not have leading or trailing whitespace.",
+                    nameof(parameter));
+            if (option.Contains(MultiSelectValue.Separator, StringComparison.Ordinal))
+                throw new ArgumentException(
+                    $"Select option '{option}' in parameter '{parameter.Name}' must not contain '{MultiSelectValue.Separator}'.",
+                    nameof(parameter));
+            if (!seen.Add(option))
+                throw new ArgumentException(
+                    $"Select parameter '{parameter.Name}' has duplicate option '{option}'.",
+                    nameof(parameter));
+        }
     }
 
     /// <summary>
@@ -358,7 +399,8 @@ public abstract class BaseNode
     /// keyed by their <see cref="NodeParameter.Group"/>. All groups are placed under the
     /// <c>parameters</c> root inside the logic blob; each group field contains an array of
     /// complete <see cref="NodeParameter"/> objects so the group/name/type/value/editable state
-    /// survives serialization.
+    /// survives serialization. Non-default editor metadata (<see cref="NodeParameter.Editor"/> /
+    /// <see cref="NodeParameter.Options"/>) is written as well.
     /// </summary>
     private void SerializeGroupedParameters(JsonObject json)
     {
@@ -396,6 +438,19 @@ public abstract class BaseNode
                         ["group"] = p.Group ?? string.Empty,
                         ["value"] = p.Value is null ? null : JsonSerializer.SerializeToNode(p.Value, p.Type)
                     };
+
+                    // Editor metadata is part of the parameter declaration and must round-trip with
+                    // the document. Only non-default declarations add these fields, so ordinary
+                    // parameters keep their existing JSON shape.
+                    if (p.Editor != ParameterEditorKind.Auto)
+                    {
+                        obj["editor"] = p.Editor.ToString();
+                        var options = new JsonArray();
+                        foreach (var option in p.Options ?? Array.Empty<string>())
+                            options.Add(option);
+                        obj["options"] = options;
+                    }
+
                     arr.Add(obj);
                 }
                 zoneObj[group.Key] = arr;
@@ -500,11 +555,23 @@ public abstract class BaseNode
                 np.Type = restoredType;
             }
 
+            var persistedEditor = ReadEditor(obj);
+            if (persistedEditor is not null)
+                np.Editor = persistedEditor.Value;
+
+            var persistedOptions = ReadOptions(obj);
+            if (persistedOptions is not null)
+                np.Options = persistedOptions;
+
             var valueNode = obj["value"] ?? obj["Value"];
             np.Value = TryConvertValue(valueNode, np.Type);
 
             if ((obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() is bool editable)
                 np.IsEditable = editable;
+
+            // The document is the source of truth for a restored parameter; validate the
+            // persisted editor/options pair before the dialog is ever built from it.
+            ValidateParameter(np);
         }
     }
 
@@ -520,9 +587,41 @@ public abstract class BaseNode
         var value = valueNode is null ? null : JsonSerializer.Deserialize(valueNode.ToJsonString(), type);
         var isEditable = (obj["isEditable"] ?? obj["IsEditable"])?.GetValue<bool>() ?? true;
         var zone = ReadString(obj, "zone", "Zone");
+        var editor = ReadEditor(obj) ?? ParameterEditorKind.Auto;
+        var options = ReadOptions(obj) ?? Array.Empty<string>();
 
-        return new NodeParameter(name, type, value, isEditable, groupName, zone);
+        var parameter = new NodeParameter(
+            name, type, value, isEditable, groupName, zone, editor, options);
+        ValidateParameter(parameter);
+        return parameter;
     }
+
+    private static ParameterEditorKind? ReadEditor(JsonObject obj)
+    {
+        var text = ReadString(obj, "editor", "Editor");
+        return text is not null &&
+               Enum.TryParse<ParameterEditorKind>(text, ignoreCase: true, out var editor)
+            ? editor
+            : null;
+    }
+
+    private static IReadOnlyList<string>? ReadOptions(JsonObject obj)
+    {
+        var node = obj["options"] ?? obj["Options"];
+        if (node is not JsonArray array)
+            return null;
+
+        var options = new List<string>(array.Count);
+        foreach (var item in array)
+        {
+            if (item is JsonValue value && value.TryGetValue<string>(out var option))
+                options.Add(option);
+            else
+                options.Add(item?.ToString() ?? string.Empty);
+        }
+        return options;
+    }
+
     private static string? ReadString(JsonObject obj, params string[] keys)
     {
         foreach (var key in keys)

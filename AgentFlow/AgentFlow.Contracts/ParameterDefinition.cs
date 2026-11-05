@@ -16,4 +16,6 @@ public sealed record ParameterDefinition(
     Type DataType,
     string DisplayName,
     object? DefaultValue = null,
-    string? Description = null);
+    string? Description = null,
+    ParameterEditorKind Editor = ParameterEditorKind.Auto,
+    IReadOnlyList<string>? Options = null);

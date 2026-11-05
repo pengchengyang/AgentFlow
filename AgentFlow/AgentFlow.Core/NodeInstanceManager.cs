@@ -49,6 +49,12 @@ public sealed class NodeInstanceManager
     /// <summary>Hard limit for waiting on the launched runs during stop / run-to-completion (default 30s).</summary>
     public static TimeSpan RunTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Interval used by the Core health monitor to verify that every node which reported a
+    /// successful start continues to report <see cref="BaseNode.Running"/> = true (default 1s).
+    /// </summary>
+    public static TimeSpan RunningHealthCheckInterval { get; set; } = TimeSpan.FromSeconds(1);
+
     // Background runs launched by Launch, awaited by StopAsync / RunAsync. The node is kept so a
     // run that ignores cancellation can be named in the timeout error message.
     private readonly List<(BaseNode Node, Task Run)> _runTasks = new();
@@ -58,6 +64,7 @@ public sealed class NodeInstanceManager
     // Stop button and by the automatic stop that a failing node triggers.
     private CancellationTokenSource? _runCts;
     private int _autoStopRequested;
+    private Task? _healthMonitorTask;
     // Instances that already completed a start; used to reject a second start of a non-reusable node.
     private readonly HashSet<BaseNode> _everStarted = new();
 
@@ -164,10 +171,11 @@ public sealed class NodeInstanceManager
     /// <see cref="BaseNode.Run"/> executes on the thread pool. Because the nodes start concurrently,
     /// a node that has to wait for a resource (e.g. a socket client retrying its connection) no
     /// longer blocks the startup of the nodes after it — the previous sequential loop did.
-    /// A node whose <see cref="BaseNode.Run"/> returns normally counts as running (until the workflow
-    /// is stopped), even if the node already finished its work and set <see cref="BaseNode.Running"/>
-    /// back to false. A node that throws is marked <see cref="NodeState.Failed"/>, logged, and the
-    /// whole workflow is stopped automatically so the other nodes release their resources.
+    /// A node must set <see cref="BaseNode.Running"/> = true before <see cref="BaseNode.Run"/> returns
+    /// normally; otherwise the run is treated as a failed start. Once a node is running, the Core
+    /// health monitor continuously verifies that it keeps reporting Running = true. A node that
+    /// throws or stops reporting Running = true is marked <see cref="NodeState.Failed"/>, logged, and
+    /// the whole workflow is stopped automatically so the other nodes release their resources.
     /// <para>
     /// Callers must hold <see cref="_lifecycleGate"/>: only <see cref="StartAsync"/> and
     /// <see cref="RunAsync"/> call it, so a launch can never start a new token source while a stop
@@ -195,6 +203,8 @@ public sealed class NodeInstanceManager
             var run = RunNodeAsync(node, context, token, contextFactory);
             lock (_runTasksGate) _runTasks.Add((node, run));
         }
+
+        _healthMonitorTask = MonitorRunningNodesAsync(contextFactory, token);
     }
 
     /// <summary>
@@ -393,8 +403,11 @@ public sealed class NodeInstanceManager
         bool preserveFailure)
     {
         // Cancel the run session first so nodes blocked on their run token (connect retries, waits)
-        // observe the stop instead of continuing to run. Disposing happens after the runs are awaited.
+        // observe the stop instead of continuing to run. The health monitor observes the same token
+        // and exits without treating a normal stop as a node failure.
         var cts = _runCts;
+        var healthMonitor = _healthMonitorTask;
+        _healthMonitorTask = null;
         cts?.Cancel();
         try
         {
@@ -406,6 +419,22 @@ public sealed class NodeInstanceManager
             var completed = true;
             if (runs.Count > 0)
                 completed = await WaitForRunsAsync(runs, RunTimeout).ConfigureAwait(false);
+
+            if (healthMonitor is not null)
+            {
+                try
+                {
+                    await healthMonitor.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when the run session is stopped or fails.
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "The Core node health monitor terminated unexpectedly.");
+                }
+            }
 
             foreach (var node in Instances)
             {
@@ -540,9 +569,12 @@ public sealed class NodeInstanceManager
     /// <summary>
     /// Run one node and converge its lifecycle state:
     /// <list type="bullet">
-    /// <item><see cref="BaseNode.Run"/> returned normally → <see cref="NodeState.Running"/>: the node
-    /// initialized and started without errors, so it counts as running until the workflow is stopped
-    /// (also for one-shot nodes that already set <see cref="BaseNode.Running"/> back to false).</item>
+    /// <item><see cref="BaseNode.Run"/> returned normally with <see cref="BaseNode.Running"/> = true →
+    /// <see cref="NodeState.Running"/>: the node became operational and remains running until the
+    /// workflow is stopped.</item>
+    /// <item><see cref="BaseNode.Run"/> returned normally while <see cref="BaseNode.Running"/> was
+    /// false → <see cref="NodeState.Failed"/>: a successful Run contract requires the node to
+    /// explicitly report that it is operational.</item>
     /// <item>stopped by the workflow (its token was cancelled) → idle (the stop reset owns the final
     /// state);</item>
     /// <item>cancelled any other way (an internal timeout, CancelAfter, a library deadline) →
@@ -570,6 +602,19 @@ public sealed class NodeInstanceManager
             try
             {
                 await node.Run(context, ct).ConfigureAwait(false);
+
+                if (ct.IsCancellationRequested)
+                {
+                    node.SetIdle();
+                    return;
+                }
+
+                if (!node.Running)
+                {
+                    throw new InvalidOperationException(
+                        $"Node '{node.Name}' returned from Run without setting Running = true.");
+                }
+
                 node.SetRunning();
                 return;
             }
@@ -672,7 +717,12 @@ public sealed class NodeInstanceManager
         }
     }
 
-    /// <summary>Finish a node failure according to <paramref name="policy"/>.</summary>
+    /// <summary>
+    /// Finish a node failure. The workflow-level invariant is strict: once any node reaches
+    /// <see cref="NodeState.Failed"/>, the whole workflow must stop so its UI and lifecycle state
+    /// cannot claim that anything is still running. <see cref="NodeFailureMode.Isolate"/> remains a
+    /// diagnostic policy value but no longer overrides this lifecycle guarantee.
+    /// </summary>
     private void HandleFailure(
         BaseNode node,
         NodeErrorPolicy policy,
@@ -681,16 +731,58 @@ public sealed class NodeInstanceManager
     {
         if (policy.Mode == NodeFailureMode.Isolate)
         {
-            context.Logger.LogError(
-                "Node '{Node}' failed and is isolated; the workflow keeps running (downstream nodes may see no input).",
+            context.Logger.LogWarning(
+                "Node '{Node}' failed under the Isolate policy; the workflow still stops to preserve the global running-state invariant.",
                 node.Name);
-            return;
+        }
+        else
+        {
+            context.Logger.LogWarning(
+                "Node '{Node}' failed; stopping the workflow so every node releases its resources.",
+                node.Name);
         }
 
-        context.Logger.LogWarning(
-            "Node '{Node}' failed; stopping the workflow so every node releases its resources.",
-            node.Name);
         RequestAutoStop(contextFactory);
+    }
+
+    /// <summary>
+    /// Continuously verify that nodes which successfully started keep reporting Running = true.
+    /// Connecting nodes are deliberately ignored during startup. A node that drops out of the
+    /// running state is marked failed and triggers the same automatic workflow stop as a thrown
+    /// exception, so GUI, CLI, and headless hosts share one lifecycle rule.
+    /// </summary>
+    private async Task MonitorRunningNodesAsync(
+        Func<BaseNode, INodeContext> contextFactory,
+        CancellationToken ct)
+    {
+        if (Instances.Count == 0)
+            return;
+
+        using var timer = new PeriodicTimer(RunningHealthCheckInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                if (ct.IsCancellationRequested)
+                    return;
+
+                var inactive = Instances.FirstOrDefault(n =>
+                    n.State == NodeState.Running && !n.Running);
+                if (inactive is null)
+                    continue;
+
+                inactive.SetFailed();
+                _logger.LogError(
+                    "Node '{Node}' (#{InstanceId}) stopped reporting Running = true while the workflow was active; stopping the workflow.",
+                    inactive.Name, inactive.InstanceId);
+                RequestAutoStop(contextFactory);
+                return;
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Expected when the run session is stopped or fails.
+        }
     }
 
     /// <summary>
@@ -765,10 +857,11 @@ public sealed class NodeInstanceManager
 
     /// <summary>
     /// Whether the whole workflow is running: true only while every managed node instance is in
-    /// <see cref="NodeState.Running"/> (initialized and started without errors, not stopped yet),
-    /// false while any of them is still connecting, has failed, or has been stopped.
+    /// <see cref="NodeState.Running"/> and still reports <see cref="BaseNode.Running"/> = true.
+    /// Returns false while any node is connecting, failed, stopped, or no longer operational.
     /// </summary>
-    public bool IsRunning => Instances.Count > 0 && Instances.All(n => n.State == NodeState.Running);
+    public bool IsRunning => Instances.Count > 0 &&
+        Instances.All(n => n.State == NodeState.Running && n.Running);
 
     /// <summary>Whether at least one managed node is still starting up (connecting) and none failed yet.</summary>
     public bool IsStarting => Instances.Any(n => n.Connecting);

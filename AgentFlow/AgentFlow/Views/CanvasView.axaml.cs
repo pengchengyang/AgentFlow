@@ -333,13 +333,13 @@ public sealed class GraphCanvas : Control
             new SolidColorBrush(ColorMuted), 9);
 
         // Running indicator: spinner at the node's top-right, immediately to the left of the
-        // "#instance" tag. Green while the node is started (it keeps rotating only while the node is
-        // actually executing — a one-shot node that already finished stays solid green), amber while
-        // it is still starting up (connecting), red when the start failed, gray + static when idle.
+        // "#instance" tag. Green and rotating only while the node reports Running = true, amber
+        // while it is starting up (connecting), red when it has failed or stopped reporting Running,
+        // and gray when idle.
         var iconCenter = new Point(iconCenterX, y + 15 + 9 / 2.0); // vertically centered on the "#instance" tag
-        var indicatorColor = node.Started ? ColorRunning
+        var indicatorColor = node.Running ? ColorRunning
             : node.Connecting ? ColorConnecting
-            : node.Failed ? ColorFailed
+            : node.Failed || node.Started ? ColorFailed
             : ColorMuted;
         var indicatorAngle = node.Running || node.Connecting ? _spinAngle : 0;
         DrawRefreshIndicator(ctx, iconCenter, iconSize, indicatorColor, indicatorAngle);

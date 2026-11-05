@@ -30,8 +30,12 @@ public class BasePin
     /// <summary>Pin name (unique within the node).</summary>
     public string Name { get; }
 
-    /// <summary>Data type (used for connection validation).</summary>
-    public DataType DataType { get; }
+    /// <summary>
+    /// Data type used for connection validation and sample checking. It is assignable so a
+    /// parameter-driven node can update its pin metadata in <see cref="BaseNode.Configure"/>.
+    /// Changing it after a pin is wired must be followed by disconnecting incompatible wires.
+    /// </summary>
+    public DataType DataType { get; set; }
 
     /// <summary>Direction: input or output.</summary>
     public PinDirection Direction { get; }

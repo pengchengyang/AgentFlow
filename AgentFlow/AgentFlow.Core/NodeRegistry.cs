@@ -29,7 +29,9 @@ public sealed record ParameterDescriptor(
     Type DataType,
     string DisplayName,
     object? DefaultValue = null,
-    string? Description = null);
+    string? Description = null,
+    ParameterEditorKind Editor = ParameterEditorKind.Auto,
+    IReadOnlyList<string>? Options = null);
 
 /// <summary>Node metadata discovered via reflection (used by the palette and property panel).</summary>
 public sealed class NodeDescriptor
@@ -76,7 +78,9 @@ public sealed class NodeDescriptor
             .Select(p => new PinDescriptor(p.Name, p.DataType, (AgentFlow.Core.PinDirection)p.Direction, p.Required))
             .ToList();
         Parameters = parameters
-            .Select(p => new ParameterDescriptor(p.Name, p.DataType, p.DisplayName, p.DefaultValue, p.Description))
+            .Select(p => new ParameterDescriptor(
+                p.Name, p.DataType, p.DisplayName, p.DefaultValue, p.Description,
+                p.Editor, p.Options))
             .ToList();
     }
 }

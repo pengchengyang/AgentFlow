@@ -221,7 +221,7 @@
     <Style Selector="Button.winbtn.close:pointerover">
         <Setter Property="Background" Value="#E81123" />
     </Style>
-    <Style Selector="Button.winbtn.close:pointerover Path">
+    <Style Selector="Button.winbtn.close:pointerover Path.winicon">
         <Setter Property="Fill" Value="White" />
     </Style>
 
@@ -235,7 +235,7 @@
     <Style Selector="Button.winbtn.min:pressed">
         <Setter Property="Background" Value="{DynamicResource BrushMinBtnPressedBg}" />
     </Style>
-    <Style Selector="Button.winbtn.min Border">
+    <Style Selector="Button.winbtn.min Border.winicon">
         <Setter Property="Background" Value="{DynamicResource BrushMinBtnFg}" />
     </Style>
 
@@ -248,7 +248,7 @@
     <Style Selector="Button.winbtn.max:pressed">
         <Setter Property="Background" Value="{DynamicResource BrushMaxBtnPressedBg}" />
     </Style>
-    <Style Selector="Button.winbtn.max Path">
+    <Style Selector="Button.winbtn.max Path.winicon">
         <Setter Property="Fill" Value="{DynamicResource BrushMaxBtnFg}" />
     </Style>
 
@@ -261,7 +261,7 @@
     <Style Selector="Button.winbtn.close:pressed">
         <Setter Property="Background" Value="{DynamicResource BrushCloseBtnPressedBg}" />
     </Style>
-    <Style Selector="Button.winbtn.close Path">
+    <Style Selector="Button.winbtn.close Path.winicon">
         <Setter Property="Fill" Value="{DynamicResource BrushCloseBtnFg}" />
     </Style>
 

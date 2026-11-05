@@ -32,6 +32,17 @@ public partial class PinViewModel : ViewModelBase
     public DataType DataType => Pin.DataType;
     public string TypeName => Pin.DataType.ToString();
     public bool Required => Pin.Required;
+
+    /// <summary>
+    /// Re-evaluate the type bindings after the underlying pin's DataType was changed by a node
+    /// parameter update. The pin object itself is stable, so the canvas labels are refreshed
+    /// without recreating the pin.
+    /// </summary>
+    public void RefreshDataType()
+    {
+        OnPropertyChanged(nameof(DataType));
+        OnPropertyChanged(nameof(TypeName));
+    }
     public bool IsInput => Pin.IsInput;
     public bool IsOutput => Pin.IsOutput;
 

@@ -22,6 +22,12 @@ public sealed partial class LogPanelViewModel : ViewModelBase
 
     [ObservableProperty] private string _searchText = "";
 
+    /// <summary>When true, the log list follows newly appended entries. Manual scrolling turns it off.</summary>
+    [ObservableProperty] private bool _isAutoScrollEnabled = true;
+
+    /// <summary>Raised once after <see cref="FilteredLogs"/> has been rebuilt.</summary>
+    public event EventHandler? LogsRefreshed;
+
     /// <summary>Currently selected level filters. "ALL" means show everything.</summary>
     public ObservableCollection<string> SelectedLevels { get; } = new() { "ALL" };
 
@@ -89,5 +95,7 @@ public sealed partial class LogPanelViewModel : ViewModelBase
                 && !entry.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase)) continue;
             FilteredLogs.Add(entry);
         }
+
+        LogsRefreshed?.Invoke(this, EventArgs.Empty);
     }
 }

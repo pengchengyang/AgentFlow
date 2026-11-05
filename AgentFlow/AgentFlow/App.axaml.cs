@@ -45,6 +45,12 @@ public partial class App : Application
         app.Resources.MergedDictionaries.Add(
             (ResourceDictionary)AvaloniaXamlLoader.Load(uri));
 
+        // The color dictionary is reloaded during theme changes, so reload the ToolTip
+        // resource dictionary as well to preserve its themed template.
+        app.Resources.MergedDictionaries.Add(
+            (ResourceDictionary)AvaloniaXamlLoader.Load(
+                new Uri("avares://AgentFlow/Themes/ToolTip.axaml")));
+
         // Trigger a redraw of the GraphCanvas in the main window (the canvas is drawn in code and does not refresh automatically)
         if (app.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop &&
             desktop.MainWindow != null)

@@ -44,6 +44,7 @@ public sealed class BroadcastDemoNode : BaseNode
         _fromGuiSubscription = TopicBus.Instance.Subscribe(
             BroadcastTopics.GuiToNode,
             message => OnGuiMessage(context, message));
+        Running = true;
 
         var sample = StringSample.CreateSample();
         sample.SetValue("node-sample", "Broadcast.Demo");
@@ -67,6 +68,7 @@ public sealed class BroadcastDemoNode : BaseNode
 
     public override Task Stop(INodeContext context, CancellationToken cancellationToken = default)
     {
+        Running = false;
         _fromGuiSubscription?.Dispose();
         _fromGuiSubscription = null;
         return Task.CompletedTask;

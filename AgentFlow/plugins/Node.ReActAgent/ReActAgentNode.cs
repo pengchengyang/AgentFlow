@@ -39,7 +39,7 @@ public sealed class ReActAgentNode : BaseNode
     private string _question = "";
 
     public override string Name => "ReAct Agent";
-    public override string? DisplayName { get; set; } = string.Empty;
+    public override string DisplayName { get; set; } = string.Empty;
     public override string Category => "AI";
 
     /// <summary>Question input pin (from an upstream node / user).</summary>
@@ -73,6 +73,13 @@ public sealed class ReActAgentNode : BaseNode
         AddParameter(new NodeParameter("SystemPrompt", typeof(string), DefaultSystemPrompt, isEditable: true, group: "General", zone: "AgentZone"));
         AddParameter(new NodeParameter("MaxSteps", typeof(int), 5, isEditable: true, group: "General", zone: "AgentZone"));
         AddParameter(new NodeParameter("Temperature", typeof(double), 0.2, isEditable: true, group: "General", zone: "AgentZone"));
+        // Usage example: string-backed multi-select. The selection is persisted as "A;B";
+        // the options below are declaration metadata and round-trip with the workflow document.
+        AddParameter(new NodeParameter(
+            "DemoOptions", typeof(string), "A",
+            isEditable: true, group: "General", zone: "AgentZone",
+            editor: ParameterEditorKind.MultiSelect,
+            options: new[] { "A", "B", "C" }));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
@@ -82,6 +89,10 @@ public sealed class ReActAgentNode : BaseNode
         if (parameters.TryGetValue("SystemPrompt", out var sp) && sp is not null) Param("SystemPrompt").Value = sp.ToString() ?? DefaultSystemPrompt;
         if (parameters.TryGetValue("MaxSteps", out var ms) && ms is not null) Param("MaxSteps").Value = ParameterValues.GetInt(ms, 5);
         if (parameters.TryGetValue("Temperature", out var t) && t is not null) Param("Temperature").Value = ParameterValues.GetDouble(t, 0.2);
+        // Multi-select is stored as a plain string. The node keeps that string intact here;
+        // option meaning and any token-level interpretation belong to the node implementation.
+        if (parameters.TryGetValue("DemoOptions", out var demo) && demo is not null)
+            Param("DemoOptions").Value = ParameterValues.GetString(demo, "A") ?? "A";
     }
 
     /// <summary>Look up a declared parameter by name.</summary>
@@ -201,12 +212,14 @@ public sealed class ReActAgentNode : BaseNode
         }
         catch (OperationCanceledException)
         {
+            Running = false;
             context.Logger.LogWarning("ReActAgent run cancelled.");
             throw;
         }
-        finally
+        catch
         {
             Running = false;
+            throw;
         }
     }
 

@@ -125,7 +125,9 @@ public partial class NodeParamDlgViewModel : ViewModelBase
                 p.Value?.ToString() ?? "",
                 p.Type.Name,
                 p,
-                p.IsEditable);
+                p.IsEditable,
+                editor: p.Editor,
+                options: p.Options);
             AddRow(zones, groupsByZone, zoneName, groupName, row);
         }
 
@@ -142,7 +144,9 @@ public partial class NodeParamDlgViewModel : ViewModelBase
                 def.TypeName,
                 source: null,
                 isEditable: true,
-                description: def.Hint);
+                description: def.Hint,
+                editor: def.Editor,
+                options: def.Options);
             AddRow(zones, groupsByZone, DefaultZone, DefaultGroup, row);
         }
 
@@ -387,6 +391,8 @@ public partial class ParameterGroupNode : ViewModelBase
 /// <summary>A single property row in the dialog (Key / Label / TypeName read-only; Value bound for editing).</summary>
 public partial class ParameterEditRow : ViewModelBase
 {
+    private bool _syncingOptions;
+
     public string Key { get; }
     public string Label { get; }
     public string TypeName { get; }
@@ -400,8 +406,29 @@ public partial class ParameterEditRow : ViewModelBase
     /// <summary>Whether the user is allowed to edit this parameter's value.</summary>
     public bool IsEditable { get; }
 
+    /// <summary>True when this row is read-only; a false selection is read-only, not a mode switch.</summary>
+    public bool IsReadOnly => !IsEditable;
+
+    /// <summary>Editor hint inherited from the parameter declaration.</summary>
+    public ParameterEditorKind Editor { get; }
+
+    /// <summary>True when this row should render the multi-select dropdown.</summary>
+    public bool IsMultiSelect { get; }
+
+    /// <summary>True when this row should render the single-select dropdown.</summary>
+    public bool IsSingleSelect { get; }
+
+    /// <summary>True for the normal single-value text box.</summary>
+    public bool IsTextEditor => IsEditable && !IsMultiSelect && !IsSingleSelect;
+
+    /// <summary>Selectable choices shown by a select-style dropdown.</summary>
+    public ObservableCollection<ParameterOption> Options { get; } = new();
+
     [ObservableProperty]
     private string _value;
+
+    [ObservableProperty]
+    private ParameterOption? _selectedOption;
 
     public ParameterEditRow(
         string key,
@@ -410,7 +437,9 @@ public partial class ParameterEditRow : ViewModelBase
         string typeName,
         NodeParameter? source = null,
         bool isEditable = true,
-        string? description = null)
+        string? description = null,
+        ParameterEditorKind editor = ParameterEditorKind.Auto,
+        IReadOnlyList<string>? options = null)
     {
         Key = key;
         Label = label;
@@ -419,5 +448,123 @@ public partial class ParameterEditRow : ViewModelBase
         Source = source;
         IsEditable = isEditable;
         Description = description;
+        Editor = editor;
+
+        if (editor is not (ParameterEditorKind.MultiSelect or ParameterEditorKind.SingleSelect)
+            || options is not { Count: > 0 })
+            return;
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var option in options)
+        {
+            var normalizedOption = option?.Trim() ?? "";
+            if (normalizedOption.Length == 0 || !seen.Add(normalizedOption))
+                continue;
+            var row = new ParameterOption(normalizedOption);
+            row.PropertyChanged += OnOptionPropertyChanged;
+            Options.Add(row);
+        }
+
+        // A declaration with only empty / duplicate choices is not usable; fall back to a text box
+        // instead of opening an empty dropdown.
+        if (Options.Count == 0)
+            return;
+
+        IsMultiSelect = isEditable && editor == ParameterEditorKind.MultiSelect;
+        IsSingleSelect = isEditable && editor == ParameterEditorKind.SingleSelect;
+        if (!IsMultiSelect && !IsSingleSelect)
+            return;
+
+        _value = IsMultiSelect
+            ? MultiSelectValue.Format(MultiSelectValue.Parse(value))
+            : MultiSelectValue.Parse(value).FirstOrDefault() ?? "";
+        SyncOptionsFromValue();
+    }
+
+    partial void OnValueChanged(string value)
+    {
+        if (_syncingOptions || (!IsMultiSelect && !IsSingleSelect))
+            return;
+        SyncOptionsFromValue();
+    }
+
+    partial void OnSelectedOptionChanged(ParameterOption? value)
+    {
+        if (_syncingOptions || !IsSingleSelect)
+            return;
+        _syncingOptions = true;
+        try
+        {
+            Value = value?.Value ?? "";
+        }
+        finally
+        {
+            _syncingOptions = false;
+        }
+    }
+
+    private void SyncOptionsFromValue()
+    {
+        if (IsMultiSelect)
+        {
+            var selected = MultiSelectValue.Parse(Value)
+                .ToHashSet(StringComparer.Ordinal);
+            _syncingOptions = true;
+            try
+            {
+                foreach (var option in Options)
+                    option.IsSelected = selected.Contains(option.Value);
+            }
+            finally
+            {
+                _syncingOptions = false;
+            }
+        }
+        else if (IsSingleSelect)
+        {
+            var selected = MultiSelectValue.Parse(Value).FirstOrDefault();
+            _syncingOptions = true;
+            try
+            {
+                SelectedOption = Options.FirstOrDefault(o => o.Value == selected);
+            }
+            finally
+            {
+                _syncingOptions = false;
+            }
+        }
+    }
+
+    private void OnOptionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ParameterOption.IsSelected) || !IsMultiSelect || _syncingOptions)
+            return;
+
+        _syncingOptions = true;
+        try
+        {
+            Value = MultiSelectValue.Format(
+                Options.Where(o => o.IsSelected).Select(o => o.Value));
+        }
+        finally
+        {
+            _syncingOptions = false;
+        }
+    }
+}
+
+/// <summary>One selectable value in a select-style parameter row.</summary>
+public partial class ParameterOption : ViewModelBase
+{
+    public string Value { get; }
+    public string Label { get; }
+
+    [ObservableProperty]
+    private bool _isSelected;
+
+    public ParameterOption(string value)
+    {
+        Value = value;
+        Label = value;
     }
 }

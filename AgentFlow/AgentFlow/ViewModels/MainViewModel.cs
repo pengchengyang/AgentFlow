@@ -84,13 +84,14 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanStop));
     }
 
-    partial void OnIsRunFailedChanged(bool value) => OnPropertyChanged(nameof(CanStop));
-
     /// <summary>Whether the workflow is running or still starting (the Start button is disabled while busy).</summary>
     public bool IsBusy => IsRunning || IsStarting;
 
-    /// <summary>Stop stays available while starting, running, or after a failed start (to clear the failure).</summary>
-    public bool CanStop => IsRunning || IsStarting || IsRunFailed;
+    /// <summary>
+    /// Stop is available only while a workflow is starting or running. A failed start is already
+    /// stopped by Core, so the controls return to their initial state: Run enabled, Stop disabled.
+    /// </summary>
+    public bool CanStop => IsRunning || IsStarting;
 
     /// <summary>Indicator brushes: green only when the whole workflow is really running.</summary>
     private static readonly IBrush RunningIndicatorBrush = new SolidColorBrush(Color.Parse("#12B76A"));
@@ -300,6 +301,7 @@ public partial class MainViewModel : ViewModelBase
         // The Core layer builds a runtime node from the same instance (holds BaseNode + runtime pins)
         node.Runtime = _graph.AddNode(instance, graphLocation.X, graphLocation.Y);
         node.Id = node.Runtime.Id;
+        node.RefreshPinTypes();
         _nodeSpawnIndex++;
         HookSelection(node);
         Nodes.Add(node);
@@ -338,6 +340,42 @@ public partial class MainViewModel : ViewModelBase
             }
         };
     }
+    /// <summary>
+    /// Re-apply one node's edited parameters immediately instead of waiting for the next autosave.
+    /// If a parameter changed a pin's DataType, every wire touching that node is removed because
+    /// the old connection can no longer be trusted; the GUI and Core must both drop it before the
+    /// pin labels are refreshed.
+    /// </summary>
+    private void ApplyNodeParameters(NodeViewModel node)
+    {
+        if (node.Runtime is null)
+            return;
+
+        var runtime = node.Runtime;
+        var values = node.Parameters.ToDictionary(p => p.Key, p => p.ToValue());
+        var pinsBefore = runtime.RuntimeNode.InputPins
+            .Concat(runtime.RuntimeNode.OutputPins)
+            .Select(pin => (Pin: pin, Type: pin.DataType))
+            .ToList();
+
+        runtime.RuntimeNode.Configure(values);
+        _graph.UpdateNode(
+            runtime, node.DisplayName, node.Priority,
+            node.Location.X, node.Location.Y, values);
+
+        if (pinsBefore.Any(entry => entry.Pin.DataType != entry.Type))
+        {
+            var affected = Connections
+                .Where(c => ReferenceEquals(c.Source.Node, node) || ReferenceEquals(c.Target.Node, node))
+                .ToList();
+            foreach (var connection in affected)
+                Teardown(connection);
+        }
+
+        node.RefreshPinTypes();
+        RefreshPinConnections();
+    }
+
     /// <summary>After the Core layer connects / disconnects, refresh every pin's IsConnected visual state.</summary>
     private void RefreshPinConnections()
     {
@@ -457,12 +495,15 @@ public partial class MainViewModel : ViewModelBase
         if (!source.IsOutput || !target.IsInput)
         {
             Log(L["ErrMustOutToIn"], "WARN");
+            _logger.LogWarning("Connection rejected: {Message}", L["ErrMustOutToIn"]);
             return false;
         }
         var error = ValidateConnection(source, target);
         if (error is not null)
         {
-            Log($"[{L["ConnRejected"]}] {error}", "ERROR");
+            // Invalid wiring is a normal user-operation rejection, not a runtime failure.
+            Log($"[{L["ConnRejected"]}] {error}", "WARN");
+            _logger.LogWarning("Connection rejected: {Message}", error);
             return false;
         }
         return Establish(source, target);
@@ -487,8 +528,18 @@ public partial class MainViewModel : ViewModelBase
         {
             connected = _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
         }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            // Missing or stale pin metadata is an expected rejection from the editing surface.
+            StatusText = L["ErrPinOccupied"];
+            Log($"[{L["ConnRejected"]}] {ex.Message}", "WARN");
+            _logger.LogWarning(ex, "Core rejected connection {From}.{FromPin} -> {To}.{ToPin}",
+                source.Node.Name, source.Name, target.Node.Name, target.Name);
+            return false;
+        }
         catch (Exception ex)
         {
+            // Unexpected Core failures remain errors because they may indicate graph corruption.
             StatusText = L["ErrPinOccupied"];
             Log($"[{L["ConnRejected"]}] {ex.Message}", "ERROR");
             _logger.LogError(ex, "Core rejected connection {From}.{FromPin} -> {To}.{ToPin}",
@@ -499,7 +550,9 @@ public partial class MainViewModel : ViewModelBase
         if (!connected)
         {
             StatusText = L["ErrPinOccupied"];
-            Log($"[{L["ConnRejected"]}] {L["ErrPinOccupied"]}", "ERROR");
+            Log($"[{L["ConnRejected"]}] {L["ErrPinOccupied"]}", "WARN");
+            _logger.LogWarning("Connection rejected because a pin is already connected: {From}.{FromPin} -> {To}.{ToPin}",
+                source.Node.Name, source.Name, target.Node.Name, target.Name);
             return false;
         }
         Connections.Add(new ConnectionViewModel(source, target));
@@ -559,8 +612,10 @@ public partial class MainViewModel : ViewModelBase
 
         var message = L["StopBeforeEdit"];
         StatusText = message;
-        Log($"[{L["ErrorPrefix"]}] {message}", "ERROR");
-        _logger.LogError("{Message}", message);
+        // Editing while a workflow is active is rejected as a warning. The runtime itself is healthy;
+        // this protects resources and prevents graph mutations during execution.
+        Log(message, "WARN");
+        _logger.LogWarning("{Message}", message);
         return false;
     }
 
@@ -689,6 +744,7 @@ public partial class MainViewModel : ViewModelBase
         // debounced auto-save path as structural changes.
         dialog.NodeChanged += (_, _) =>
         {
+            ApplyNodeParameters(node);
             MarkDirty();
             ScheduleAutoSave();
         };
@@ -826,6 +882,7 @@ public partial class MainViewModel : ViewModelBase
                     node.Parameters.ToDictionary(p => p.Key, p => p.ToValue()),
                     spec.Id, displayName, spec.Priority, assignPinIds: false);
                 node.Id = node.Runtime.Id;
+                node.RefreshPinTypes();
                 HookSelection(node);
                 Nodes.Add(node);
             }
@@ -990,9 +1047,11 @@ public partial class MainViewModel : ViewModelBase
         _shuttingDown = true;
         _autoSaveTimer.Stop();
         // The UI flags are refreshed every 300 ms, so a close issued immediately after Start could
-        // otherwise see CanStop == false while nodes are already initializing/launching. Use the
-        // explicit in-progress flag as well; StopAsync serializes behind Start on the lifecycle gate.
-        if (!CanStop && !_runInProgress) return;
+        // otherwise see CanStop == false while nodes are already initializing/launching. Failed
+        // nodes also keep a non-idle state until Core finishes its automatic stop, so shutdown must
+        // still join that cleanup path even though the Stop button is intentionally disabled.
+        var hasActiveOrFailedNodes = _nodeManager.Instances.Any(n => n.State != NodeState.Idle);
+        if (!CanStop && !_runInProgress && !hasActiveOrFailedNodes) return;
         await Stop();
     }
 
@@ -1002,27 +1061,23 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>
     /// Re-derive the run indicator from the nodes' real runtime state, and mirror every node's state
     /// onto its view-model first so the canvas header indicators and the status bar can never
-    /// disagree. "Running" means every canvas node was started successfully (initialized, Run
-    /// returned without errors) and has not been stopped — one-shot nodes that already finished their
-    /// work still count. While any node is still connecting the indicator shows "starting" (this holds
-    /// for every node type, not just socket clients), and a failed node shows "failed".
+    /// disagree. "Running" means every canvas node was started successfully and still reports
+    /// Running = true; a started node that drops its Running flag is treated as failed. While any
+    /// node is still connecting the indicator shows "starting" (this holds for every node type, not
+    /// just socket clients), and a failed node shows "failed".
     /// </summary>
     private void RefreshRunState()
     {
         foreach (var n in Nodes) n.NotifyRunningChanged();
 
-        bool allRunning = Nodes.Count > 0 && Nodes.All(n => n.Started);
-        bool starting = !allRunning && Nodes.Any(n => n.Connecting);
-        // Isolated failures are contained by NodeInstanceManager: the failed node stays Failed but
-        // the other nodes keep running. Do not report that as a whole-workflow failure (the old
-        // logic did, which also disabled Stop and made the next Run stop the remaining nodes).
-        bool isolated = Nodes.Any(n =>
-            n.Failed && n.Model.Node.ErrorPolicy.Mode == AgentFlow.Contracts.NodeFailureMode.Isolate)
-            && Nodes.Any(n => n.Started || n.Connecting);
-        bool failed = !allRunning && !starting && !isolated && Nodes.Any(n => n.Failed);
-        bool partiallyRunning = isolated && !allRunning;
+        bool anyFailed = Nodes.Any(n => n.Failed);
+        bool allRunning = Nodes.Count > 0 && Nodes.All(n => n.Started && n.Running);
+        // A failure always wins over the startup state. Core stops the whole workflow after any
+        // node failure, so it must not continue to look like it is merely starting or partially running.
+        bool starting = !allRunning && !anyFailed && Nodes.Any(n => n.Connecting);
+        bool failed = !allRunning && anyFailed;
 
-        IsRunning = allRunning || partiallyRunning;
+        IsRunning = allRunning;
         IsStarting = starting;
         IsRunFailed = failed;
 
@@ -1031,35 +1086,24 @@ public partial class MainViewModel : ViewModelBase
             RunningText = L["RunStateRunning"];
             RunningIconBrush = RunningIndicatorBrush;
         }
-        else if (partiallyRunning)
-        {
-            RunningText = L["RunStateIsolated"];
-            RunningIconBrush = StartingIndicatorBrush;
-            if (!_runFailureNotified)
-            {
-                _runFailureNotified = true;
-                StatusText = L["RunIsolated"];
-                _logger.LogWarning("A node failed but was isolated; the remaining nodes keep running.");
-            }
-        }
-        else if (starting)
-        {
-            RunningText = L["RunStateStarting"];
-            RunningIconBrush = StartingIndicatorBrush;
-        }
         else if (failed)
         {
             RunningText = L["RunStateFailed"];
             RunningIconBrush = FailedIndicatorBrush;
             Dot1Opacity = Dot2Opacity = Dot3Opacity = 0;
             PulseBlur = 0;
-            // A fail-fast failure stops the whole workflow automatically; report it once.
+            // Core stops the complete workflow after any node failure; report it once.
             if (!_runFailureNotified)
             {
                 _runFailureNotified = true;
                 StatusText = L["RunFailed"];
                 _logger.LogWarning("Run failed: a node failed and the workflow was stopped automatically.");
             }
+        }
+        else if (starting)
+        {
+            RunningText = L["RunStateStarting"];
+            RunningIconBrush = StartingIndicatorBrush;
         }
         else
         {

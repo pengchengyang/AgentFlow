@@ -42,6 +42,21 @@ public sealed class NodeParameter
     /// </summary>
     public string? Group { get; set; }
 
+    /// <summary>
+    /// Editor hint for the property dialog. <see cref="ParameterEditorKind.MultiSelect"/> displays
+    /// <see cref="Options"/> as a multi-choice dropdown and stores a semicolon-separated string
+    /// (see <see cref="MultiSelectValue"/>). <see cref="ParameterEditorKind.SingleSelect"/> displays
+    /// the same choices as a one-choice dropdown and stores exactly one option value.
+    /// </summary>
+    public ParameterEditorKind Editor { get; set; } = ParameterEditorKind.Auto;
+
+    /// <summary>
+    /// Choices for a select-style editor. For <see cref="ParameterEditorKind.MultiSelect"/> and
+    /// <see cref="ParameterEditorKind.SingleSelect"/> this must contain at least one unique,
+    /// non-empty value without the <see cref="MultiSelectValue.Separator"/>.
+    /// </summary>
+    public IReadOnlyList<string> Options { get; set; } = Array.Empty<string>();
+
     /// <summary>Default constructor: marks the parameter as editable (type defaults to object).</summary>
     public NodeParameter()
     {
@@ -51,7 +66,17 @@ public sealed class NodeParameter
 
     /// <param name="group">Collapsible section inside the zone; null/empty = default group.</param>
     /// <param name="zone">Top-level section (dialog left-hand list); null/empty = default zone.</param>
-    public NodeParameter(string name, Type type, object? value, bool isEditable = true, string? group = null, string? zone = null)
+    /// <param name="editor">Editor hint for the property dialog.</param>
+    /// <param name="options">Choices for a select-style editor.</param>
+    public NodeParameter(
+        string name,
+        Type type,
+        object? value,
+        bool isEditable = true,
+        string? group = null,
+        string? zone = null,
+        ParameterEditorKind editor = ParameterEditorKind.Auto,
+        IReadOnlyList<string>? options = null)
     {
         Name = name;
         Type = type;
@@ -59,14 +84,25 @@ public sealed class NodeParameter
         IsEditable = isEditable;
         Zone = zone;
         Group = group;
+        Editor = editor;
+        Options = options ?? Array.Empty<string>();
     }
 
-    public NodeParameter(Type type, object? value, bool isEditable = true, string? group = null, string? zone = null)
+    public NodeParameter(
+        Type type,
+        object? value,
+        bool isEditable = true,
+        string? group = null,
+        string? zone = null,
+        ParameterEditorKind editor = ParameterEditorKind.Auto,
+        IReadOnlyList<string>? options = null)
     {
         Type = type;
         Value = value;
         IsEditable = isEditable;
         Zone = zone;
         Group = group;
+        Editor = editor;
+        Options = options ?? Array.Empty<string>();
     }
 }

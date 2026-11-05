@@ -15,6 +15,59 @@
         SizeToContent="Manual"
         Background="Transparent"
         WindowDecorations="None">
+  <Window.Resources>
+    <DataTemplate x:Key="MultiSelectOptionTemplate" x:DataType="vm:ParameterOption">
+      <CheckBox Classes="multiOption"
+                Content="{Binding Label}"
+                IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                FontSize="12.5"
+                Margin="0"
+                Padding="2,0"
+                MinHeight="20"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Left"
+                VerticalContentAlignment="Center"/>
+    </DataTemplate>
+
+    <!-- The default Fluent FlyoutPresenter paints its own surface and adds a 12px padding
+         around the content. Use the same dialog input brush here so the popup and the
+         multi-select edit field read as one control. -->
+    <ControlTheme x:Key="ParamMultiSelectFlyoutPresenter"
+                  TargetType="FlyoutPresenter"
+                  BasedOn="{StaticResource {x:Type FlyoutPresenter}}">
+      <Setter Property="Background" Value="{DynamicResource BrushDlgContentBg}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BrushDlgGroupBorder}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+    </ControlTheme>
+  </Window.Resources>
+
+  <Window.Styles>
+    <!-- Compact checkbox used only by the multi-select flyout: the default Fluent glyph is
+         too large for the 20px row and gets clipped at the bottom. -->
+    <Style Selector="CheckBox.multiOption">
+      <Setter Property="MinHeight" Value="20"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="CheckBox.multiOption /template/ Control#NormalRectangle">
+      <Setter Property="Width" Value="16"/>
+      <Setter Property="Height" Value="16"/>
+      <Setter Property="MinWidth" Value="16"/>
+      <Setter Property="MinHeight" Value="16"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="CheckBox.multiOption /template/ Control#CheckGlyph">
+      <Setter Property="Width" Value="9"/>
+      <Setter Property="Height" Value="9"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="CheckBox.multiOption /template/ ContentPresenter">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </Window.Styles>
   <Border CornerRadius="0" Background="{DynamicResource BrushCard}"
           BorderBrush="{DynamicResource BrushBorderStrong}" BorderThickness="1"
           Padding="1"
@@ -236,6 +289,36 @@
                   <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
                     <Setter Property="BorderBrush" Value="{DynamicResource BrushDlgGroupSelectedBorder}"/>
                   </Style>
+                  <Style Selector="Button.multiSelect">
+                    <Setter Property="Background" Value="{DynamicResource BrushDlgContentBg}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource BrushDlgGroupBorder}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="CornerRadius" Value="8"/>
+                    <Setter Property="Padding" Value="10,6"/>
+                    <Setter Property="MinHeight" Value="32"/>
+                    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                    <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+                  </Style>
+                  <Style Selector="Button.multiSelect:pointerover">
+                    <Setter Property="Background" Value="{DynamicResource BrushSurfaceHover}"/>
+                  </Style>
+                  <Style Selector="ComboBox.singleSelect">
+                    <Setter Property="Background" Value="{DynamicResource BrushDlgContentBg}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource BrushDlgGroupBorder}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="CornerRadius" Value="8"/>
+                    <Setter Property="Padding" Value="10,6"/>
+                    <Setter Property="MinHeight" Value="32"/>
+                    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                    <Setter Property="FontSize" Value="12.5"/>
+                    <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+                  </Style>
+                  <Style Selector="ComboBox.singleSelect:pointerover">
+                    <Setter Property="Background" Value="{DynamicResource BrushSurfaceHover}"/>
+                  </Style>
                 </ListBox.Styles>
 
                 <ListBox.DataTemplates>
@@ -266,12 +349,46 @@
                                    FontSize="12" Foreground="{DynamicResource BrushTextSecondary}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         <Panel Grid.Column="1">
+                          <Button Classes="multiSelect"
+                                  IsVisible="{Binding IsMultiSelect}"
+                                  Click="OnMultiSelectClick"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Center">
+                            <Grid ColumnDefinitions="*,Auto">
+                              <TextBlock Text="{Binding Value}"
+                                         FontSize="12.5"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         VerticalAlignment="Center"
+                                         TextTrimming="CharacterEllipsis"/>
+                              <TextBlock Grid.Column="1" Text="▾"
+                                         Margin="8,0,0,0"
+                                         FontSize="11"
+                                         Foreground="{DynamicResource BrushTextTertiary}"
+                                         VerticalAlignment="Center"/>
+                            </Grid>
+                          </Button>
+                          <ComboBox Classes="singleSelect"
+                                    IsVisible="{Binding IsSingleSelect}"
+                                    ItemsSource="{Binding Options}"
+                                    SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Center">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ParameterOption">
+                                <TextBlock Text="{Binding Label}"
+                                           FontSize="12.5"
+                                           Foreground="{DynamicResource BrushTextPrimary}"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
                           <TextBox Text="{Binding Value, Mode=TwoWay}"
-                                   IsVisible="{Binding IsEditable}"
+                                   IsVisible="{Binding IsTextEditor}"
                                    HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                    VerticalContentAlignment="Center"/>
                           <TextBlock Classes="propValue" Text="{Binding Value}"
-                                     IsVisible="{Binding !IsEditable}"
+                                     IsVisible="{Binding IsReadOnly}"
                                      FontSize="12.5" Foreground="{DynamicResource BrushTextPrimary}"
                                      Margin="0,0,8,0"
                                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>

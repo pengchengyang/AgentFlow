@@ -8,8 +8,10 @@
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Styling;
 using AgentFlow.ViewModels;
 using AgentFlow.Services;
 
@@ -21,6 +23,8 @@ namespace AgentFlow.Views;
 /// </summary>
 public partial class NodeParamDlgWindow : Window
 {
+    private Flyout? _multiSelectFlyout;
+
     public NodeParamDlgWindow()
     {
         InitializeComponent();
@@ -71,6 +75,49 @@ public partial class NodeParamDlgWindow : Window
             vm.ApplyPendingZoneChanges();
         else
             vm.DiscardPendingZoneChanges();
+    }
+
+    /// <summary>
+    /// Open a light-dismiss flyout for a multi-select row. The flyout is built from the row's
+    /// option collection; its DataContext is the row, so checkbox bindings stay alive while it is open.
+    /// </summary>
+    private void OnMultiSelectClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.DataContext is not ParameterEditRow row)
+            return;
+        if (Resources["MultiSelectOptionTemplate"] is not IDataTemplate template)
+            return;
+
+        if (_multiSelectFlyout is { IsOpen: true } previous)
+            previous.IsOpen = false;
+
+        var list = new ItemsControl
+        {
+            ItemsSource = row.Options,
+            ItemTemplate = template,
+            DataContext = row,
+        };
+        var content = new Border
+        {
+            Padding = new Thickness(4),
+            Width = 140,
+            Child = new ScrollViewer
+            {
+                Content = list,
+                MaxHeight = 160,
+            },
+        };
+        var flyout = new Flyout
+        {
+            Content = content,
+            Placement = PlacementMode.BottomEdgeAlignedRight,
+            VerticalOffset = 2,
+            FlyoutPresenterTheme = Resources["ParamMultiSelectFlyoutPresenter"] as ControlTheme,
+        };
+        _multiSelectFlyout = flyout;
+        // Use the whole edit field as the anchor: right alignment puts the popup under the
+        // arrow, while its top edge starts below the field instead of inside the arrow's bounds.
+        flyout.ShowAt(button);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

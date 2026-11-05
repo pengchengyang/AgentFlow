@@ -48,6 +48,8 @@
     <Color x:Key="BorderStrong">#475569</Color>
     <Color x:Key="BorderFocus">#A78BFA</Color>
     <Color x:Key="TitleBarBg">#1E293B</Color>
+    <Color x:Key="ToolTipBg">#334155</Color>
+    <Color x:Key="ToolTipBorder">#475569</Color>
     <Color x:Key="PillBg">#334155</Color>
     <Color x:Key="ShadowNode">#40000000</Color>
 
@@ -98,6 +100,8 @@
     <SolidColorBrush x:Key="BrushBorderStrong" Color="{StaticResource BorderStrong}" />
     <SolidColorBrush x:Key="BrushBorderFocus" Color="{StaticResource BorderFocus}" />
     <SolidColorBrush x:Key="BrushTitleBar" Color="{StaticResource TitleBarBg}" />
+    <SolidColorBrush x:Key="BrushToolTipBg" Color="{StaticResource ToolTipBg}" />
+    <SolidColorBrush x:Key="BrushToolTipBorder" Color="{StaticResource ToolTipBorder}" />
     <SolidColorBrush x:Key="BrushPill" Color="{StaticResource PillBg}" />
 
     <SolidColorBrush x:Key="BrushTextPrimary" Color="{StaticResource TextPrimary}" />

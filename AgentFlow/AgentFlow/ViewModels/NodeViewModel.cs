@@ -106,6 +106,8 @@ public partial class ParameterViewModel : ViewModelBase
     public string Label => basePin.DisplayName;
     public string? Hint => basePin.Description;
     public string TypeName => basePin.DataType.Name;
+    public ParameterEditorKind Editor => basePin.Editor;
+    public IReadOnlyList<string>? Options => basePin.Options;
 
     [ObservableProperty]
     private string _value = "";
@@ -179,6 +181,15 @@ public partial class NodeViewModel : ViewModelBase
 
     /// <summary>Notify listeners that the DependsOn parameter changed (raised after the dialog applies it).</summary>
     public void NotifyDependsOnChanged() => OnPropertyChanged(nameof(DependsOn));
+
+    /// <summary>Refresh the type bindings of every pin after a parameter changed a pin's DataType.</summary>
+    public void RefreshPinTypes()
+    {
+        foreach (var pin in Inputs)
+            pin.RefreshDataType();
+        foreach (var pin in Outputs)
+            pin.RefreshDataType();
+    }
 
     /// <summary>The Core-layer editor node (holds the BaseNode instance and runtime pins). The GUI does not operate its pins directly.</summary>
     public EditorNode? Runtime { get; set; }

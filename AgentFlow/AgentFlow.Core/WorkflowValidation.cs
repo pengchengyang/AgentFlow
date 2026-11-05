@@ -5,6 +5,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using AgentFlow.Contracts;
 using System.Text.Json;
 
 namespace AgentFlow.Core;
@@ -32,6 +33,25 @@ public static class WorkflowValidation
                 errors.Add($"Node '{node.Id}' references unknown type '{node.Name}'.");
         }
 
+        // Ports can be parameter-driven: pin DataType is mutable, so validation must inspect
+        // the configured node instance instead of the plugin descriptor's default pin snapshot.
+        var configuredInstances = new Dictionary<string, BaseNode>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in graph.Nodes)
+        {
+            if (!registry.Contains(node.Name))
+                continue;
+            try
+            {
+                var instance = registry.CreateInstance(node.Name);
+                instance.Configure(ParameterConversion.Normalize(node.Parameters));
+                configuredInstances.TryAdd(node.Id, instance);
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Node '{node.Id}' failed to configure: {ex.Message}");
+            }
+        }
+
         // Per-input connection count and pin/type checks.
         var connectedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var conn in graph.Connections)
@@ -51,11 +71,13 @@ public static class WorkflowValidation
             if (!registry.Contains(fromNode.Name) || !registry.Contains(toNode.Name))
                 continue;
 
-            var fromDesc = registry.Get(fromNode.Name);
-            var toDesc = registry.Get(toNode.Name);
+            var fromInstance = configuredInstances.GetValueOrDefault(conn.FromNode);
+            var toInstance = configuredInstances.GetValueOrDefault(conn.ToNode);
+            if (fromInstance is null || toInstance is null)
+                continue;
 
-            var fromPin = fromDesc.OutputPins.FirstOrDefault(p => p.Name == conn.FromPin);
-            var toPin = toDesc.InputPins.FirstOrDefault(p => p.Name == conn.ToPin);
+            var fromPin = fromInstance.OutputPins.FirstOrDefault(p => p.Name == conn.FromPin);
+            var toPin = toInstance.InputPins.FirstOrDefault(p => p.Name == conn.ToPin);
 
             if (fromPin is null)
             {
@@ -81,8 +103,10 @@ public static class WorkflowValidation
         {
             if (!registry.Contains(node.Name))
                 continue;
-            var desc = registry.Get(node.Name);
-            foreach (var pin in desc.InputPins.Where(p => p.Required))
+            var instance = configuredInstances.GetValueOrDefault(node.Id);
+            if (instance is null)
+                continue;
+            foreach (var pin in instance.InputPins.Where(p => p.Required))
             {
                 if (!graph.Connections.Any(c => c.ToNode == node.Id && c.ToPin == pin.Name))
                     errors.Add($"Node '{node.Id}' is missing required input '{pin.Name}'.");

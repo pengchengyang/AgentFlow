@@ -181,6 +181,40 @@ public static class ParameterValues
         }
     }
 
+    /// <summary>
+    /// Read a multi-select parameter as a string list. Strings use the shared
+    /// <see cref="MultiSelectValue"/> codec; native enumerables and JSON arrays are also accepted.
+    /// Empty / missing values yield an empty list.
+    /// </summary>
+    public static IReadOnlyList<string> GetStringList(object? value, string separator = MultiSelectValue.Separator)
+    {
+        switch (value)
+        {
+            case null:
+                return Array.Empty<string>();
+            case string text:
+                return MultiSelectValue.Parse(text, separator);
+            case IEnumerable<string> values:
+                return values.Where(v => v is not null)
+                             .Select(v => v.Trim())
+                             .Where(v => v.Length > 0)
+                             .ToArray();
+            case JsonElement element when element.ValueKind == JsonValueKind.String:
+                return MultiSelectValue.Parse(element.GetString(), separator);
+            case JsonElement element when element.ValueKind == JsonValueKind.Array:
+                return element.EnumerateArray()
+                              .Select(item => item.ValueKind == JsonValueKind.String
+                                  ? item.GetString()
+                                  : item.ToString())
+                              .Where(v => v is not null)
+                              .Select(v => v!.Trim())
+                              .Where(v => v.Length > 0)
+                              .ToArray();
+            default:
+                return MultiSelectValue.Parse(value.ToString(), separator);
+        }
+    }
+
     private static int FromDouble(double value, int fallback)
     {
         if (!double.IsFinite(value))
