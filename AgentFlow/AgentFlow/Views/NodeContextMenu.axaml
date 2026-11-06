@@ -1,0 +1,62 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:AgentFlow.Views"
+             x:Class="AgentFlow.Views.NodeContextMenu"
+             x:DataType="views:NodeContextMenu">
+
+  <UserControl.Styles>
+    <Style Selector="Grid.node-menu-row">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Grid.node-menu-row:pointerover">
+      <Setter Property="Background" Value="#EDE9FE" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid>
+    <!-- Card body. The border sits behind the item rows, so a row's hover fill
+         covers the card edge exactly as the previous DrawingContext version did. -->
+    <Border Background="#FFFFFF"
+            BorderBrush="#E2E8F0"
+            BorderThickness="1"
+            CornerRadius="10" />
+
+    <!-- Rows start 6px inside the card and the trailing 6px is the bottom pad.
+         Each row is 32px high; the optional divider is an overlay inside that
+         height, so a divider never changes the menu's measured height. -->
+    <ItemsControl ItemsSource="{Binding Rows}"
+                  Margin="0,6"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Top">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="views:NodeContextMenuRow">
+          <Grid Classes="node-menu-row"
+                Width="{Binding $parent[UserControl].Width}"
+                Height="32"
+                IsHitTestVisible="{Binding IsEnabled}"
+                PointerPressed="OnRowPointerPressed">
+
+            <Border IsVisible="{Binding ShowDivider}"
+                    Height="1"
+                    Margin="10,-0.5,10,0"
+                    VerticalAlignment="Top"
+                    Background="#F1F2F5"
+                    IsHitTestVisible="False" />
+
+            <!-- 22px icon slot + 8px gap are reserved exactly as in the
+                 DrawingContext implementation; icons are not wired yet. -->
+            <Grid Margin="12,0" ColumnDefinitions="22,8,*">
+              <TextBlock Grid.Column="2"
+                         Text="{Binding Title}"
+                         FontFamily="avares://AgentFlow/Assets/Fonts/Inter-Regular.otf#Inter, avares://AgentFlow/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans CJK SC"
+                         FontSize="12"
+                         Foreground="{Binding Foreground}"
+                         VerticalAlignment="Center"
+                         TextWrapping="NoWrap" />
+            </Grid>
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </Grid>
+</UserControl>

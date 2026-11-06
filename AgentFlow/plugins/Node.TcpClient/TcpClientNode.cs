@@ -24,14 +24,18 @@ public sealed class TcpClientNode : BaseNode
     private const int DefaultQueueCapacity = 256;
     private const int DefaultConnectTimeoutSeconds = 5;
     private const int DefaultMaxConnectAttempts = 5;
+    private const int DefaultReconnectDelaySeconds = 1;
+    private const int DefaultReconnectMaxDelaySeconds = 30;
     private const int DefaultReadTimeoutSeconds = 0;
     private const int DefaultWriteTimeoutSeconds = 10;
     private const int DefaultReceiveBufferSize = 4096;
 
     private readonly SemaphoreSlim _stopLock = new(1, 1);
+    private readonly object _connectionGate = new();
     private TcpSocket? _client;
     private NetworkStream? _stream;
     private CancellationTokenSource? _cts;
+    private Task? _supervisorTask;
     private Task? _readTask;
     private Task? _writeTask;
     private Channel<byte[]>? _sendChannel;
@@ -41,6 +45,9 @@ public sealed class TcpClientNode : BaseNode
     private int _port = 9000;
     private int _connectTimeoutSeconds = DefaultConnectTimeoutSeconds;
     private int _maxConnectAttempts = DefaultMaxConnectAttempts;
+    private bool _autoReconnect = true;
+    private int _reconnectDelaySeconds = DefaultReconnectDelaySeconds;
+    private int _reconnectMaxDelaySeconds = DefaultReconnectMaxDelaySeconds;
     private int _sendQueueCapacity = DefaultQueueCapacity;
     private int _readTimeoutSeconds = DefaultReadTimeoutSeconds;
     private int _writeTimeoutSeconds = DefaultWriteTimeoutSeconds;
@@ -96,6 +103,12 @@ public sealed class TcpClientNode : BaseNode
             isEditable: true, group: "Connection", zone: "TcpClientZone"));
         AddParameter(new NodeParameter("MaxConnectAttempts", typeof(int), DefaultMaxConnectAttempts,
             isEditable: true, group: "Connection", zone: "TcpClientZone"));
+        AddParameter(new NodeParameter("AutoReconnect", typeof(bool), true,
+            isEditable: true, group: "Connection", zone: "TcpClientZone"));
+        AddParameter(new NodeParameter("ReconnectDelaySeconds", typeof(int), DefaultReconnectDelaySeconds,
+            isEditable: true, group: "Connection", zone: "TcpClientZone"));
+        AddParameter(new NodeParameter("ReconnectMaxDelaySeconds", typeof(int), DefaultReconnectMaxDelaySeconds,
+            isEditable: true, group: "Connection", zone: "TcpClientZone"));
         AddParameter(new NodeParameter("SendQueueCapacity", typeof(int), DefaultQueueCapacity,
             isEditable: true, group: "Runtime", zone: "TcpClientZone"));
         AddParameter(new NodeParameter("ReadTimeoutSeconds", typeof(int), DefaultReadTimeoutSeconds,
@@ -116,6 +129,12 @@ public sealed class TcpClientNode : BaseNode
             Param("ConnectTimeoutSeconds").Value = ParameterValues.GetInt(connectTimeout, DefaultConnectTimeoutSeconds);
         if (parameters.TryGetValue("MaxConnectAttempts", out var attempts) && attempts is not null)
             Param("MaxConnectAttempts").Value = ParameterValues.GetInt(attempts, DefaultMaxConnectAttempts);
+        if (parameters.TryGetValue("AutoReconnect", out var autoReconnect) && autoReconnect is not null)
+            Param("AutoReconnect").Value = ParameterValues.GetBool(autoReconnect, true);
+        if (parameters.TryGetValue("ReconnectDelaySeconds", out var reconnectDelay) && reconnectDelay is not null)
+            Param("ReconnectDelaySeconds").Value = ParameterValues.GetInt(reconnectDelay, DefaultReconnectDelaySeconds);
+        if (parameters.TryGetValue("ReconnectMaxDelaySeconds", out var reconnectMaxDelay) && reconnectMaxDelay is not null)
+            Param("ReconnectMaxDelaySeconds").Value = ParameterValues.GetInt(reconnectMaxDelay, DefaultReconnectMaxDelaySeconds);
         if (parameters.TryGetValue("SendQueueCapacity", out var queueCapacity) && queueCapacity is not null)
             Param("SendQueueCapacity").Value = ParameterValues.GetInt(queueCapacity, DefaultQueueCapacity);
         if (parameters.TryGetValue("ReadTimeoutSeconds", out var readTimeout) && readTimeout is not null)
@@ -138,6 +157,10 @@ public sealed class TcpClientNode : BaseNode
         _port = ReadBoundedInt(context, "Port", 9000, 1, 65535);
         _connectTimeoutSeconds = ReadBoundedInt(context, "ConnectTimeoutSeconds", DefaultConnectTimeoutSeconds, 1, 60);
         _maxConnectAttempts = ReadBoundedInt(context, "MaxConnectAttempts", DefaultMaxConnectAttempts, 1, 100);
+        _autoReconnect = ParameterValues.GetBool(Param("AutoReconnect").Value, true);
+        _reconnectDelaySeconds = ReadBoundedInt(context, "ReconnectDelaySeconds", DefaultReconnectDelaySeconds, 1, 60);
+        _reconnectMaxDelaySeconds = ReadBoundedInt(context, "ReconnectMaxDelaySeconds", DefaultReconnectMaxDelaySeconds, 1, 3600);
+        _reconnectMaxDelaySeconds = Math.Max(_reconnectMaxDelaySeconds, _reconnectDelaySeconds);
         _sendQueueCapacity = ReadBoundedInt(context, "SendQueueCapacity", DefaultQueueCapacity, 1, 65536);
         _readTimeoutSeconds = ReadBoundedInt(context, "ReadTimeoutSeconds", DefaultReadTimeoutSeconds, 0, 3600);
         _writeTimeoutSeconds = ReadBoundedInt(context, "WriteTimeoutSeconds", DefaultWriteTimeoutSeconds, 1, 3600);
@@ -148,37 +171,27 @@ public sealed class TcpClientNode : BaseNode
         SetIdle();
 
         context.Logger.LogInformation(
-            "TCP client initialized for {Host}:{Port}; queue={Queue}, readTimeout={ReadTimeout}s, writeTimeout={WriteTimeout}s",
-            _host, _port, _sendQueueCapacity, _readTimeoutSeconds, _writeTimeoutSeconds);
+            "TCP client initialized for {Host}:{Port}; queue={Queue}, autoReconnect={AutoReconnect}, reconnectDelay={ReconnectDelay}s, reconnectMaxDelay={ReconnectMaxDelay}s, readTimeout={ReadTimeout}s, writeTimeout={WriteTimeout}s",
+            _host, _port, _sendQueueCapacity, _autoReconnect, _reconnectDelaySeconds, _reconnectMaxDelaySeconds,
+            _readTimeoutSeconds, _writeTimeoutSeconds);
     }
 
-    public override async Task Run(INodeContext context, CancellationToken ct = default)
+    public override Task Run(INodeContext context, CancellationToken ct = default)
     {
-        if (_cts is null || _sendChannel is null)
+        var rootCts = _cts;
+        if (rootCts is null || _sendChannel is null)
             throw new InvalidOperationException("TCP client must be initialized before Run.");
+        if (_supervisorTask is not null)
+            throw new InvalidOperationException("TCP client is already running.");
 
-        SetConnecting();
-        TcpSocket? client = null;
-        try
-        {
-            client = await ConnectWithRetriesAsync(_cts.Token).ConfigureAwait(false);
-            var stream = client.GetStream();
-            _client = client;
-            _stream = stream;
-
-            Running = true;
-            _readTask = Task.Run(() => ReadLoopAsync(stream, context, _cts.Token), CancellationToken.None);
-            _writeTask = Task.Run(() => WriteLoopAsync(stream, context, _cts.Token), CancellationToken.None);
-            context.Logger.LogInformation("TCP client connected to {Host}:{Port}.", _host, _port);
-        }
-        catch
-        {
-            client?.Dispose();
-            _client = null;
-            _stream = null;
-            SetFailed();
-            throw;
-        }
+        Running = true;
+        _supervisorTask = Task.Run(
+            () => ConnectionSupervisorAsync(context, rootCts.Token),
+            CancellationToken.None);
+        context.Logger.LogInformation(
+            "TCP client supervisor started for {Host}:{Port}; autoReconnect={AutoReconnect}.",
+            _host, _port, _autoReconnect);
+        return Task.CompletedTask;
     }
 
     public override async Task Stop(INodeContext context, CancellationToken ct = default)
@@ -194,28 +207,21 @@ public sealed class TcpClientNode : BaseNode
             _sendChannel = null;
             channel?.Writer.TryComplete();
 
-            var stream = _stream;
-            _stream = null;
-            var client = _client;
-            _client = null;
-            stream?.Dispose();
-            client?.Dispose();
+            DisposeCurrentConnection();
 
-            var readTask = _readTask;
-            var writeTask = _writeTask;
-            _readTask = null;
-            _writeTask = null;
-            if (readTask is not null || writeTask is not null)
+            var supervisorTask = _supervisorTask;
+            _supervisorTask = null;
+            var supervisorStopped = true;
+            if (supervisorTask is not null)
             {
                 try
                 {
-                    var tasks = new[] { readTask, writeTask }.Where(t => t is not null).Select(t => t!).ToArray();
-                    await Task.WhenAll(tasks)
-                        .WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                    await supervisorTask.WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
                 }
                 catch (TimeoutException)
                 {
-                    context.Logger.LogWarning("TCP client communication loops did not stop within 2s.");
+                    supervisorStopped = false;
+                    context.Logger.LogWarning("TCP client supervisor did not stop within 3s.");
                 }
                 catch (OperationCanceledException)
                 {
@@ -223,11 +229,17 @@ public sealed class TcpClientNode : BaseNode
                 }
                 catch (Exception ex)
                 {
-                    context.Logger.LogWarning(ex, "TCP client communication loop ended with an error while stopping.");
+                    context.Logger.LogWarning(ex, "TCP client supervisor ended with an error while stopping.");
                 }
             }
 
-            cts?.Dispose();
+            DisposeCurrentConnection();
+            _readTask = null;
+            _writeTask = null;
+
+            if (supervisorStopped)
+                cts?.Dispose();
+
             Running = false;
             SetIdle();
             context.Logger.LogInformation(
@@ -290,6 +302,159 @@ public sealed class TcpClientNode : BaseNode
         QueueSend(bytes, pin.Name);
     }
 
+    private async Task ConnectionSupervisorAsync(INodeContext context, CancellationToken ct)
+    {
+        var reconnectAttempt = 0;
+        while (!ct.IsCancellationRequested)
+        {
+            TcpSocket? client = null;
+            NetworkStream? stream = null;
+            Task? readTask = null;
+            Task? writeTask = null;
+            using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+            try
+            {
+                client = await ConnectWithRetriesAsync(ct).ConfigureAwait(false);
+                stream = client.GetStream();
+                SetCurrentConnection(client, stream);
+
+                readTask = Task.Run(
+                    () => ReadLoopAsync(stream, context, connectionCts.Token),
+                    CancellationToken.None);
+                writeTask = Task.Run(
+                    () => WriteLoopAsync(stream, context, connectionCts.Token),
+                    CancellationToken.None);
+                _readTask = readTask;
+                _writeTask = writeTask;
+
+                reconnectAttempt = 0;
+                context.Logger.LogInformation(
+                    "TCP client connected to {Host}:{Port}.", _host, _port);
+
+                await Task.WhenAny(readTask, writeTask).ConfigureAwait(false);
+                if (!ct.IsCancellationRequested)
+                    context.Logger.LogWarning(
+                        "TCP client connection to {Host}:{Port} ended.", _host, _port);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Expected during Stop.
+            }
+            catch (Exception ex)
+            {
+                context.Logger.LogWarning(ex,
+                    "TCP client connection to {Host}:{Port} failed or disconnected.", _host, _port);
+            }
+            finally
+            {
+                connectionCts.Cancel();
+                ClearCurrentConnection(client, stream);
+                stream?.Dispose();
+                client?.Dispose();
+
+                await WaitForCommunicationLoopsAsync(readTask, writeTask, context).ConfigureAwait(false);
+                if (ReferenceEquals(_readTask, readTask))
+                    _readTask = null;
+                if (ReferenceEquals(_writeTask, writeTask))
+                    _writeTask = null;
+            }
+
+            if (ct.IsCancellationRequested)
+                break;
+
+            if (!_autoReconnect)
+            {
+                Running = false;
+                SetFailed();
+                context.Logger.LogWarning(
+                    "TCP client stopped because AutoReconnect is disabled and the connection ended.");
+                break;
+            }
+
+            var delay = GetReconnectDelay(reconnectAttempt++);
+            context.Logger.LogWarning(
+                "TCP client will reconnect to {Host}:{Port} in {DelaySeconds}s.",
+                _host, _port, (int)delay.TotalSeconds);
+
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+    }
+
+    private void SetCurrentConnection(TcpSocket client, NetworkStream stream)
+    {
+        lock (_connectionGate)
+        {
+            _client = client;
+            _stream = stream;
+        }
+    }
+
+    private void ClearCurrentConnection(TcpSocket? client, NetworkStream? stream)
+    {
+        lock (_connectionGate)
+        {
+            if (ReferenceEquals(_client, client))
+                _client = null;
+            if (ReferenceEquals(_stream, stream))
+                _stream = null;
+        }
+    }
+
+    private void DisposeCurrentConnection()
+    {
+        TcpSocket? client;
+        NetworkStream? stream;
+        lock (_connectionGate)
+        {
+            client = _client;
+            stream = _stream;
+            _client = null;
+            _stream = null;
+        }
+
+        stream?.Dispose();
+        client?.Dispose();
+    }
+
+    private static async Task WaitForCommunicationLoopsAsync(
+        Task? readTask, Task? writeTask, INodeContext context)
+    {
+        if (readTask is null && writeTask is null)
+            return;
+
+        try
+        {
+            var tasks = new[] { readTask, writeTask }
+                .Where(task => task is not null)
+                .Select(task => task!)
+                .ToArray();
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when reconnecting or stopping.
+        }
+        catch (Exception ex)
+        {
+            context.Logger.LogWarning(ex, "TCP client communication loop ended with an error.");
+        }
+    }
+
+    private TimeSpan GetReconnectDelay(int reconnectAttempt)
+    {
+        var multiplier = 1 << Math.Min(reconnectAttempt, 5);
+        var seconds = Math.Min(_reconnectMaxDelaySeconds, _reconnectDelaySeconds * multiplier);
+        return TimeSpan.FromSeconds(seconds);
+    }
+
     private async Task<TcpSocket> ConnectWithRetriesAsync(CancellationToken ct)
     {
         Exception? lastError = null;
@@ -347,14 +512,12 @@ public sealed class TcpClientNode : BaseNode
                 catch (TimeoutException ex)
                 {
                     context.Logger.LogWarning("TCP client read timeout: {Message}", ex.Message);
-                    Running = false;
                     break;
                 }
 
                 if (count == 0)
                 {
                     context.Logger.LogWarning("TCP client remote endpoint closed the connection.");
-                    Running = false;
                     break;
                 }
 
@@ -374,8 +537,7 @@ public sealed class TcpClientNode : BaseNode
         }
         catch (Exception ex)
         {
-            context.Logger.LogError(ex, "TCP client read loop failed.");
-            Running = false;
+            context.Logger.LogWarning(ex, "TCP client read loop failed.");
         }
     }
 
@@ -406,8 +568,7 @@ public sealed class TcpClientNode : BaseNode
         }
         catch (Exception ex)
         {
-            context.Logger.LogError(ex, "TCP client write loop failed.");
-            Running = false;
+            context.Logger.LogWarning(ex, "TCP client write loop failed.");
         }
     }
 
@@ -417,19 +578,13 @@ public sealed class TcpClientNode : BaseNode
             "TCP client received {Length} bytes from {Host}:{Port}: {Preview}",
             bytes.Length, _host, _port, FormatBytes(bytes));
 
-        if (OutputBinaryPin.TargetCount > 0)
-        {
-            var binary = BinSample.CreateSample();
-            binary.SetValue(bytes, OutputBinaryPin.Name);
-            OutputBinaryPin.SendSample(binary);
-        }
+        var binary = BinSample.CreateSample();
+        binary.SetValue(bytes, OutputBinaryPin.Name);
+        OutputBinaryPin.SendSample(binary);
 
-        if (OutputStringPin.TargetCount > 0)
-        {
-            var text = StringSample.CreateSample();
-            text.SetValue(Encoding.UTF8.GetString(bytes), OutputStringPin.Name);
-            OutputStringPin.SendSample(text);
-        }
+        var text = StringSample.CreateSample();
+        text.SetValue(Encoding.UTF8.GetString(bytes), OutputStringPin.Name);
+        OutputStringPin.SendSample(text);
     }
 
     private void QueueSend(byte[] bytes, string pinName)

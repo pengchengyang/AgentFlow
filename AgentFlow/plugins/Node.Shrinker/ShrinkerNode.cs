@@ -9,7 +9,7 @@ using AgentFlow.Contracts;
 namespace Node.Shrinker;
 
 /// <summary>
-/// Five-input, one-output fan-in node. The selected data type is applied to every port by
+/// Ten-input, one-output fan-in node. The selected data type is applied to every port by
 /// <see cref="Configure"/>. Every non-null sample that arrives on any input is forwarded to
 /// the single output; the node does not wait for a particular input and does not merge values.
 /// </summary>
@@ -27,6 +27,11 @@ public sealed class ShrinkerNode : BaseNode
         new("input3", DataType.STRING, PinDirection.Input, required: false),
         new("input4", DataType.STRING, PinDirection.Input, required: false),
         new("input5", DataType.STRING, PinDirection.Input, required: false),
+        new("input6", DataType.STRING, PinDirection.Input, required: false),
+        new("input7", DataType.STRING, PinDirection.Input, required: false),
+        new("input8", DataType.STRING, PinDirection.Input, required: false),
+        new("input9", DataType.STRING, PinDirection.Input, required: false),
+        new("input10", DataType.STRING, PinDirection.Input, required: false),
     };
 
     private readonly BasePin _outPin =
@@ -83,7 +88,7 @@ public sealed class ShrinkerNode : BaseNode
     }
 
     /// <summary>
-    /// Forward every non-null sample arriving on any of the five inputs to the single output pin.
+    /// Forward every non-null sample arriving on any of the ten inputs to the single output pin.
     /// </summary>
     public override void ReceiveSample(BasePin pin, Sample? value)
     {

@@ -612,7 +612,7 @@ public sealed class GraphCanvas : Control
         if (vm is null) return;
 
         // Any press on the canvas dismisses the open right-click menu first.
-        // (Clicks inside the menu itself hit the Popup, not the canvas, so they don't land here.)
+        // (Clicks inside the menu itself hit its topmost window, not the canvas, so they don't land here.)
         CloseNodeContextMenu();
 
         if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
@@ -864,10 +864,10 @@ public sealed class GraphCanvas : Control
     }
 
     /// <summary>
-    /// Show the node right-click menu. The menu body is the fully self-drawn
-    /// <see cref="NodeContextMenu"/> (visual language matches the node cards); an Avalonia
-    /// <see cref="Popup"/> only provides the top-level popup shell (pointer placement,
-    /// click-outside-to-close, Esc). Every action is dispatched through the view model.
+    /// Show the node right-click menu. The menu body is the AXAML-backed
+    /// <see cref="NodeContextMenu"/> (visual language matches the node cards); a borderless,
+    /// transparent, topmost <see cref="Window"/> only hosts it and provides screen placement,
+    /// click-outside-to-close and activation. Every action is dispatched through the view model.
     /// </summary>
     private void ShowNodeContextMenu(NodeViewModel node)
     {

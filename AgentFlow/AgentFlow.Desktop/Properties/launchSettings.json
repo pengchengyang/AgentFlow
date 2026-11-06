@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AgentFlow.Desktop": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}

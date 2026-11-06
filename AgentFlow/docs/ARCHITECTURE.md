@@ -11,7 +11,7 @@ desktop, CLI, headless, or future web hosts.
 | Project | Responsibility |
 | --- | --- |
 | `AgentFlow.Contracts` | Node, pin, sample, context, lifecycle, and parameter contracts. Has no UI dependency. |
-| `AgentFlow.Core` | Plugin loading, node instance management, wiring, validation, workflow execution, and logic serialization/deserialization. Has no Avalonia dependency. |
+| `AgentFlow.Core` | Plugin loading, node instance management, wiring, validation, workflow execution, logic serialization/deserialization, and the GUI-neutral `WorkflowHost` facade. Has no Avalonia dependency. |
 | `AgentFlow` | Avalonia editor: canvas, palettes, dialogs, view-models, graph JSON composition, and UI logging. |
 | `AgentFlow.Desktop` | Desktop entry point and host logging setup. |
 | `AgentFlow.Cli` | Headless workflow entry point. |
@@ -34,6 +34,19 @@ AgentFlow / AgentFlow.Desktop / AgentFlow.Cli
 Core and Contracts must not reference Avalonia or any GUI project. The GUI may
 reference Core and Contracts.
 
+## WorkflowHost Boundary
+
+`WorkflowHost` is the shared facade for workflow consumption and runtime control:
+
+- `IWorkflowReadOnlyHost`: load a workflow, inspect immutable snapshots, validate,
+  start/stop execution, execute node commands, and read per-node health.
+- `IWorkflowEditorHost`: adds graph mutation operations used only by the AgentFlow
+  editor, such as create/remove node, connect/disconnect, update node state, and clear.
+
+Product-specific GUIs must use only `IWorkflowReadOnlyHost`. They do not render
+nodes, pins, or connections and do not mutate workflow documents. They read
+per-node/runtime health and display their own product data through separate
+domain services.
 ## Node Lifecycle
 
 `BaseNode` owns the runtime lifecycle state:
@@ -76,7 +89,13 @@ incoming samples to `BaseNode.ReceiveSample`. On an output pin,
 `ConnectedPin` is a compatibility view of the single connected target; on an
 input pin it is the stored upstream reference. The editor layer only draws and
 establishes/removes connections; runtime delivery is performed by the Core
-graph and pin objects.
+graph and pin objects. `BasePin.SendSample` rejects every output send when
+`TargetCount == 0`, records an `ERROR` through the bound node context, and
+returns `false` without invoking downstream delivery. It returns `true` only
+after dispatching to one or more targets. Nodes use this result to gate
+success logs, so disconnected outputs never produce misleading "sent" traces.
+This guard is centralized in the pin contract so every current and future node
+follows the same runtime rule.
 
 ## Logging Policy
 
@@ -93,6 +112,20 @@ Actual runtime faults remain at `ERROR`:
 - File read/write and autosave failures.
 - Plugin loading failures.
 - Unexpected Core, UI, or graph-state exceptions.
+
+## Undo / Redo History
+
+- `MainViewModel` owns bounded, in-memory undo and redo stacks. Each history entry is a
+  complete layered graph document produced by `GraphSerializer`, so logical parameters,
+  pins, connections, node coordinates, and viewport state are restored consistently.
+- Undo and redo are edit operations: they are available only while the workflow is
+  stopped. A restore rebuilds the Core graph through `GraphDeserializer` and
+  `LoadGraphFromDocument`, then marks the graph dirty and schedules auto-save.
+- Structural edits, connection changes, node deletion, parameter updates, clear-canvas,
+  and completed node drags are recorded as single undo steps. Loading a workflow clears
+  the history because the loaded file becomes the new baseline.
+- The title-bar Undo / Redo buttons bind to `CanUndo` / `CanRedo`. `Ctrl+Z` and `Ctrl+Y`
+  use the same commands; focused text boxes keep their native text-editing shortcuts.
 
 ## Serialization
 
@@ -148,16 +181,27 @@ and receive hooks without implementing final business behavior yet:
 
 | Plugin | Role | Default pins |
 | --- | --- | --- |
-| `Node.FactCaller` | Fact lookup entry point | `request` string input; `fact` string output |
-| `Node.FactLogFetcher` | Fact-related log retrieval | `factId` string input; `log` string output |
+| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture and cached CMD/IP/SLOT/PORTHUB settings | `input_string_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_settings`, and `output_string_cmd` outputs |
+| `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
+| `Node.AutoStart` | Workflow start trigger and SLOT router | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
-| `Node.SpecialSettings` | Profile / settings adapter | `input` / `output` string pins |
+| `Node.UserSettings` | Profile / settings adapter | `input_string_normal` string input; `output_string_json` string output |
 
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.
+
+`Node.AutoStart` buffers semicolon-terminated `SLOT`/`FSN`/`IMEI` JSON groups from
+`input_string_start`, validates each group, sends the corresponding JSON group to the output mapped from `SLOT`,
+and emits a host-neutral start request through `IWorkflowStartRequestSink`. The host
+registers the service when GUI integration is implemented; the plugin has no Avalonia
+dependency.
 
 The TCP demo nodes expose a raw byte-stream interface. `TCP Client` and `TCP Server`
 each expose `input_string`, `input_binary`, `output_string`, and `output_binary`.
 Text inputs are UTF-8 encoded, binary inputs are sent unchanged, and received byte blocks
 are published without adding framing or automatic replies. See `docs/tcp-transport.md`.
+
+
+
+
 

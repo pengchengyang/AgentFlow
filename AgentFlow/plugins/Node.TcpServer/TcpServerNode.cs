@@ -471,19 +471,13 @@ public sealed class TcpServerNode : BaseNode
             "TCP server received {Length} bytes from client {Id}: {Preview}",
             bytes.Length, clientId, FormatBytes(bytes));
 
-        if (OutputBinaryPin.TargetCount > 0)
-        {
-            var binary = BinSample.CreateSample();
-            binary.SetValue(bytes, OutputBinaryPin.Name);
-            OutputBinaryPin.SendSample(binary);
-        }
+        var binary = BinSample.CreateSample();
+        binary.SetValue(bytes, OutputBinaryPin.Name);
+        OutputBinaryPin.SendSample(binary);
 
-        if (OutputStringPin.TargetCount > 0)
-        {
-            var text = StringSample.CreateSample();
-            text.SetValue(Encoding.UTF8.GetString(bytes), OutputStringPin.Name);
-            OutputStringPin.SendSample(text);
-        }
+        var text = StringSample.CreateSample();
+        text.SetValue(Encoding.UTF8.GetString(bytes), OutputStringPin.Name);
+        OutputStringPin.SendSample(text);
     }
 
     private async Task WriteToClientAsync(ClientSession session, byte[] bytes, CancellationToken ct)

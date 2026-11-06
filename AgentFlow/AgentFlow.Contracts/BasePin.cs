@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------
 
 using System.Threading;
+using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Contracts;
 
@@ -121,7 +122,7 @@ public class BasePin
     /// </summary>
     public int Id { get; internal set; }
 
-    public BasePin(string name, DataType dataType, PinDirection direction, bool required = true)
+    public BasePin(string name, DataType dataType, PinDirection direction, bool required = false)
     {
         Name = name;
         DataType = dataType;
@@ -158,12 +159,24 @@ public class BasePin
     /// Send data from an OUTPUT pin to its connected INPUT pin.
     /// Runs <see cref="OnSend"/> and forwards the value to every connected target (one-to-one
     /// today). The target array is read once, so concurrent rewiring never causes a
-    /// "collection was modified" exception inside the sending node.
+    /// "collection was modified" exception inside the sending node. An output pin without a
+    /// downstream connection is not allowed to send; the bound node context records an error.
+    /// Returns true only when the sample was delivered to one or more downstream targets.
     /// </summary>
-    public virtual void SendSample(Sample? value)
+    public virtual bool SendSample(Sample? value)
     {
         if (Direction != PinDirection.Output)
             throw new PinWiringException($"Pin '{Name}' is not an output pin and cannot Send.");
+
+        var targets = Volatile.Read(ref _targets);
+        if (targets.Length == 0)
+        {
+            Context?.Logger.LogError(
+                "Output pin {Node}.{Pin} is not connected; data was not sent.",
+                Owner?.DisplayName ?? "<unassigned>",
+                Name);
+            return false;
+        }
 
         if (value is not null && value.Type != DataType)
             throw new PinWiringException(
@@ -171,12 +184,10 @@ public class BasePin
 
         OnSend(value);
 
-        var targets = Volatile.Read(ref _targets);
-        if (targets.Length > 0)
-        {
-            foreach (var target in targets)
-                target.ReceiveSample(value);
-        }
+        foreach (var target in targets)
+            target.ReceiveSample(value);
+
+        return true;
     }
 
     /// <summary>

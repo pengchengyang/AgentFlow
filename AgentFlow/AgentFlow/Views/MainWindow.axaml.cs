@@ -9,6 +9,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using AgentFlow.ViewModels;
 
 namespace AgentFlow.Views;
@@ -36,10 +37,6 @@ public partial class MainWindow : Window
         bool maximized = WindowState == WindowState.Maximized;
         MaximizeIcon.IsVisible = !maximized;
         RestoreIcon.IsVisible = maximized;
-
-        // Rounded floating frame only while windowed; a maximized window fills the screen.
-        if (RootBorder is not null)
-            RootBorder.CornerRadius = maximized ? new CornerRadius(0) : new CornerRadius(16);
     }
 
     private void MinimizeButton_Click(object? sender, RoutedEventArgs e)
@@ -51,15 +48,163 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object? sender, RoutedEventArgs e)
         => Close();
 
+    private const double TitleBarDragThresholdPixels = 3;
+    private const int TopSnapThresholdPixels = 8;
+    private const int TopSnapReleaseThresholdPixels = 18;
+    private bool _isTitleBarDragging;
+    private bool _titleBarDragMoved;
+    private PixelPoint _titleBarDragStartPointer;
+    private PixelPoint _titleBarDragStartWindow;
+    private bool _topSnapArmed;
+
     private void TitleBar_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             return;
 
         if (e.ClickCount == 2)
+        {
             MaxRestoreButton_Click(sender, e);
-        else
+            e.Handled = true;
+            return;
+        }
+
+        if (WindowState == WindowState.Maximized)
+        {
+            // Native restore-drag keeps the familiar Explorer-like behavior from maximized to normal.
             BeginMoveDrag(e);
+            e.Handled = true;
+            return;
+        }
+
+        if (WindowState != WindowState.Normal)
+            return;
+
+        _isTitleBarDragging = true;
+        _titleBarDragMoved = false;
+        _topSnapArmed = false;
+        _titleBarDragStartPointer = this.PointToScreen(e.GetPosition(this));
+        _titleBarDragStartWindow = Position;
+        e.Pointer.Capture(this);
+        e.Handled = true;
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (!_isTitleBarDragging)
+            return;
+
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            EndTitleBarDrag(e.Pointer);
+            return;
+        }
+
+        var pointer = this.PointToScreen(e.GetPosition(this));
+        int deltaX = pointer.X - _titleBarDragStartPointer.X;
+        int deltaY = pointer.Y - _titleBarDragStartPointer.Y;
+
+        if (!_titleBarDragMoved &&
+            Math.Abs(deltaX) + Math.Abs(deltaY) < TitleBarDragThresholdPixels)
+        {
+            return;
+        }
+
+        _titleBarDragMoved = true;
+
+        // Match Explorer: entering the top edge arms the snap preview. Maximize only on release.
+        var screen = Screens.ScreenFromPoint(pointer)
+                     ?? Screens.ScreenFromWindow(this);
+        bool inTopSnapZone = false;
+        if (screen is not null)
+        {
+            int distanceFromTop = pointer.Y - screen.WorkingArea.Y;
+            inTopSnapZone = _topSnapArmed
+                ? distanceFromTop <= TopSnapReleaseThresholdPixels
+                : distanceFromTop <= TopSnapThresholdPixels;
+            _topSnapArmed = inTopSnapZone;
+        }
+        else
+        {
+            _topSnapArmed = false;
+        }
+
+        int targetY = inTopSnapZone && screen is not null
+            ? screen.WorkingArea.Y
+            : _titleBarDragStartWindow.Y + deltaY;
+        Position = new PixelPoint(
+            _titleBarDragStartWindow.X + deltaX,
+            targetY);
+        e.Handled = true;
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (!_isTitleBarDragging)
+            return;
+
+        bool shouldMaximize = _topSnapArmed;
+        EndTitleBarDrag(e.Pointer);
+        if (shouldMaximize)
+            WindowState = WindowState.Maximized;
+
+        e.Handled = true;
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        _topSnapArmed = false;
+        _isTitleBarDragging = false;
+        _titleBarDragMoved = false;
+    }
+
+    private void EndTitleBarDrag(IPointer pointer)
+    {
+        _isTitleBarDragging = false;
+        _topSnapArmed = false;
+        _titleBarDragMoved = false;
+        pointer.Capture(null);
+    }
+
+    /// <summary>
+    /// Window-level undo / redo shortcuts. Text editors keep their native Ctrl+Z / Ctrl+Y behavior.
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled)
+            return;
+
+        // Preserve native text editing history when focus is inside a TextBox.
+        if (e.Source is Visual source &&
+            (source is TextBox || source.FindAncestorOfType<TextBox>() is not null))
+        {
+            return;
+        }
+
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
+            e.KeyModifiers.HasFlag(KeyModifiers.Alt) ||
+            e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            return;
+        }
+
+        if (DataContext is not MainWindowViewModel viewModel)
+            return;
+
+        if (e.Key == Key.Z && viewModel.Main.CanUndoNow)
+        {
+            viewModel.Main.UndoCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Y && viewModel.Main.CanRedoNow)
+        {
+            viewModel.Main.RedoCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private bool _allowClose;

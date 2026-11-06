@@ -9,7 +9,7 @@ using AgentFlow.Contracts;
 namespace Node.Enlarger;
 
 /// <summary>
-/// One-input, five-output fan-out node. The selected data type is applied to every port by
+/// One-input, ten-output fan-out node. The selected data type is applied to every port by
 /// <see cref="Configure"/>; the actual fan-out behavior is intentionally left as a TODO until
 /// the runtime semantics are defined.
 /// </summary>
@@ -30,6 +30,11 @@ public sealed class EnlargerNode : BaseNode
         new("output3", DataType.STRING, PinDirection.Output),
         new("output4", DataType.STRING, PinDirection.Output),
         new("output5", DataType.STRING, PinDirection.Output),
+        new("output6", DataType.STRING, PinDirection.Output),
+        new("output7", DataType.STRING, PinDirection.Output),
+        new("output8", DataType.STRING, PinDirection.Output),
+        new("output9", DataType.STRING, PinDirection.Output),
+        new("output10", DataType.STRING, PinDirection.Output),
     };
 
     public EnlargerNode()
@@ -80,7 +85,7 @@ public sealed class EnlargerNode : BaseNode
     }
 
     /// <summary>
-    /// Forward every non-null sample from the single input to all five output pins.
+    /// Forward every non-null sample from the single input to all ten output pins.
     /// Each output pin forwards only to its connected downstream pin.
     /// </summary>
     public override void ReceiveSample(BasePin pin, Sample? value)

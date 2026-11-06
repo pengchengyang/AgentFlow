@@ -30,8 +30,10 @@ is split across two read blocks.
 
 ## TCP client behavior
 
-`TCP Client` connects to the configured `Host:Port` during `Run`. It starts one read
-loop and one write loop, then remains operational until stopped or the connection ends.
+`TCP Client` starts a connection supervisor during `Run`. The supervisor connects to
+the configured `Host:Port` and starts one read loop and one write loop. When the connection
+ends, the node closes the current socket, waits for the configured reconnect delay, and
+connects again until `Stop` is called. The node remains `Running = true` while reconnecting.
 Input blocks are queued for transmission. No payload is sent automatically at startup.
 
 ## TCP server behavior
@@ -51,7 +53,10 @@ up to `MaxClients`.
 | `Host` | `127.0.0.1` client / `0.0.0.0` server | Remote endpoint or local bind address. |
 | `Port` | `9000` | TCP port. |
 | `ConnectTimeoutSeconds` | `5` | Per-attempt client connect timeout. |
-| `MaxConnectAttempts` | `5` | Client connection retry count. |
+| `MaxConnectAttempts` | `5` | Client attempts per connection cycle before entering the reconnect delay. |
+| `AutoReconnect` | `true` | Keep retrying after a failed or closed connection until stopped. |
+| `ReconnectDelaySeconds` | `1` | Initial reconnect delay. |
+| `ReconnectMaxDelaySeconds` | `30` | Maximum reconnect delay after exponential backoff. |
 | `MaxClients` | `32` | Server active-client limit. |
 | `SendQueueCapacity` | `256` | Bounded outbound or broadcast queue capacity. |
 | `ReadTimeoutSeconds` | `0` | Reads time out after this interval; `0` disables the timeout. |
@@ -61,7 +66,7 @@ up to `MaxClients`.
 ## Lifecycle
 
 - `Initialize` validates parameters and prepares queues; the server also binds its listener.
-- `Run` establishes or exposes the working connection state and sets `Running = true`.
+- `Run` starts the client connection supervisor or server loops and sets `Running = true`.
 - `Stop` is idempotent, cancels loops, closes streams and sockets, waits briefly for tasks,
   and returns the node to idle.
-- There is no TLS, heartbeat, reconnect-after-disconnect, or built-in packet protocol.
+- There is no TLS, heartbeat, or built-in packet protocol.

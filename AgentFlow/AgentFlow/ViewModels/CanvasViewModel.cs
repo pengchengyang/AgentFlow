@@ -151,6 +151,7 @@ public partial class CanvasViewModel : ViewModelBase
         // auto-save path (and, via SyncGraphState, reconfigure the running instance). Use the same
         // stop-before-edit gate as delete/connect/clear.
         if (!_main.CanEditGraphNow()) return;
+        _main.BeginNodeDragHistory();
         _draggingNode = true;
         _dragNode = node;
         _dragOffset = pointer - node.Location;
@@ -164,6 +165,7 @@ public partial class CanvasViewModel : ViewModelBase
 
     public void EndDrag()
     {
+        _main.EndNodeDragHistory();
         _draggingNode = false;
         _dragNode = null;
     }

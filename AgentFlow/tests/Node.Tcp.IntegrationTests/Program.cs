@@ -93,6 +93,9 @@ static async Task RunTestsAsync()
         ["Port"] = clientPort,
         ["ConnectTimeoutSeconds"] = 1,
         ["MaxConnectAttempts"] = 3,
+        ["AutoReconnect"] = true,
+        ["ReconnectDelaySeconds"] = 1,
+        ["ReconnectMaxDelaySeconds"] = 3,
         ["SendQueueCapacity"] = 16,
         ["ReadTimeoutSeconds"] = 0,
         ["WriteTimeoutSeconds"] = 2,
@@ -126,6 +129,16 @@ static async Task RunTestsAsync()
     Assert(clientCapture.StringValues.TryPeek(out var clientText) && clientText == "xy",
         "client output_string must decode UTF-8");
     Check("client received bytes -> output pins");
+
+    clientPeerStream.Dispose();
+    clientPeer.Dispose();
+
+    using var reconnectPeer = await listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(5));
+    var reconnectStream = reconnectPeer.GetStream();
+    client.ReceiveSample(client.InputStringPin, StringSampleWith("after reconnect"));
+    await ReadAtLeastAsync(reconnectStream, "after reconnect"u8.ToArray(), TimeSpan.FromSeconds(3));
+    Assert(client.Running, "client must remain running across reconnects");
+    Check("client reconnects after the remote endpoint closes");
 
     await client.Stop(clientContext);
     await client.Stop(clientContext);

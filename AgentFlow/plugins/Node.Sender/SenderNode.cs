@@ -174,8 +174,8 @@ public sealed class SenderNode : BaseNode
 
         try
         {
-            _outPin.SendSample(CreateSample(dataType, value));
-            logger.LogInformation("Sender sent {Type} value {Value}.", dataType, FormatValue(dataType, value));
+            if (_outPin.SendSample(CreateSample(dataType, value)))
+                logger.LogInformation("Sender sent {Type} value {Value}.", dataType, FormatValue(dataType, value));
         }
         catch (Exception ex)
         {

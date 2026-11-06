@@ -235,4 +235,24 @@
     <SolidColorBrush x:Key="BrushThemeBtnHoverBg" Color="{StaticResource ThemeBtnHoverBg}" />
     <SolidColorBrush x:Key="BrushThemeBtnPressedBg" Color="{StaticResource ThemeBtnPressedBg}" />
     <SolidColorBrush x:Key="BrushThemeBtnFg" Color="{StaticResource ThemeBtnFg}" />
+
+    <!-- ============ Undo / Redo toolbar buttons ============ -->
+    <Color x:Key="UndoBtnBg">#082F49</Color>
+    <Color x:Key="UndoBtnHoverBg">#0C4A6E</Color>
+    <Color x:Key="UndoBtnPressedBg">#075985</Color>
+    <Color x:Key="UndoBtnFg">#7DD3FC</Color>
+    <Color x:Key="RedoBtnBg">#052E16</Color>
+    <Color x:Key="RedoBtnHoverBg">#14532D</Color>
+    <Color x:Key="RedoBtnPressedBg">#166534</Color>
+    <Color x:Key="RedoBtnFg">#86EFAC</Color>
+
+    <SolidColorBrush x:Key="BrushUndoBtnBg" Color="{StaticResource UndoBtnBg}" />
+    <SolidColorBrush x:Key="BrushUndoBtnHoverBg" Color="{StaticResource UndoBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushUndoBtnPressedBg" Color="{StaticResource UndoBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushUndoBtnFg" Color="{StaticResource UndoBtnFg}" />
+    <SolidColorBrush x:Key="BrushRedoBtnBg" Color="{StaticResource RedoBtnBg}" />
+    <SolidColorBrush x:Key="BrushRedoBtnHoverBg" Color="{StaticResource RedoBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushRedoBtnPressedBg" Color="{StaticResource RedoBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushRedoBtnFg" Color="{StaticResource RedoBtnFg}" />
+
 </ResourceDictionary>

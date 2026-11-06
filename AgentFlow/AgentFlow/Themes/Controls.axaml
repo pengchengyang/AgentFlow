@@ -180,6 +180,41 @@
     <Style Selector="Button.toolbtn.theme Path">
         <Setter Property="Stroke" Value="{DynamicResource BrushThemeBtnFg}" />
     </Style>
+    <!-- Undo / Redo toolbar buttons -->
+    <Style Selector="Button.toolbtn.undo">
+        <Setter Property="Background" Value="{DynamicResource BrushUndoBtnBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.undo:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushUndoBtnHoverBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.undo:pressed">
+        <Setter Property="Background" Value="{DynamicResource BrushUndoBtnPressedBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.undo:disabled">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Opacity" Value="0.35" />
+    </Style>
+    <Style Selector="Button.toolbtn.undo Path">
+        <Setter Property="Stroke" Value="{DynamicResource BrushUndoBtnFg}" />
+    </Style>
+
+    <Style Selector="Button.toolbtn.redo">
+        <Setter Property="Background" Value="{DynamicResource BrushRedoBtnBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.redo:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushRedoBtnHoverBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.redo:pressed">
+        <Setter Property="Background" Value="{DynamicResource BrushRedoBtnPressedBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.redo:disabled">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Opacity" Value="0.35" />
+    </Style>
+    <Style Selector="Button.toolbtn.redo Path">
+        <Setter Property="Stroke" Value="{DynamicResource BrushRedoBtnFg}" />
+    </Style>
+
     <!-- Stop: solid dark (the design black square button) -->
     <Style Selector="Button.toolbtn.dark">
         <Setter Property="Background" Value="{DynamicResource BrushStopBtnBg}" />

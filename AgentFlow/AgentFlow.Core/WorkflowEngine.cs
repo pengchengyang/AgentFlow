@@ -262,9 +262,11 @@ public sealed class WorkflowEngine
         public void SetOutput(string pinName, Sample? value)
         {
             var pin = GetOutputPin(pinName);
-            Logger.LogTrace("Pin {Node}.{Pin} sent {Value} ({Count} downstream)",
-                _nodeId, pinName, value, pin.TargetCount);
-            pin.SendSample(value);   // The output pin calls Receive on every connected input pin.
+            if (pin.SendSample(value))
+            {
+                Logger.LogTrace("Pin {Node}.{Pin} sent {Value} ({Count} downstream)",
+                    _nodeId, pinName, value, pin.TargetCount);
+            }
         }
 
         public T? GetService<T>()

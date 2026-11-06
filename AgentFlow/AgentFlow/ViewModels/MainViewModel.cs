@@ -8,8 +8,6 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using AgentFlow.Models;
 using AgentFlow.Core;
-using BaseNode = AgentFlow.Contracts.BaseNode;
-using INodeContext = AgentFlow.Contracts.INodeContext;
 using NodeState = AgentFlow.Contracts.NodeState;
 using AgentFlow.Services;
 using AgentFlow.Serialization;
@@ -30,6 +28,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly PluginLoader _pluginLoader;
     private readonly EditorGraph _graph;
     private readonly NodeInstanceManager _nodeManager;
+    private readonly WorkflowHost _workflowHost;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly BroadcastDemo _broadcastDemo;
@@ -76,16 +75,26 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanStop));
+        OnPropertyChanged(nameof(CanUndoNow));
+        OnPropertyChanged(nameof(CanRedoNow));
     }
 
     partial void OnIsStartingChanged(bool value)
     {
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanStop));
+        OnPropertyChanged(nameof(CanUndoNow));
+        OnPropertyChanged(nameof(CanRedoNow));
     }
 
     /// <summary>Whether the workflow is running or still starting (the Start button is disabled while busy).</summary>
     public bool IsBusy => IsRunning || IsStarting;
+
+    /// <summary>Undo is available only when there is history and the workflow is not active.</summary>
+    public bool CanUndoNow => CanUndo && !IsBusy;
+
+    /// <summary>Redo is available only when there is redo history and the workflow is not active.</summary>
+    public bool CanRedoNow => CanRedo && !IsBusy;
 
     /// <summary>
     /// Stop is available only while a workflow is starting or running. A failed start is already
@@ -101,6 +110,22 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>True when the graph has unsaved changes since the last save/load.</summary>
     [ObservableProperty]
     private bool _isDirty;
+
+    private const int MaxHistoryEntries = 50;
+    private readonly List<string> _undoHistory = new();
+    private readonly List<string> _redoHistory = new();
+    private bool _isApplyingHistory;
+    private string? _dragHistorySnapshot;
+
+    /// <summary>Whether the graph history contains an undo operation.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanUndoNow))]
+    private bool _canUndo;
+
+    /// <summary>Whether the graph history contains a redo operation.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRedoNow))]
+    private bool _canRedo;
 
     // Set once the window starts closing. RunAsync re-checks it after validation so a Start
     // clicked immediately before Close cannot launch nodes after the shutdown stop has completed.
@@ -119,6 +144,172 @@ public partial class MainViewModel : ViewModelBase
     {
         IsDirty = true;
         _changeVersion++;
+    }
+
+    /// <summary>Capture a complete graph snapshot for the undo / redo history.</summary>
+    private string? CaptureHistorySnapshot()
+    {
+        if (_isLoading || _isApplyingHistory)
+            return null;
+
+        SyncGraphState();
+        return GraphSerializer.Serialize(_graph);
+    }
+
+    /// <summary>Record a completed edit when its before/after snapshots differ.</summary>
+    private void RecordHistory(string? beforeSnapshot)
+    {
+        if (beforeSnapshot is null || _isLoading || _isApplyingHistory)
+            return;
+
+        var afterSnapshot = CaptureHistorySnapshot();
+        if (afterSnapshot is null ||
+            string.Equals(beforeSnapshot, afterSnapshot, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _undoHistory.Add(beforeSnapshot);
+        TrimHistory(_undoHistory);
+        _redoHistory.Clear();
+        UpdateHistoryAvailability();
+    }
+
+    private static void TrimHistory(List<string> history)
+    {
+        while (history.Count > MaxHistoryEntries)
+            history.RemoveAt(0);
+    }
+
+    private void UpdateHistoryAvailability()
+    {
+        CanUndo = _undoHistory.Count > 0;
+        CanRedo = _redoHistory.Count > 0;
+    }
+
+    private void ClearHistory()
+    {
+        _undoHistory.Clear();
+        _redoHistory.Clear();
+        _dragHistorySnapshot = null;
+        UpdateHistoryAvailability();
+    }
+
+    /// <summary>Restore a snapshot and keep the graph dirty so the restored state is persisted.</summary>
+    private void ApplyHistorySnapshot(string snapshot)
+    {
+        _autoSaveTimer.Stop();
+        _isApplyingHistory = true;
+        try
+        {
+            var document = GraphDeserializer.Deserialize(snapshot);
+            LoadGraphFromDocument(document);
+        }
+        finally
+        {
+            _isApplyingHistory = false;
+        }
+
+        MarkDirty();
+        AutoSaveNow();
+    }
+
+    /// <summary>Restore the most recent snapshot from the undo stack.</summary>
+    [RelayCommand]
+    private void Undo()
+    {
+        if (!CanUndo || !CanEditGraphNow())
+            return;
+
+        string? currentSnapshot;
+        try
+        {
+            currentSnapshot = CaptureHistorySnapshot();
+        }
+        catch (Exception ex)
+        {
+            StatusText = L["ErrorPrefix"];
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Capturing undo history failed.");
+            return;
+        }
+
+        if (currentSnapshot is null)
+            return;
+
+        var previousSnapshot = _undoHistory[^1];
+        try
+        {
+            ApplyHistorySnapshot(previousSnapshot);
+            _undoHistory.RemoveAt(_undoHistory.Count - 1);
+            _redoHistory.Add(currentSnapshot);
+            TrimHistory(_redoHistory);
+            UpdateHistoryAvailability();
+            StatusText = "Undo";
+            _logger.LogTrace("Undo applied.");
+        }
+        catch (Exception ex)
+        {
+            StatusText = L["ErrorPrefix"];
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Undo failed.");
+        }
+    }
+
+    /// <summary>Reapply the most recently undone snapshot.</summary>
+    [RelayCommand]
+    private void Redo()
+    {
+        if (!CanRedo || !CanEditGraphNow())
+            return;
+
+        string? currentSnapshot;
+        try
+        {
+            currentSnapshot = CaptureHistorySnapshot();
+        }
+        catch (Exception ex)
+        {
+            StatusText = L["ErrorPrefix"];
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Capturing redo history failed.");
+            return;
+        }
+
+        if (currentSnapshot is null)
+            return;
+
+        var nextSnapshot = _redoHistory[^1];
+        try
+        {
+            ApplyHistorySnapshot(nextSnapshot);
+            _redoHistory.RemoveAt(_redoHistory.Count - 1);
+            _undoHistory.Add(currentSnapshot);
+            TrimHistory(_undoHistory);
+            UpdateHistoryAvailability();
+            StatusText = "Redo";
+            _logger.LogTrace("Redo applied.");
+        }
+        catch (Exception ex)
+        {
+            StatusText = L["ErrorPrefix"];
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Redo failed.");
+        }
+    }
+
+    /// <summary>Capture the pre-drag state once, before pointer movement updates node coordinates.</summary>
+    public void BeginNodeDragHistory()
+    {
+        _dragHistorySnapshot = CaptureHistorySnapshot();
+    }
+
+    /// <summary>Commit a node drag as one undoable action.</summary>
+    public void EndNodeDragHistory()
+    {
+        var beforeSnapshot = _dragHistorySnapshot;
+        _dragHistorySnapshot = null;
+        RecordHistory(beforeSnapshot);
     }
     [ObservableProperty]
     private string _statusText = Loc.Instance["Ready"];
@@ -200,6 +391,12 @@ public partial class MainViewModel : ViewModelBase
         _pluginLoader = new PluginLoader(_loggerFactory.CreateLogger(nameof(PluginLoader)));
         _nodeManager = new NodeInstanceManager(_pluginLoader, _loggerFactory.CreateLogger(nameof(NodeInstanceManager)));
         _graph = new EditorGraph(_registry, _loggerFactory, _pluginLoader);
+        _workflowHost = new WorkflowHost(
+            _registry,
+            _pluginLoader,
+            _graph,
+            _nodeManager,
+            _loggerFactory);
 
         // Generic TopicBus demo: the GUI and Node.Broadcast.Demo share only topic strings.
         // Subscribe before LoadPlugins so the demo node's initial message is not lost.
@@ -274,15 +471,16 @@ public partial class MainViewModel : ViewModelBase
     private void LoadPlugins()
     {
         var pluginDir = Path.Combine(AppContext.BaseDirectory, "plugins");
-        _pluginLoader.LoadFromDirectory(pluginDir, _registry);
-        foreach (var d in _registry.Nodes.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase))
+        _workflowHost.LoadPlugins(pluginDir);
+        var nodeTypes = _workflowHost.GetNodeTypes();
+        foreach (var d in nodeTypes)
         {
-            var pins = string.Join(", ", d.Pins.Select(p =>
-                $"{(p.Direction == PinDirection.Input ? "in" : "out")}:{p.Name}:{p.DataType}"));
+            var pins = string.Join(", ", d.InputPins.Select(p => $"in:{p.Name}:{p.DataType}")
+                .Concat(d.OutputPins.Select(p => $"out:{p.Name}:{p.DataType}")));
             _allPaletteItems.Add(new PaletteItem(d.Name, d.DisplayName, d.Category, pins, CategoryColors.AccentByInitial(d.Name)));
         }
         OnSearchTextChanged(SearchText);
-        StatusText = L.Fmt("NodesLoaded", _registry.Nodes.Count);
+        StatusText = L.Fmt("NodesLoaded", nodeTypes.Count);
     }
     /// <summary>Add a node from the palette (auto-positioned for click-to-add).</summary>
     [RelayCommand]
@@ -295,17 +493,18 @@ public partial class MainViewModel : ViewModelBase
         // lifetime, so Stop could never release its resources. Palette click / drag-drop must obey
         // the same gate as delete/connect/clear.
         if (!CanEditGraphNow()) return;
+        var historySnapshot = CaptureHistorySnapshot();
         // Create a contract-layer instance; NodeModel and EditorGraph share the same BaseNode instance.
-        var instance = _pluginLoader.CreateNodeInstance(item.Name);
-        var node = new NodeViewModel(new NodeModel(instance)) { Location = graphLocation };
-        // The Core layer builds a runtime node from the same instance (holds BaseNode + runtime pins)
-        node.Runtime = _graph.AddNode(instance, graphLocation.X, graphLocation.Y);
+        var editorNode = _workflowHost.CreateNode(item.Name, graphLocation.X, graphLocation.Y);
+        var instance = editorNode.RuntimeNode;
+        var node = new NodeViewModel(new NodeModel(instance)) { Location = graphLocation, Runtime = editorNode };
         node.Id = node.Runtime.Id;
         node.RefreshPinTypes();
         _nodeSpawnIndex++;
         HookSelection(node);
         Nodes.Add(node);
         _logger.LogTrace("Added node {Name} #{InstanceId} at ({X:0.##},{Y:0.##})", node.Name, node.Id, graphLocation.X, graphLocation.Y);
+        RecordHistory(historySnapshot);
     }
     public void ToggleSelection(NodeViewModel node)
     {
@@ -359,8 +558,8 @@ public partial class MainViewModel : ViewModelBase
             .ToList();
 
         runtime.RuntimeNode.Configure(values);
-        _graph.UpdateNode(
-            runtime, node.DisplayName, node.Priority,
+        _workflowHost.UpdateNode(
+            runtime.Id, node.DisplayName, node.Priority,
             node.Location.X, node.Location.Y, values);
 
         if (pinsBefore.Any(entry => entry.Pin.DataType != entry.Type))
@@ -379,19 +578,18 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>After the Core layer connects / disconnects, refresh every pin's IsConnected visual state.</summary>
     private void RefreshPinConnections()
     {
+        var snapshot = _workflowHost.GetWorkflowSnapshot();
         foreach (var node in Nodes)
         {
             foreach (var pin in node.Inputs)
             {
-                var connected = _graph.Connections.Any(c =>
-                    c.ToNode.Id == node.Id && c.ToPin == pin.Name);
-                pin.IsConnected = connected;
+                pin.IsConnected = snapshot.Connections.Any(c =>
+                    c.ToNodeId == node.Id && c.ToPinName == pin.Name);
             }
             foreach (var pin in node.Outputs)
             {
-                var connected = _graph.Connections.Any(c =>
-                    c.FromNode.Id == node.Id && c.FromPin == pin.Name);
-                pin.IsConnected = connected;
+                pin.IsConnected = snapshot.Connections.Any(c =>
+                    c.FromNodeId == node.Id && c.FromPinName == pin.Name);
             }
         }
     }
@@ -467,6 +665,7 @@ public partial class MainViewModel : ViewModelBase
             if (string.IsNullOrEmpty(json)) return;
             var doc = GraphDeserializer.Deserialize(json);
             LoadGraphFromDocument(doc);
+            ClearHistory();
             loaded = true;
             StatusText = $"{L["LoadedFrom"]}: {_store.Description}";
         }
@@ -506,7 +705,11 @@ public partial class MainViewModel : ViewModelBase
             _logger.LogWarning("Connection rejected: {Message}", error);
             return false;
         }
-        return Establish(source, target);
+        var historySnapshot = CaptureHistorySnapshot();
+        var established = Establish(source, target);
+        if (established)
+            RecordHistory(historySnapshot);
+        return established;
     }
     /// <summary>Detach the single wire connected to this input pin (drag input pin onto empty canvas).</summary>
     public void DisconnectInputPin(PinViewModel input)
@@ -514,7 +717,9 @@ public partial class MainViewModel : ViewModelBase
         if (!CanEditGraphNow()) return;
         var conn = Connections.FirstOrDefault(c => ReferenceEquals(c.Target, input));
         if (conn is null) return;
+        var historySnapshot = CaptureHistorySnapshot();
         Teardown(conn);
+        RecordHistory(historySnapshot);
     }
     /// <summary>
     /// Establish the connection in the Core layer: the output pin saves a reference to the input pin
@@ -526,7 +731,7 @@ public partial class MainViewModel : ViewModelBase
         bool connected;
         try
         {
-            connected = _graph.Connect(source.Node.Runtime!, source.Name, target.Node.Runtime!, target.Name);
+            connected = _workflowHost.Connect(source.Node.Runtime!.Id, source.Name, target.Node.Runtime!.Id, target.Name);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
@@ -562,11 +767,7 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Remove the connection in the Core layer and delete the visual wire.</summary>
     private void Teardown(ConnectionViewModel connection)
     {
-        var conn = _graph.Connections.FirstOrDefault(c =>
-            c.FromNode.Id == connection.Source.Node.Id && c.FromPin == connection.Source.Name &&
-            c.ToNode.Id == connection.Target.Node.Id && c.ToPin == connection.Target.Name);
-        if (conn is not null)
-            _graph.Disconnect(conn);
+        _workflowHost.DisconnectInput(connection.Target.Node.Id, connection.Target.Name);
         Connections.Remove(connection);
         _logger.LogTrace("Disconnected {From}.{FromPin} -> {To}.{ToPin}", connection.Source.Node.Name, connection.Source.Name, connection.Target.Node.Name, connection.Target.Name);
     }
@@ -589,14 +790,19 @@ public partial class MainViewModel : ViewModelBase
     public void RemoveConnection(ConnectionViewModel connection)
     {
         if (!CanEditGraphNow()) return;
+        var historySnapshot = CaptureHistorySnapshot();
         Teardown(connection);
+        RecordHistory(historySnapshot);
     }
     [RelayCommand]
     private void RemoveSelectedConnections()
     {
         if (!CanEditGraphNow()) return;
         var selected = Connections.Where(c => c.IsSelected).ToList();
+        if (selected.Count == 0) return;
+        var historySnapshot = CaptureHistorySnapshot();
         foreach (var c in selected) Teardown(c);
+        RecordHistory(historySnapshot);
     }
     /// <summary>
     /// Guard for structural edits (delete a node, clear the canvas) and for changing wires: mutating
@@ -607,7 +813,7 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public bool CanEditGraphNow()
     {
-        if (!_nodeManager.Instances.Any(n => n.Connecting || n.State == NodeState.Running))
+        if (!_workflowHost.GetRuntimeSnapshot().Nodes.Any(n => n.Connecting || n.State == NodeState.Running))
             return true;
 
         var message = L["StopBeforeEdit"];
@@ -624,27 +830,36 @@ public partial class MainViewModel : ViewModelBase
     public void DeleteSelection()
     {
         if (!CanEditGraphNow()) return;
+        var selectedNodes = Nodes.Where(n => n.IsSelected).ToList();
+        var hasSelectedConnections = SelectedConnections.Count > 0;
+        if (selectedNodes.Count == 0 && !hasSelectedConnections)
+            return;
+        var historySnapshot = CaptureHistorySnapshot();
         foreach (var c in SelectedConnections.ToList())
         {
             SelectedConnections.Remove(c);
             Teardown(c);
         }
         // Delete all selected nodes (multi-select supported).
-        var selected = Nodes.Where(n => n.IsSelected).ToList();
-        foreach (var n in selected)
-            RemoveNode(n);
+        foreach (var n in selectedNodes)
+            RemoveNodeCore(n);
         SelectedNode = null;
+        RecordHistory(historySnapshot);
     }
     [RelayCommand]
     public void RemoveNode(NodeViewModel node)
     {
         if (!CanEditGraphNow()) return;
-        // 1. Remove the node instance from the PluginLoader container (PluginLoader also releases its pins).
-        if (node.Runtime?.RuntimeNode is { } instance)
-            _pluginLoader.DeleteNodeInstance(instance);
-        // 2. The Core layer removes the node and all its wires (output pins auto-disconnect their references).
+        var historySnapshot = CaptureHistorySnapshot();
+        RemoveNodeCore(node);
+        RecordHistory(historySnapshot);
+    }
+
+    private void RemoveNodeCore(NodeViewModel node)
+    {
+        // WorkflowHost delegates node and plugin-instance removal to Core.
         if (node.Runtime is not null)
-            _graph.RemoveNode(node.Runtime);
+            _workflowHost.RemoveNode(node.Runtime.Id);
         // Remove visual wires.
         var related = Connections
             .Where(c => ReferenceEquals(c.Source.Node, node) || ReferenceEquals(c.Target.Node, node))
@@ -657,7 +872,7 @@ public partial class MainViewModel : ViewModelBase
     // ---------- Node commands (right-click menu) ----------
     /// <summary>Snapshot of the commands the given node exposes to the editor context menu.</summary>
     public IReadOnlyList<NodeCommandInfo> GetNodeCommands(NodeViewModel node)
-        => node is null ? Array.Empty<NodeCommandInfo>() : _nodeManager.GetNodeCommands(node.InstanceId);
+        => node is null ? Array.Empty<NodeCommandInfo>() : _workflowHost.GetNodeCommands(node.InstanceId);
 
     /// <summary>
     /// Execute a node command through Core. When the command requests confirmation the
@@ -675,7 +890,7 @@ public partial class MainViewModel : ViewModelBase
                 if (!confirmed) return;
             }
 
-            await _nodeManager.ExecuteNodeCommandAsync(node.InstanceId, command.Id, GetNodeContext);
+            await _workflowHost.ExecuteNodeCommandAsync(node.InstanceId, command.Id);
             _logger.LogTrace("Node command {CommandId} executed on #{InstanceId}",
                 command.Id, node.InstanceId);
         }
@@ -740,6 +955,7 @@ public partial class MainViewModel : ViewModelBase
         if (node is null) return;
         if (!CanEditGraphNow()) return;
         var dialog = new NodeParamDlgViewModel(node);
+        var historySnapshot = CaptureHistorySnapshot();
         // Parameter / display-name edits must mark the document dirty and persist through the same
         // debounced auto-save path as structural changes.
         dialog.NodeChanged += (_, _) =>
@@ -747,6 +963,8 @@ public partial class MainViewModel : ViewModelBase
             ApplyNodeParameters(node);
             MarkDirty();
             ScheduleAutoSave();
+            RecordHistory(historySnapshot);
+            historySnapshot = CaptureHistorySnapshot();
         };
         DialogRequested?.Invoke(this, dialog);
     }
@@ -778,7 +996,7 @@ public partial class MainViewModel : ViewModelBase
         if (!CanEditGraphNow()) return;
         var dialog = new ConfirmDialogViewModel(
             "Clear Canvas",
-            "Clear the entire canvas and all underlying data? This cannot be undone.",
+            "Clear the entire canvas and all underlying data?",
             "Confirm", "Cancel");
         dialog.RequestClose += (_, confirmed) =>
         {
@@ -787,19 +1005,21 @@ public partial class MainViewModel : ViewModelBase
             // Suppress the collection-change auto-save while the visual and Core graphs are
             // temporarily out of sync, then persist the actually-cleared graph once.
             _autoSaveTimer.Stop();
+            var historySnapshot = CaptureHistorySnapshot();
             _suppressAutoSave = true;
             try
             {
                 Nodes.Clear();
                 Connections.Clear();
                 SelectedNode = null;
-                _graph.Clear();
+                _workflowHost.Clear();
             }
             finally
             {
                 _suppressAutoSave = false;
             }
             MarkDirty();
+            RecordHistory(historySnapshot);
             AutoSaveNow();
             Log("Canvas cleared.");
             _logger.LogTrace("Canvas cleared.");
@@ -821,7 +1041,7 @@ public partial class MainViewModel : ViewModelBase
                 n.Runtime.RuntimeNode.Configure(values);
                 // The display name is user-editable; pass it (not the type id) so saving/autosave
                 // never overwrites the canvas title with e.g. "node.llm.react".
-                _graph.UpdateNode(n.Runtime, n.DisplayName, n.Priority, n.Location.X, n.Location.Y, values);
+                _workflowHost.UpdateNode(n.Runtime.Id, n.DisplayName, n.Priority, n.Location.X, n.Location.Y, values);
             }
         }
     }
@@ -845,7 +1065,7 @@ public partial class MainViewModel : ViewModelBase
         {
             Nodes.Clear();
             Connections.Clear();
-            _graph.Clear();
+            _workflowHost.Clear();
             foreach (var spec in doc.Nodes)
             {
                 if (string.IsNullOrEmpty(spec.Id) || !nodeIds.Add(spec.Id))
@@ -921,8 +1141,7 @@ public partial class MainViewModel : ViewModelBase
             // A node / parameter / pin failed halfway through the document: roll the canvas back to
             // an empty state instead of leaving a half-built graph that can neither run nor be
             // repaired from the UI. The caller logs the original exception.
-            _pluginLoader.ClearInstances();
-            _graph.Clear();
+            _workflowHost.Clear();
             Nodes.Clear();
             Connections.Clear();
             throw;
@@ -980,18 +1199,9 @@ public partial class MainViewModel : ViewModelBase
         _runInProgress = true;
         try
         {
-            var contexts = BuildNodeContexts();
-            // Unified persistent model: Start = initialize + launch (no auto-stop). The Stop button
-            // calls NodeInstanceManager.StopAsync to tear down long-running nodes.
-            // If any node is still started / connecting / failed from a previous Start, stop it first
-            // so we can start fresh (avoids e.g. a socket port already bound by the last run). A node
-            // that already finished its work is still "started", so State != Idle is the right test.
-            if (_nodeManager.Instances.Any(n => n.State != NodeState.Idle))
-                await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
-            // StartAsync launches every node concurrently and returns immediately: a node that has to
-            // wait for a resource (TCP client retrying its connection) no longer blocks the startup
-            // of the nodes after it, and the indicator follows the real node state instead.
-            await Task.Run(() => _nodeManager.StartAsync(node => contexts[node], _runCts.Token));
+            // WorkflowHost owns the shared Core start sequence: stop any previous session,
+            // pre-create pin contexts, and launch every node concurrently.
+            await Task.Run(() => _workflowHost.StartAsync(_runCts.Token));
             RefreshRunState();
             StatusText = IsRunning ? L["Running"]
                 : IsStarting ? L["RunStateStarting"]
@@ -1027,7 +1237,7 @@ public partial class MainViewModel : ViewModelBase
         _runCts?.Cancel();
         try
         {
-            await Task.Run(() => _nodeManager.StopAsync(GetNodeContext));
+            await Task.Run(() => _workflowHost.StopAsync());
         }
         catch (Exception ex)
         {
@@ -1050,7 +1260,7 @@ public partial class MainViewModel : ViewModelBase
         // otherwise see CanStop == false while nodes are already initializing/launching. Failed
         // nodes also keep a non-idle state until Core finishes its automatic stop, so shutdown must
         // still join that cleanup path even though the Stop button is intentionally disabled.
-        var hasActiveOrFailedNodes = _nodeManager.Instances.Any(n => n.State != NodeState.Idle);
+        var hasActiveOrFailedNodes = _workflowHost.GetRuntimeSnapshot().Nodes.Any(n => n.State != NodeState.Idle);
         if (!CanStop && !_runInProgress && !hasActiveOrFailedNodes) return;
         await Stop();
     }
@@ -1070,11 +1280,10 @@ public partial class MainViewModel : ViewModelBase
     {
         foreach (var n in Nodes) n.NotifyRunningChanged();
 
-        bool anyFailed = Nodes.Any(n => n.Failed);
-        bool allRunning = Nodes.Count > 0 && Nodes.All(n => n.Started && n.Running);
-        // A failure always wins over the startup state. Core stops the whole workflow after any
-        // node failure, so it must not continue to look like it is merely starting or partially running.
-        bool starting = !allRunning && !anyFailed && Nodes.Any(n => n.Connecting);
+        var runtime = _workflowHost.GetRuntimeSnapshot();
+        bool anyFailed = runtime.IsFailed;
+        bool allRunning = runtime.IsRunning;
+        bool starting = runtime.IsStarting;
         bool failed = !allRunning && anyFailed;
 
         IsRunning = allRunning;
@@ -1112,20 +1321,6 @@ public partial class MainViewModel : ViewModelBase
             Dot1Opacity = Dot2Opacity = Dot3Opacity = 0;
             PulseBlur = 0;
         }
-    }
-    /// <summary>Build a node context for the given runtime instance so NodeInstanceManager can run it.</summary>
-    private INodeContext GetNodeContext(BaseNode node) => _graph.CreateContext(node);
-    /// <summary>
-    /// Pre-create contexts for every managed instance and bind them to the runtime pins before a
-    /// run. This ensures downstream input pins already have a context when an upstream node pushes
-    /// data, even if the downstream node has not been reached in the dependency-ordered loop yet.
-    /// </summary>
-    private Dictionary<BaseNode, INodeContext> BuildNodeContexts()
-    {
-        var contexts = new Dictionary<BaseNode, INodeContext>();
-        foreach (var node in _pluginLoader.Instances)
-            contexts[node] = _graph.CreateContext(node);
-        return contexts;
     }
     [RelayCommand]
     private async Task Save() => await SaveCurrentAsync();
@@ -1219,6 +1414,7 @@ public partial class MainViewModel : ViewModelBase
             backup = GraphSerializer.Serialize(_graph);
             var doc = GraphDeserializer.Load(path);
             LoadGraphFromDocument(doc);
+            ClearHistory();
             CurrentFilePath = path;
             IsDirty = false;
             StatusText = $"{L["LoadedFrom"]}: {path}";
@@ -1263,8 +1459,4 @@ public partial class MainViewModel : ViewModelBase
         LoadFromPath(path);
     }
 }
-
-
-
-
 

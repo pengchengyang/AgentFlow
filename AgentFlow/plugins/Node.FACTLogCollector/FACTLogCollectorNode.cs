@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------
-// <copyright company="Your Company" file="FactLogFetcherNode.cs">
+// <copyright company="Your Company" file="FACTLogCollectorNode.cs">
 //     Copyright (c) Your Company. All rights reserved.
 // </copyright>
 // -----------------------------------------------------------------------
@@ -7,13 +7,13 @@
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace Node.FactLogFetcher;
+namespace Node.FACTLogCollector;
 
 /// <summary>
-/// Default skeleton for retrieving logs associated with a fact. The actual log source
+/// Default skeleton for collecting logs associated with a FACT record. The actual log source
 /// integration is intentionally deferred; the node currently validates and records input.
 /// </summary>
-public sealed class FactLogFetcherNode : BaseNode
+public sealed class FACTLogCollectorNode : BaseNode
 {
     private readonly BasePin _factIdPin =
         new("factId", DataType.STRING, PinDirection.Input, required: false);
@@ -25,15 +25,15 @@ public sealed class FactLogFetcherNode : BaseNode
     private ILogger? _logger;
     private string? _lastFactId;
 
-    public FactLogFetcherNode()
+    public FACTLogCollectorNode()
     {
         Uuid = "15B5C750-76A9-424D-A8DE-18FDCDC58687";
         AddParam();
         AddPins();
     }
 
-    public override string Name => "Fact Log Fetcher";
-    public override string DisplayName { get; set; } = "Fact Log Fetcher";
+    public override string Name => "FACT Log Collector";
+    public override string DisplayName { get; set; } = "FACT Log Collector";
     public override string Category => "Logging";
 
     public override void AddPins()
@@ -47,13 +47,13 @@ public sealed class FactLogFetcherNode : BaseNode
         base.AddParam();
         AddParameter(new NodeParameter(
             "LogSource", typeof(string), "", isEditable: true,
-            group: "Source", zone: "FactLogFetcherZone"));
+            group: "Source", zone: "FACTLogCollectorZone"));
         AddParameter(new NodeParameter(
             "QueryLimit", typeof(int), 100, isEditable: true,
-            group: "Query", zone: "FactLogFetcherZone"));
+            group: "Query", zone: "FACTLogCollectorZone"));
         AddParameter(new NodeParameter(
             "TimeoutSeconds", typeof(int), 30, isEditable: true,
-            group: "Query", zone: "FactLogFetcherZone"));
+            group: "Query", zone: "FACTLogCollectorZone"));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
@@ -75,7 +75,7 @@ public sealed class FactLogFetcherNode : BaseNode
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         Running = true;
-        _logger?.LogTrace("FactLogFetcher is running with source {LogSource}.", Param("LogSource").Value);
+        _logger?.LogTrace("FACTLogCollector is running with source {LogSource}.", Param("LogSource").Value);
         return Task.CompletedTask;
     }
 
@@ -97,7 +97,7 @@ public sealed class FactLogFetcherNode : BaseNode
         lock (_factGate)
             _lastFactId = factIdText;
 
-        _logger?.LogTrace("FactLogFetcher received fact id {FactId}.", factIdText);
+        _logger?.LogTrace("FACTLogCollector received fact id {FactId}.", factIdText);
 
         // TODO: Query the configured log source and send the resulting log via _logPin.
     }

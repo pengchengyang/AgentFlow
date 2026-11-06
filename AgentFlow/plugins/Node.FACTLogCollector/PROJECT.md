@@ -1,13 +1,13 @@
-# Node.FactLogFetcher
+# Node.FACTLogCollector
 
 ## Purpose
 
-Provides the default node skeleton for retrieving logs associated with a fact. The final log
+Provides the default node skeleton for collecting FACT logs associated with a fact. The final log
 source connector is deferred.
 
 ## Contract Surface
 
-- Display name: `Fact Log Fetcher`
+- Display name: `FACT Log Collector`
 - Category: `Logging`
 - Input pin: `factId` (`STRING`, optional)
 - Output pin: `log` (`STRING`)
@@ -20,5 +20,5 @@ state and logger. Incoming fact identifiers are recorded and logged without side
 
 ## Next Steps
 
-Replace the `TODO` in `ReceiveSample` with the configured log-source query and publish the
+Replace the `TODO` in `ReceiveSample` with the configured FACT log-source query and publish the
 result through the `log` output pin.
