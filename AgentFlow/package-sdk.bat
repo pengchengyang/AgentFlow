@@ -157,3 +157,4 @@ exit /b 0
 echo.
 echo SDK packaging failed.
 exit /b 1
+
