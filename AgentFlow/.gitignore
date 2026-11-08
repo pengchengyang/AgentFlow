@@ -460,3 +460,4 @@ $RECYCLE.BIN/
 !SeriLog.Bin/Debug/netstandard2.0/
 !SeriLog.Bin/Release/
 !SeriLog.Bin/Release/netstandard2.0/
+!*.bat
