@@ -254,59 +254,60 @@ public sealed class TcpServerNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, InputStringPin) && !ReferenceEquals(pin, InputBinaryPin))
-            return;
-
-        if (value is null)
+        if (ReferenceEquals(pin, InputStringPin) || ReferenceEquals(pin, InputBinaryPin))
         {
-            Interlocked.Increment(ref _droppedBlocks);
-            _logger?.LogWarning("TCP server ignored a null value on {Pin}.", pin.Name);
-            return;
-        }
-
-        if (value.Type != pin.DataType)
-        {
-            Interlocked.Increment(ref _droppedBlocks);
-            _logger?.LogWarning(
-                "TCP server rejected {ActualType} on {Pin}; expected {ExpectedType}.",
-                value.Type, pin.Name, pin.DataType);
-            return;
-        }
-
-        byte[] bytes;
-        if (ReferenceEquals(pin, InputStringPin))
-        {
-            if (value is not StringSample text || text.StringValue is null)
+            if (value is null)
             {
                 Interlocked.Increment(ref _droppedBlocks);
-                _logger?.LogWarning("TCP server ignored a null string on {Pin}.", pin.Name);
+                _logger?.LogError("TCP server ignored a null value on {Pin}.", pin.Name);
                 return;
             }
 
-            bytes = Encoding.UTF8.GetBytes(text.StringValue);
-        }
-        else
-        {
-            if (value is not BinSample binary || binary.BinValue is null)
+            if (value.Type != pin.DataType)
             {
                 Interlocked.Increment(ref _droppedBlocks);
-                _logger?.LogWarning("TCP server ignored a null binary value on {Pin}.", pin.Name);
+                _logger?.LogError(
+                    "TCP server rejected {ActualType} on {Pin}; expected {ExpectedType}.",
+                    value.Type, pin.Name, pin.DataType);
                 return;
             }
 
-            bytes = binary.BinValue.ToArray();
-        }
+            byte[] bytes;
+            if (ReferenceEquals(pin, InputStringPin))
+            {
+                if (value is not StringSample text || text.StringValue is null)
+                {
+                    Interlocked.Increment(ref _droppedBlocks);
+                    _logger?.LogError("TCP server ignored a null string on {Pin}.", pin.Name);
+                    return;
+                }
 
-        if (_clients.IsEmpty)
-        {
-            Interlocked.Increment(ref _droppedBlocks);
-            _logger?.LogWarning(
-                "TCP server dropped {Length} bytes from {Pin}: no clients are connected.",
-                bytes.Length, pin.Name);
-            return;
-        }
+                bytes = Encoding.UTF8.GetBytes(text.StringValue);
+            }
+            else
+            {
+                if (value is not BinSample binary || binary.BinValue is null)
+                {
+                    Interlocked.Increment(ref _droppedBlocks);
+                    _logger?.LogError("TCP server ignored a null binary value on {Pin}.", pin.Name);
+                    return;
+                }
 
-        QueueBroadcast(bytes, pin.Name);
+                bytes = binary.BinValue.ToArray();
+            }
+
+            if (_clients.IsEmpty)
+            {
+                Interlocked.Increment(ref _droppedBlocks);
+                _logger?.LogWarning(
+                    "TCP server dropped {Length} bytes from {Pin}: no clients are connected.",
+                    bytes.Length, pin.Name);
+                return;
+            }
+
+            QueueBroadcast(bytes, pin.Name);
+
+        }
     }
 
     private async Task AcceptLoopAsync(TcpListener listener, INodeContext context, CancellationToken ct)
@@ -622,4 +623,10 @@ public sealed class TcpServerNode : BaseNode
             Completion.TrySetResult(true);
         }
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

@@ -45,6 +45,8 @@ public sealed class NodeInstanceManager
 
     /// <summary>Hard limit for one node's Stop (default 5s).</summary>
     public static TimeSpan StopTimeout { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>Hard limit for one node's final Shutdown callback (default 5s).</summary>
+    public static TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Hard limit for waiting on the launched runs during stop / run-to-completion (default 30s).</summary>
     public static TimeSpan RunTimeout { get; set; } = TimeSpan.FromSeconds(30);
@@ -391,6 +393,30 @@ public sealed class NodeInstanceManager
     }
 
     /// <summary>
+    /// Invoke every node's final application-exit callback in reverse load order. This is separate
+    /// from <see cref="StopAsync"/>: Stop releases runtime resources and keeps workflows restartable,
+    /// while Shutdown is the last-chance callback before the process terminates. Each node is bounded
+    /// by <see cref="ShutdownTimeout"/> and failures are logged best-effort so one broken plugin cannot
+    /// prevent the remaining nodes from shutting down. This method never throws.
+    /// </summary>
+    public async Task ShutdownAsync(
+        Func<BaseNode, INodeContext> contextFactory,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(contextFactory);
+
+        await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await ShutdownNodesBestEffortAsync(Instances.Reverse(), contextFactory, ct)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+    /// <summary>
     /// The actual stop, executed while <see cref="_lifecycleGate"/> is held. Cancels this session's
     /// token, stops the node instances best-effort, waits for the runs (bounded), then converges the
     /// node states. The token source is owned by this method for the whole stop and only disposed
@@ -517,6 +543,57 @@ public sealed class NodeInstanceManager
         return failedCount;
     }
 
+    /// <summary>
+    /// Invoke each node's <see cref="BaseNode.Shutdown"/> callback with the same per-node timeout
+    /// and failure isolation used by Stop. Returns the number of nodes that failed to shut down.
+    /// Never throws.
+    /// </summary>
+    private async Task<int> ShutdownNodesBestEffortAsync(
+        IEnumerable<BaseNode> nodes,
+        Func<BaseNode, INodeContext> contextFactory,
+        CancellationToken ct)
+    {
+        var failedCount = 0;
+        foreach (var node in nodes)
+        {
+            try
+            {
+                var shutdown = node.Shutdown(contextFactory(node), ct);
+                var finished = await Task.WhenAny(
+                    shutdown,
+                    Task.Delay(ShutdownTimeout, CancellationToken.None))
+                    .ConfigureAwait(false) == shutdown;
+
+                if (!finished)
+                {
+                    failedCount++;
+                    ObserveOrphaned(shutdown);
+                    _logger.LogError(
+                        "Node '{Node}' (#{InstanceId}) did not shut down within {Timeout}; continuing with the remaining nodes.",
+                        node.Name, node.InstanceId, ShutdownTimeout);
+                    continue;
+                }
+
+                await shutdown.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                failedCount++;
+                _logger.LogError(ex,
+                    "Node '{Node}' (#{InstanceId}) failed to shut down: {Message}. Continuing with the remaining nodes.",
+                    node.Name, node.InstanceId, ex.Message);
+            }
+        }
+
+        if (failedCount > 0)
+        {
+            _logger.LogError(
+                "{FailedCount} node(s) failed to shut down; the process may still hold resources.",
+                failedCount);
+        }
+
+        return failedCount;
+    }
     /// <summary>
     /// Await the launched run tasks with a hard limit. A node that ignores its cancellation token
     /// must not hang the stop (or a finite run) forever; when the limit expires the still-running

@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Node.UserSettings;
+namespace Node.FACTLauncher;
 
 /// <summary>
 /// Parses the fixed AgentFlow user-settings INI file.

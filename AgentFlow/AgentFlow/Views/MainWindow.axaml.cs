@@ -250,6 +250,11 @@ public partial class MainWindow : Window
                 main.CancelShutdown();
                 return;
             }
+
+            // Stop and save are complete; now let every node perform its final exit cleanup.
+            // Shutdown failures are logged by the view-model and must not keep the window open.
+            await main.ShutdownForExitAsync();
+
             main.IsDirty = false;
             main.DisposeBroadcastDemo();
             _allowClose = true;

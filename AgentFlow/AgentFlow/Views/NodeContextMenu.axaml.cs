@@ -38,6 +38,7 @@ public sealed partial class NodeContextMenu : UserControl
 
     private IReadOnlyList<NodeCommandInfo> _items = Array.Empty<NodeCommandInfo>();
     private bool _showDelete;
+    private bool _showCopy;
     private Window? _hostWindow;
 
     /// <summary>The node commands to show, already ordered by the Core layer.</summary>
@@ -50,7 +51,6 @@ public sealed partial class NodeContextMenu : UserControl
             RebuildRows();
         }
     }
-
     /// <summary>When true, a "Delete" row is appended at the bottom after a divider.</summary>
     public bool ShowDelete
     {
@@ -58,6 +58,17 @@ public sealed partial class NodeContextMenu : UserControl
         set
         {
             _showDelete = value;
+            RebuildRows();
+        }
+    }
+
+    /// <summary>When true, a "Copy" row is shown at the top of the menu.</summary>
+    public bool ShowCopy
+    {
+        get => _showCopy;
+        set
+        {
+            _showCopy = value;
             RebuildRows();
         }
     }
@@ -71,6 +82,8 @@ public sealed partial class NodeContextMenu : UserControl
     /// <summary>Raised when the user picks a node command row.</summary>
     public event Action<NodeCommandInfo>? CommandSelected;
 
+    /// <summary>Raised when the user picks the Copy row.</summary>
+    public event Action? CopySelected;
     /// <summary>Raised when the user picks the Delete row.</summary>
     public event Action? DeleteSelected;
 
@@ -92,6 +105,13 @@ public sealed partial class NodeContextMenu : UserControl
         var rows = new List<NodeContextMenuRow>();
 
         NodeContextMenuRow? previous = null;
+        if (_showCopy)
+        {
+            previous = new NodeContextMenuRow(
+                command: null, isDelete: false, isEnabled: true,
+                "Copy", showDivider: false, isCopy: true);
+            rows.Add(previous);
+        }
         foreach (var command in _items)
         {
             bool showDivider = previous is not null
@@ -187,7 +207,11 @@ public sealed partial class NodeContextMenu : UserControl
         Dispatcher.UIThread.Post(
             () =>
             {
-                if (row.IsDelete)
+                if (row.IsCopy)
+                {
+                    CopySelected?.Invoke();
+                }
+                else if (row.IsDelete)
                 {
                     DeleteSelected?.Invoke();
                 }
@@ -217,9 +241,11 @@ public sealed class NodeContextMenuRow
         bool isDelete,
         bool isEnabled,
         string title,
-        bool showDivider)
+        bool showDivider,
+        bool isCopy = false)
     {
         Command = command;
+        IsCopy = isCopy;
         IsDelete = isDelete;
         IsEnabled = isEnabled;
         Title = title;
@@ -235,6 +261,8 @@ public sealed class NodeContextMenuRow
     /// <summary>The command executed by this row, or null for the Delete row.</summary>
     public NodeCommandInfo? Command { get; }
 
+    /// <summary>True for the built-in Copy row.</summary>
+    public bool IsCopy { get; }
     /// <summary>True for the appended Delete row.</summary>
     public bool IsDelete { get; }
 

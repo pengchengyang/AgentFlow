@@ -93,20 +93,33 @@ public sealed class DatabaseWriterNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, _dataPin) || value is not StringSample data ||
-            data.StringValue is not { } dataText)
+        if (ReferenceEquals(pin, _dataPin))
         {
-            return;
+            if (value is not StringSample data ||
+                data.StringValue is not { } dataText)
+            {
+                _logger?.LogError(
+                    "DatabaseWriter ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
+            }
+
+            lock (_dataGate)
+                _lastData = dataText;
+
+            _logger?.LogTrace("DatabaseWriter received data for table {TableName}: {Data}",
+                Param("TableName").Value, dataText);
+
+            // TODO: Write data using the configured connection and publish a status sample.
         }
-
-        lock (_dataGate)
-            _lastData = dataText;
-
-        _logger?.LogTrace("DatabaseWriter received data for table {TableName}: {Data}",
-            Param("TableName").Value, dataText);
-
-        // TODO: Write data using the configured connection and publish a status sample.
     }
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

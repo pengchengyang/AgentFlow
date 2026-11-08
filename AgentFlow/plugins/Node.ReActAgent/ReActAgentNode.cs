@@ -101,8 +101,20 @@ public sealed class ReActAgentNode : BaseNode
     /// <summary>Capture the question arriving on the Question input pin.</summary>
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (pin.Name == _inPin.Name && value is StringSample ss && ss.StringValue is { } s)
+        if (ReferenceEquals(pin, _inPin))
+        {
+            if (value is not StringSample ss ||
+                ss.StringValue is not { } s)
+            {
+                pin.Context?.Logger.LogError(
+                    "ReActAgent ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
+            }
+
             _question = s;
+        }
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
@@ -278,5 +290,10 @@ public sealed class ReActAgentNode : BaseNode
         sample.SetValue(answer, "Answer");
         _outPin.SendSample(sample);
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }
-

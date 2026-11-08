@@ -88,19 +88,32 @@ public sealed class FACTLogCollectorNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, _factIdPin) || value is not StringSample factId ||
-            factId.StringValue is not { } factIdText)
+        if (ReferenceEquals(pin, _factIdPin))
         {
-            return;
+            if (value is not StringSample factId ||
+                factId.StringValue is not { } factIdText)
+            {
+                _logger?.LogError(
+                    "FACTLogCollector ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
+            }
+
+            lock (_factGate)
+                _lastFactId = factIdText;
+
+            _logger?.LogTrace("FACTLogCollector received fact id {FactId}.", factIdText);
+
+            // TODO: Query the configured log source and send the resulting log via _logPin.
         }
-
-        lock (_factGate)
-            _lastFactId = factIdText;
-
-        _logger?.LogTrace("FACTLogCollector received fact id {FactId}.", factIdText);
-
-        // TODO: Query the configured log source and send the resulting log via _logPin.
     }
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

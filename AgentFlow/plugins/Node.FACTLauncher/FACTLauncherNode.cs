@@ -4,7 +4,10 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Text.Json;
 using AgentFlow.Contracts;
+using BroadcastKit;
+using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.FACTLauncher;
@@ -15,12 +18,14 @@ namespace Node.FACTLauncher;
 /// </summary>
 public sealed class FACTLauncherNode : BaseNode
 {
-    private readonly BasePin _runInputPin =
-        new("input_string_run", DataType.STRING, PinDirection.Input, required: false);
+    private const string SettingsDirectory = @"C:\AC710\UserSettings";
+    private const string SettingsFilePath = @"C:\AC710\UserSettings\UserSettings.ini";
+    private const string DefaultDisplayName = "FACT Launcher";
+    private const string DefaultPosition = "A";
+    private static readonly string[] PositionOptions = { "A", "B", "C", "D", "F" };
 
-    private readonly BasePin _settingsInputPin =
-        new("input_string_settings", DataType.STRING, PinDirection.Input, required: false);
-
+    private readonly BasePin _slotFsnImeiInputPin =
+        new("str_slotfsnimei_run", DataType.STRING, PinDirection.Input, required: false);
 
     private readonly BasePin _retInputPin =
         new("input_int64_ret", DataType.INT64, PinDirection.Input, required: false);
@@ -28,42 +33,47 @@ public sealed class FACTLauncherNode : BaseNode
     private readonly BasePin _outputPin =
         new("output_string_host", DataType.STRING, PinDirection.Output);
 
-    private readonly BasePin _settingsOutputPin =
-        new("output_string_settings", DataType.STRING, PinDirection.Output);
-
-
     private readonly BasePin _cmdOutputPin =
         new("output_string_cmd", DataType.STRING, PinDirection.Output);
 
     private readonly object _inputGate = new();
     private ILogger? _logger;
+    private string _displayName = DefaultDisplayName;
+    private string _position = DefaultPosition;
     private string? _lastInput;
-    private string? _lastInputSettings;
     private string? _fsn;
     private string? _imei;
     private string? _factCommand;
     private string? _ip;
     private string? _slot;
     private string? _porthub;
+    private int? _fsnImeiSlot;
 
     public FACTLauncherNode()
     {
         Uuid = "1617370B-3D5A-4685-85E6-A9BFE294E44D";
         AddParam();
         AddPins();
+        RefreshPosition();
     }
 
     public override string Name => "FACT Launcher";
-    public override string DisplayName { get; set; } = "FACT Launcher";
+
+    public override string DisplayName
+    {
+        get => string.IsNullOrWhiteSpace(_position)
+            ? _displayName
+            : $"{_displayName} {_position}";
+        set => _displayName = StripPositionSuffix(value);
+    }
+
     public override string Category => "Data";
 
     public override void AddPins()
     {
-        AddInputPin(_runInputPin);
-        AddInputPin(_settingsInputPin);
+        AddInputPin(_slotFsnImeiInputPin);
         AddInputPin(_retInputPin);
         AddOutputPin(_outputPin);
-        AddOutputPin(_settingsOutputPin);
         AddOutputPin(_cmdOutputPin);
     }
 
@@ -79,6 +89,11 @@ public sealed class FACTLauncherNode : BaseNode
         AddParameter(new NodeParameter(
             "FactKey", typeof(string), "", isEditable: true,
             group: "Request", zone: "FACTLauncherZone"));
+        AddParameter(new NodeParameter(
+            "Position", typeof(string), DefaultPosition,
+            isEditable: true, group: "General", zone: "FACTLauncherZone",
+            editor: ParameterEditorKind.SingleSelect,
+            options: PositionOptions));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
@@ -89,11 +104,16 @@ public sealed class FACTLauncherNode : BaseNode
             Param("TimeoutSeconds").Value = ParameterValues.GetInt(timeout, 30);
         if (parameters.TryGetValue("FactKey", out var factKey))
             Param("FactKey").Value = ParameterValues.GetString(factKey, "") ?? "";
+        if (parameters.TryGetValue("Position", out var position))
+            Param("Position").Value = ParameterValues.GetString(position, DefaultPosition) ?? DefaultPosition;
+
+        RefreshPosition();
     }
 
-    public override Task Initialize(INodeContext context, CancellationToken ct = default)
+    public override async Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        RefreshPosition();
         lock (_inputGate)
         {
             _fsn = null;
@@ -102,26 +122,21 @@ public sealed class FACTLauncherNode : BaseNode
             _ip = null;
             _slot = null;
             _porthub = null;
+            _fsnImeiSlot = null;
         }
 
-        return Task.CompletedTask;
+        await EnsureSettingsLoadedAsync().ConfigureAwait(false);
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         Running = true;
         _logger = context.Logger;
-        _logger?.LogTrace("FACTLauncher is running with endpoint {Endpoint}.", Param("Endpoint").Value);
-
-        lock (_inputGate)
-        {
-            _fsn = null;
-            _imei = null;
-            _factCommand = null;
-            _ip = null;
-            _slot = null;
-            _porthub = null;
-        }
+        RefreshPosition();
+        _logger?.LogTrace(
+            "FACTLauncher {DisplayName} is running with endpoint {Endpoint}.",
+            DisplayName,
+            Param("Endpoint").Value);
 
         return Task.CompletedTask;
     }
@@ -138,6 +153,7 @@ public sealed class FACTLauncherNode : BaseNode
             _ip = null;
             _slot = null;
             _porthub = null;
+            _fsnImeiSlot = null;
         }
 
         return Task.CompletedTask;
@@ -145,89 +161,210 @@ public sealed class FACTLauncherNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (value is not StringSample input || input.StringValue is not { } inputText)
-            return;
-
-
-        if (ReferenceEquals(pin, _settingsInputPin))
+        if (ReferenceEquals(pin, _slotFsnImeiInputPin))
         {
-            lock (_inputGate)
-                _lastInputSettings = inputText;
-
-            if (JsonKeyValueParser.TryParse(inputText, out var settings))
-            {
-                var factCommand = JsonKeyValueParser.GetSingleValue(settings, "CMD");
-                var ip = JsonKeyValueParser.GetSingleValue(settings, "IP");
-                var slot = JsonKeyValueParser.GetSingleValue(settings, "SLOT");
-                var portHub = JsonKeyValueParser.GetSingleValue(settings, "PORTHUB");
-
-                lock (_inputGate)
-                {
-                    _factCommand = factCommand;
-                    _ip = ip;
-                    _slot = slot;
-                    _porthub = portHub;
-                }
-
-                _logger?.LogTrace(
-                    "FACTLauncher cached settings CMD={Command}, IP={Ip}, SLOT={Slot}, PORTHUB={PortHub}.",
-                    factCommand ?? "<missing>",
-                    ip ?? "<missing>",
-                    slot ?? "<missing>",
-                    portHub ?? "<missing>");
-            }
-            else
+            if (value is not StringSample input ||
+                input.StringValue is not { } inputText)
             {
                 _logger?.LogError(
-                    "FACTLauncher could not parse the JSON key/value payload.");
+                    "FACTLauncher ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
             }
 
+            lock (_inputGate)
+                _lastInput = inputText;
+
+            _logger?.LogTrace("FACTLauncher received FSN/IMEI input for FACT key {FactKey}: {Input}",
+                Param("FactKey").Value, inputText);
+
+            if (ProcessRunInput(inputText) && HasCompleteCachedSettings())
+                SendCommand();
+        }
+    }
+
+    private bool HasCompleteCachedSettings()
+    {
+        lock (_inputGate)
+        {
+            return HasCompleteCachedSettingsCore();
+        }
+    }
+
+    private bool HasCompleteCachedSettingsCore()
+    {
+        return !string.IsNullOrWhiteSpace(_factCommand) &&
+               !string.IsNullOrWhiteSpace(_ip) &&
+               !string.IsNullOrWhiteSpace(_slot) &&
+               !string.IsNullOrWhiteSpace(_porthub);
+    }
+
+    private async Task EnsureSettingsLoadedAsync()
+    {
+        _logger?.LogInformation(
+            "FACTLauncher is loading user settings during initialization from {FilePath}: CMD, IP, SLOT, PORTHUB.",
+            SettingsFilePath);
+
+        var parser = new UserSettingsParser(_logger, SettingsDirectory, SettingsFilePath);
+        if (!parser.TryLoad(out var settings))
+        {
+            const string message =
+                "FACTLauncher initialization failed because UserSettings.ini could not be loaded.";
+            _logger?.LogError(
+                "{Message} FilePath={FilePath}; command will not be sent.",
+                message,
+                SettingsFilePath);
+            await BroadcastErrorAsync("LauncherSettingsLoadFailed", message).ConfigureAwait(false);
+            throw new InvalidOperationException(message);
+        }
+
+        var factCommand = JsonKeyValueParser.GetSingleValue(settings, "CMD");
+        var ip = JsonKeyValueParser.GetSingleValue(settings, "IP");
+        var slot = JsonKeyValueParser.GetSingleValue(settings, "SLOT");
+        var portHub = JsonKeyValueParser.GetSingleValue(settings, "PORTHUB");
+
+        lock (_inputGate)
+        {
+            _factCommand = factCommand;
+            _ip = ip;
+            _slot = slot;
+            _porthub = portHub;
+        }
+
+        if (!HasCompleteCachedSettings())
+        {
+            const string message =
+                "FACTLauncher initialization failed because CMD, IP, SLOT, or PORTHUB is missing from UserSettings.ini.";
+            _logger?.LogError(
+                "{Message} FilePath={FilePath}; command will not be sent.",
+                message,
+                SettingsFilePath);
+            await BroadcastErrorAsync("LauncherSettingsIncomplete", message).ConfigureAwait(false);
+            throw new InvalidOperationException(message);
+        }
+
+        _logger?.LogInformation(
+            "FACTLauncher loaded user settings from {FilePath}: CMD={Command}, IP={Ip}, SLOT={Slot}, PORTHUB={PortHub}.",
+            SettingsFilePath,
+            factCommand ?? "<missing>",
+            ip ?? "<missing>",
+            slot ?? "<missing>",
+            portHub ?? "<missing>");
+    }
+
+    private async Task BroadcastErrorAsync(string errorCode, string message)
+    {
+        try
+        {
+            var payload = JsonSerializer.Serialize(new FactLauncherErrorBroadcast(
+                Name,
+                DisplayName,
+                _position,
+                errorCode,
+                message,
+                DateTimeOffset.UtcNow));
+
+            await TopicBus.Instance.PublishAsync(
+                BroadcastTopics.FactLauncherError,
+                BroadcastTopicMessage.FromPayload(payload),
+                ct: CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "FACTLauncher failed to broadcast initialization error {ErrorCode}.",
+                errorCode);
+        }
+    }
+
+    private sealed record FactLauncherErrorBroadcast(
+        string NodeName,
+        string DisplayName,
+        string Position,
+        string ErrorCode,
+        string Message,
+        DateTimeOffset Timestamp);
+
+    private void SendCommand()
+    {
+        string factCommand;
+        string fsn;
+        string imei;
+        string slotText;
+        int fsnImeiSlot;
+
+        lock (_inputGate)
+        {
+            if (string.IsNullOrWhiteSpace(_fsn) ||
+                string.IsNullOrWhiteSpace(_imei) ||
+                _fsnImeiSlot is null ||
+                !HasCompleteCachedSettingsCore())
+            {
+                return;
+            }
+
+            factCommand = _factCommand!;
+            fsn = _fsn;
+            imei = _imei;
+            slotText = _slot!;
+            fsnImeiSlot = _fsnImeiSlot.Value;
+        }
+
+        if (!int.TryParse(slotText.Trim(), out var settingsSlot))
+        {
+            _logger?.LogWarning(
+                "FACTLauncher cannot send command because settings SLOT {Slot} is invalid.",
+                slotText);
             return;
         }
 
-        if (!ReferenceEquals(pin, _runInputPin))
+        if (fsnImeiSlot != settingsSlot)
+        {
+            _logger?.LogWarning(
+                "FACTLauncher ignored FSN/IMEI input for SLOT {InputSlot}; settings SLOT is {SettingsSlot}.",
+                fsnImeiSlot,
+                settingsSlot);
             return;
+        }
 
-        lock (_inputGate)
-            _lastInput = inputText;
-
-        _logger?.LogTrace("FACTLauncher received run input for FACT key {FactKey}: {Input}",
-            Param("FactKey").Value, inputText);
-
-        if (ProcessRunInput(inputText))
-            RequestUserSettings();
-    }
-
-    private void RequestUserSettings()
-    {
-        const string GetUserSettings = "get user settings";
+        var command = $"{factCommand} /F{fsn} /I{imei}";
 
         try
         {
-            var request = StringSample.CreateSample();
-            request.StringValue = GetUserSettings;
-            if (_settingsOutputPin.SendSample(request))
+            var output = StringSample.CreateSample();
+            output.StringValue = command;
+            if (_cmdOutputPin.SendSample(output))
             {
                 _logger?.LogTrace(
-                    "FACTLauncher sent {Request} through {Pin}.",
-                    GetUserSettings,
-                    _settingsOutputPin.Name);
+                    "FACTLauncher sent command through {Pin}: {Command}",
+                    _cmdOutputPin.Name,
+                    command);
+            }
+            else
+            {
+                _logger?.LogWarning(
+                    "FACTLauncher could not send command through {Pin}.",
+                    _cmdOutputPin.Name);
             }
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(
                 ex,
-                "FACTLauncher failed to send {Request} through {Pin}.",
-                GetUserSettings,
-                _settingsOutputPin.Name);
+                "FACTLauncher failed to send command through {Pin}.",
+                _cmdOutputPin.Name);
         }
     }
+
     private bool ProcessRunInput(string inputText)
     {
+        // TODO: Confirm the production FSN/IMEI JSON schema; this parser currently
+        // expects an object whose property values are scalar strings.
         if (!JsonKeyValueParser.TryParseStringValues(inputText, out var values))
         {
-            _logger?.LogError("FACTLauncher ignored run input because the JSON payload is invalid.");
+            _logger?.LogError("FACTLauncher ignored FSN/IMEI input because the JSON payload is invalid.");
             return false;
         }
 
@@ -236,13 +373,13 @@ public sealed class FACTLauncherNode : BaseNode
             !TryGetRequiredString(values, "IMEI", out var imei))
         {
             _logger?.LogError(
-                "FACTLauncher ignored run input because SLOT, FSN, and IMEI are required.");
+                "FACTLauncher ignored FSN/IMEI input because SLOT, FSN, and IMEI are required.");
             return false;
         }
 
         if (!int.TryParse(slotText.Trim(), out var slot) || slot is < 1 or > 10)
         {
-            _logger?.LogError("FACTLauncher ignored run input with invalid SLOT {Slot}.", slotText);
+            _logger?.LogError("FACTLauncher ignored FSN/IMEI input with invalid SLOT {Slot}.", slotText);
             return false;
         }
 
@@ -269,6 +406,7 @@ public sealed class FACTLauncherNode : BaseNode
         {
             _fsn = fsn;
             _imei = imei;
+            _fsnImeiSlot = slot;
         }
 
         _logger?.LogTrace(
@@ -282,18 +420,14 @@ public sealed class FACTLauncherNode : BaseNode
     private bool TryGetLauncherGroup(out char group)
     {
         group = default;
-        var displayName = DisplayName?.Trim();
-        if (string.IsNullOrWhiteSpace(displayName) ||
-            !displayName.StartsWith("FACT Launcher", StringComparison.OrdinalIgnoreCase))
+        if (_position is { Length: 1 })
         {
-            return false;
-        }
-
-        var suffix = char.ToUpperInvariant(displayName[^1]);
-        if (suffix is 'A' or 'B' or 'C' or 'D' or 'F')
-        {
-            group = suffix;
-            return true;
+            var value = char.ToUpperInvariant(_position[0]);
+            if (value is 'A' or 'B' or 'C' or 'D' or 'F')
+            {
+                group = value;
+                return true;
+            }
         }
 
         return false;
@@ -324,6 +458,36 @@ public sealed class FACTLauncherNode : BaseNode
         return false;
     }
 
+    private void RefreshPosition()
+    {
+        var rawValue = ParameterValues.GetString(Param("Position").Value, DefaultPosition)?.Trim();
+        var candidate = rawValue?.ToUpperInvariant();
+        _position = Array.IndexOf(PositionOptions, candidate) >= 0
+            ? candidate!
+            : DefaultPosition;
+        Param("Position").Value = _position;
+        RefreshBuiltInParameters();
+    }
+
+    private static string StripPositionSuffix(string? value)
+    {
+        var displayName = value?.Trim() ?? "";
+        foreach (var position in PositionOptions)
+        {
+            var suffix = $" {position}";
+            if (displayName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return displayName[..^suffix.Length].TrimEnd();
+        }
+
+        return displayName;
+    }
+
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }
 

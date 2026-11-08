@@ -256,50 +256,51 @@ public sealed class TcpClientNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, InputStringPin) && !ReferenceEquals(pin, InputBinaryPin))
-            return;
-
-        if (value is null)
+        if (ReferenceEquals(pin, InputStringPin) || ReferenceEquals(pin, InputBinaryPin))
         {
-            Interlocked.Increment(ref _droppedBlocks);
-            _logger?.LogWarning("TCP client ignored a null value on {Pin}.", pin.Name);
-            return;
-        }
-
-        if (value.Type != pin.DataType)
-        {
-            Interlocked.Increment(ref _droppedBlocks);
-            _logger?.LogWarning(
-                "TCP client rejected {ActualType} on {Pin}; expected {ExpectedType}.",
-                value.Type, pin.Name, pin.DataType);
-            return;
-        }
-
-        byte[] bytes;
-        if (ReferenceEquals(pin, InputStringPin))
-        {
-            if (value is not StringSample text || text.StringValue is null)
+            if (value is null)
             {
                 Interlocked.Increment(ref _droppedBlocks);
-                _logger?.LogWarning("TCP client ignored a null string on {Pin}.", pin.Name);
+                _logger?.LogError("TCP client ignored a null value on {Pin}.", pin.Name);
                 return;
             }
 
-            bytes = Encoding.UTF8.GetBytes(text.StringValue);
-        }
-        else
-        {
-            if (value is not BinSample binary || binary.BinValue is null)
+            if (value.Type != pin.DataType)
             {
                 Interlocked.Increment(ref _droppedBlocks);
-                _logger?.LogWarning("TCP client ignored a null binary value on {Pin}.", pin.Name);
+                _logger?.LogError(
+                    "TCP client rejected {ActualType} on {Pin}; expected {ExpectedType}.",
+                    value.Type, pin.Name, pin.DataType);
                 return;
             }
 
-            bytes = binary.BinValue.ToArray();
-        }
+            byte[] bytes;
+            if (ReferenceEquals(pin, InputStringPin))
+            {
+                if (value is not StringSample text || text.StringValue is null)
+                {
+                    Interlocked.Increment(ref _droppedBlocks);
+                    _logger?.LogError("TCP client ignored a null string on {Pin}.", pin.Name);
+                    return;
+                }
 
-        QueueSend(bytes, pin.Name);
+                bytes = Encoding.UTF8.GetBytes(text.StringValue);
+            }
+            else
+            {
+                if (value is not BinSample binary || binary.BinValue is null)
+                {
+                    Interlocked.Increment(ref _droppedBlocks);
+                    _logger?.LogError("TCP client ignored a null binary value on {Pin}.", pin.Name);
+                    return;
+                }
+
+                bytes = binary.BinValue.ToArray();
+            }
+
+            QueueSend(bytes, pin.Name);
+
+        }
     }
 
     private async Task ConnectionSupervisorAsync(INodeContext context, CancellationToken ct)
@@ -668,4 +669,10 @@ public sealed class TcpClientNode : BaseNode
         var preview = string.Join(' ', bytes.Take(length).Select(b => b.ToString("X2")));
         return bytes.Length > length ? $"{preview} ..." : preview;
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

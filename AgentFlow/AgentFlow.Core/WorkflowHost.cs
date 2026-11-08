@@ -49,6 +49,9 @@ public interface IWorkflowReadOnlyHost
     /// <summary>Stop the current workflow.</summary>
     Task StopAsync(CancellationToken cancellationToken = default, bool preserveFailure = false);
 
+    /// <summary>Invoke every node's final application-exit callback.</summary>
+    Task ShutdownAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Execute one node command through the Core runtime.</summary>
     Task ExecuteNodeCommandAsync(
         int instanceId,
@@ -303,6 +306,8 @@ public sealed class WorkflowHost : IWorkflowEditorHost
         _logger.LogTrace("WorkflowHost stopped.");
     }
 
+    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+        => _nodeManager.ShutdownAsync(_graph.CreateContext, cancellationToken);
     public Task ExecuteNodeCommandAsync(
         int instanceId,
         string commandId,

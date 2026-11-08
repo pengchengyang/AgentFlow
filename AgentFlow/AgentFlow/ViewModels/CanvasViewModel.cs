@@ -34,9 +34,8 @@ public partial class CanvasViewModel : ViewModelBase
 
     // ---- Interaction state ----
     private bool _draggingNode;
-    private NodeViewModel? _dragNode;
-    private Point _dragOffset;
-
+    private Point _dragPointerStart;
+    private List<(NodeViewModel Node, Point StartLocation)> _dragNodes = new();
     private bool _connecting;
     private PinViewModel? _connectSource;
     private Point _pointer;
@@ -85,6 +84,8 @@ public partial class CanvasViewModel : ViewModelBase
 
     // ---- Selection & editing (delegate to main) ----
     public void SelectOnly(NodeViewModel? node) => _main.SelectOnly(node);
+    public void SelectNodes(IEnumerable<NodeViewModel> nodes, bool additive = false)
+        => _main.SelectNodes(nodes, additive);
     public void ToggleSelection(NodeViewModel node) => _main.ToggleSelection(node);
     public void BringToFront(NodeViewModel node) => _main.BringToFront(node);
     public void DeleteSelection() => _main.DeleteSelection();
@@ -93,14 +94,13 @@ public partial class CanvasViewModel : ViewModelBase
     public void OpenNodeParameters(NodeViewModel node) => _main.OpenNodeParametersCommand.Execute(node);
     public ICommand RemoveNodeCommand => _main.RemoveNodeCommand;
 
-    /// <summary>Commands the node exposes to the right-click menu (delegated to Core via MainViewModel).</summary>
     public IReadOnlyList<NodeCommandInfo> GetNodeCommands(NodeViewModel node) => _main.GetNodeCommands(node);
-
-    /// <summary>Execute a node command through Core (delegated to MainViewModel).</summary>
-    public Task ExecuteNodeCommandAsync(NodeViewModel node, NodeCommandInfo command)
-        => _main.ExecuteNodeCommandAsync(node, command);
+    public Task ExecuteNodeCommandForSelectionAsync(NodeViewModel node, NodeCommandInfo command)
+        => _main.ExecuteNodeCommandForSelectionAsync(node, command);
+    public bool CopySelection() => _main.CopySelection();
+    public bool PasteSelection(Point? graphLocation = null) => _main.PasteSelection(graphLocation);
+    public bool HasCopiedNodes => _main.HasCopiedNodes;
     public void AddNodeAt(PaletteItem item, Point world) => _main.AddNodeAt(item, world);
-
     // ---- Panning (middle mouse drag) ----
     public void BeginPan(Point pointer)
     {
@@ -151,24 +151,34 @@ public partial class CanvasViewModel : ViewModelBase
         // auto-save path (and, via SyncGraphState, reconfigure the running instance). Use the same
         // stop-before-edit gate as delete/connect/clear.
         if (!_main.CanEditGraphNow()) return;
+
+        // Drag the whole current selection when the pressed node is selected. A press on an
+        // unselected node selects it first (handled by the view), so it naturally drags alone.
+        var selected = node.IsSelected
+            ? _main.Nodes.Where(n => n.IsSelected).ToList()
+            : new List<NodeViewModel> { node };
+        if (selected.Count == 0)
+            selected.Add(node);
+
         _main.BeginNodeDragHistory();
         _draggingNode = true;
-        _dragNode = node;
-        _dragOffset = pointer - node.Location;
+        _dragPointerStart = pointer;
+        _dragNodes = selected.Select(n => (n, n.Location)).ToList();
     }
 
     public void UpdateDrag(Point pointer)
     {
-        if (_dragNode is not null)
-            _dragNode.Location = pointer - _dragOffset;
+        if (!_draggingNode) return;
+        var delta = pointer - _dragPointerStart;
+        foreach (var entry in _dragNodes)
+            entry.Node.Location = entry.StartLocation + delta;
     }
 
     public void EndDrag()
     {
+        if (!_draggingNode) return;
         _main.EndNodeDragHistory();
         _draggingNode = false;
-        _dragNode = null;
+        _dragNodes.Clear();
     }
 }
-
-

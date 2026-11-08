@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Node.Shrinker;
 
@@ -92,13 +93,16 @@ public sealed class ShrinkerNode : BaseNode
     /// </summary>
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (value is null)
-            return;
+        if (_inPins.Contains(pin))
+        {
+            if (value is null)
+            {
+                pin.Context?.Logger.LogError("Shrinker ignored a null sample on {Pin}.", pin.Name);
+                return;
+            }
 
-        if (!_inPins.Contains(pin))
-            return;
-
-        _outPin.SendSample(value);
+            _outPin.SendSample(value);
+        }
     }
 
     public override Task Stop(INodeContext context, CancellationToken ct = default)
@@ -132,4 +136,10 @@ public sealed class ShrinkerNode : BaseNode
             _ => DataType.STRING,
         };
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

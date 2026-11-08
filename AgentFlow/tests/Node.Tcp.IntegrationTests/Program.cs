@@ -295,6 +295,12 @@ internal sealed class CaptureNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default) => Task.CompletedTask;
     public override Task Run(INodeContext context, CancellationToken ct = default) => Task.CompletedTask;
     public override Task Stop(INodeContext context, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {

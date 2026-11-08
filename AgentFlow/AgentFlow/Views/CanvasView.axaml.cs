@@ -97,6 +97,16 @@ public sealed class GraphCanvas : Control
     private string? _hoverTitleText;
     private Point _hoverTitleScreen;
 
+    // Marquee selection: pending starts on a blank-canvas press, becomes selecting after a small
+    // drag threshold, and is committed on pointer release. Coordinates are graph/world space.
+    private bool _marqueePending;
+    private bool _marqueeSelecting;
+    private Point _marqueeStartWorld;
+    private Point _marqueeCurrentWorld;
+    private Point _marqueeStartScreen;
+    private KeyModifiers _marqueeModifiers;
+    private Point _lastPointerWorld;
+
     // The currently-open right-click node menu, if any. Only one menu is allowed at a time;
     // opening a new one always closes the previous one first.
     private Window? _openNodeMenuWindow;
@@ -238,6 +248,15 @@ public sealed class GraphCanvas : Control
 
             foreach (var n in BottomFirstNodes(vm))
                 DrawNode(ctx, n);
+
+            if (_marqueeSelecting)
+            {
+                var rect = NormalizeRect(_marqueeStartWorld, _marqueeCurrentWorld);
+                var fill = new SolidColorBrush(Color.FromArgb(0x30, 0x7C, 0x3A, 0xED));
+                var border = new Pen(new SolidColorBrush(ColorSelected), 1.2);
+                border.DashStyle = new DashStyle(new double[] { 4, 3 }, 0);
+                ctx.DrawRectangle(fill, border, rect);
+            }
             UpdateSpinAnimation();
         }
 
@@ -261,6 +280,9 @@ public sealed class GraphCanvas : Control
         return new Point((p.X - vm.PanX) / vm.Zoom, (p.Y - vm.PanY) / vm.Zoom);
     }
 
+    private static Rect NormalizeRect(Point a, Point b)
+        => new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y),
+            Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
     private void DrawNode(DrawingContext ctx, NodeViewModel node)
     {
         var l = _layouts[node];
@@ -624,14 +646,18 @@ public sealed class GraphCanvas : Control
         }
 
         var pos = ScreenToWorld(e.GetPosition(this));
+        _lastPointerWorld = pos;
 
         if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
         {
             _lastRightClickScreenPos = this.PointToScreen(e.GetPosition(this));
             if (HitTestNode(pos) is { } rn)
             {
+                // Right-clicking an already selected node keeps the whole multi-selection;
+                // clicking an unselected node starts a new single selection.
+                if (!rn.IsSelected)
+                    vm.SelectOnly(rn);
                 vm.BringToFront(rn);
-                vm.SelectOnly(rn);
                 ShowNodeContextMenu(rn);
             }
             else
@@ -642,7 +668,6 @@ public sealed class GraphCanvas : Control
             e.Handled = true;
             return;
         }
-
         // When nodes overlap, only the topmost node under the cursor is reachable:
         // check its own pins first, then treat the click as its body (bring-to-front,
         // select, drag). Never fall through to a cross-node pin search here, which
@@ -671,13 +696,27 @@ public sealed class GraphCanvas : Control
                     }
             }
 
-            // Body of the topmost node: raise it, select it, then drag / open params.
+            // Body of the topmost node: raise it, preserve the selection set, then drag/open params.
             vm.BringToFront(topNodeAtPos);
-            // Ctrl+Left-click: toggle this node's selection while keeping others; plain left-click: single-select.
-            if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            bool control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            if (control)
+            {
                 vm.ToggleSelection(topNodeAtPos);
-            else
+                // Ctrl-clicking an already selected node removes it from the set. It must not then
+                // begin a single-node drag and implicitly re-select itself.
+                if (!topNodeAtPos.IsSelected)
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+            else if (!topNodeAtPos.IsSelected)
+            {
+                // A plain click on an unselected node starts a new selection. Clicking a node that
+                // is already selected keeps the group intact so the following drag moves all nodes.
                 vm.SelectOnly(topNodeAtPos);
+            }
+
             // Double-click a node: request the parameter dialog (business logic in the ViewModel).
             if (e.ClickCount >= 2)
             {
@@ -691,7 +730,6 @@ public sealed class GraphCanvas : Control
             e.Handled = true;
             return;
         }
-
         // No node body under the cursor: a pin dot may still be reachable where it
         // overhangs just outside the card edge, so fall back to a global (top-first)
         // pin search.
@@ -718,9 +756,15 @@ public sealed class GraphCanvas : Control
             return;
         }
 
-        vm.SelectOnly(null);
+        _marqueePending = true;
+        _marqueeSelecting = false;
+        _marqueeStartWorld = pos;
+        _marqueeCurrentWorld = pos;
+        _marqueeStartScreen = e.GetPosition(this);
+        _marqueeModifiers = e.KeyModifiers;
+        e.Pointer.Capture(this);
+        e.Handled = true;
     }
-
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
@@ -735,6 +779,21 @@ public sealed class GraphCanvas : Control
             return;
         }
         var world = ScreenToWorld(screen);
+        _lastPointerWorld = world;
+        if (_marqueePending)
+        {
+            ClearHover();
+            var dx = screen.X - _marqueeStartScreen.X;
+            var dy = screen.Y - _marqueeStartScreen.Y;
+            if (!_marqueeSelecting && dx * dx + dy * dy >= 16)
+                _marqueeSelecting = true;
+            if (_marqueeSelecting)
+            {
+                _marqueeCurrentWorld = world;
+                InvalidateVisual();
+            }
+            return;
+        }
         if (vm.IsDragging)
         {
             ClearHover();
@@ -811,6 +870,30 @@ public sealed class GraphCanvas : Control
         base.OnPointerReleased(e);
         var vm = Vm;
         if (vm is null) { e.Pointer.Capture(null); return; }
+        if (_marqueePending)
+        {
+            if (_marqueeSelecting)
+            {
+                var selectionRect = NormalizeRect(_marqueeStartWorld, _marqueeCurrentWorld);
+                var selected = vm.Nodes
+                    .Where(n => _layouts.TryGetValue(n, out var layout)
+                        && selectionRect.Intersects(layout.Body))
+                    .ToList();
+                vm.SelectNodes(selected, additive: _marqueeModifiers.HasFlag(KeyModifiers.Control));
+            }
+            else
+            {
+                // A blank click with no drag clears the multi-selection.
+                vm.SelectOnly(null);
+            }
+
+            _marqueePending = false;
+            _marqueeSelecting = false;
+            InvalidateVisual();
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            return;
+        }
 
         if (vm.IsPanning)
         {
@@ -846,13 +929,24 @@ public sealed class GraphCanvas : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.Key == Key.Delete || e.Key == Key.Back)
+        if (Vm is not { } vm) return;
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.C)
         {
-            if (Vm is { } vm) vm.DeleteSelection();
+            vm.CopySelection();
+            e.Handled = true;
+        }
+        else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.V)
+        {
+            vm.PasteSelection(_lastPointerWorld);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete || e.Key == Key.Back)
+        {
+            vm.DeleteSelection();
             e.Handled = true;
         }
     }
-
     /// <summary>Close any currently-open right-click node menu, if one is open.</summary>
     private void CloseNodeContextMenu()
     {
@@ -882,6 +976,7 @@ public sealed class GraphCanvas : Control
         var menu = new NodeContextMenu
         {
             Items = commands,
+            ShowCopy = true,
             ShowDelete = true,
         };
         menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -895,12 +990,17 @@ public sealed class GraphCanvas : Control
         menu.CommandSelected += async cmd =>
         {
             Close();
-            await vm.ExecuteNodeCommandAsync(node, cmd);
+            await vm.ExecuteNodeCommandForSelectionAsync(node, cmd);
+        };
+        menu.CopySelected += () =>
+        {
+            Close();
+            vm.CopySelection();
         };
         menu.DeleteSelected += () =>
         {
             Close();
-            vm.RemoveNodeCommand.Execute(node);
+            vm.DeleteSelection();
         };
         menu.CloseRequested += Close;
 
@@ -982,7 +1082,3 @@ public sealed class GraphCanvas : Control
             UpdateSpinAnimation();
     }
 }
-
-
-
-

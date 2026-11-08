@@ -100,16 +100,22 @@ public sealed class ProcessRunnerNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, _commandPin) ||
-            value is not StringSample input ||
-            input.StringValue is not { } command ||
-            string.IsNullOrWhiteSpace(command))
+        if (ReferenceEquals(pin, _commandPin))
         {
-            return;
-        }
+            if (value is not StringSample input ||
+                input.StringValue is not { } command ||
+                string.IsNullOrWhiteSpace(command))
+            {
+                _logger?.LogError(
+                    "ProcessRunner ignored invalid command on {Pin}: expected a non-empty StringSample, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
+            }
 
-        var cancellationToken = _runCancellation?.Token ?? CancellationToken.None;
-        _ = ExecuteCommandAsync(command, cancellationToken);
+            var cancellationToken = _runCancellation?.Token ?? CancellationToken.None;
+            _ = ExecuteCommandAsync(command, cancellationToken);
+        }
     }
 
     private async Task ExecuteCommandAsync(string command, CancellationToken cancellationToken)
@@ -310,4 +316,10 @@ catch {
     }
 
     private static string EscapePowerShellLiteral(string value) => value.Replace("'", "''", StringComparison.Ordinal);
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

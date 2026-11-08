@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Node.Enlarger;
 
@@ -90,14 +91,17 @@ public sealed class EnlargerNode : BaseNode
     /// </summary>
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (value is null)
-            return;
+        if (ReferenceEquals(pin, _inPin))
+        {
+            if (value is null)
+            {
+                pin.Context?.Logger.LogError("Enlarger ignored a null sample on {Pin}.", pin.Name);
+                return;
+            }
 
-        if (!ReferenceEquals(pin, _inPin))
-            return;
-
-        foreach (var outputPin in _outPins)
-            outputPin.SendSample(value);
+            foreach (var outputPin in _outPins)
+                outputPin.SendSample(value);
+        }
     }
 
     public override Task Stop(INodeContext context, CancellationToken ct = default)
@@ -131,4 +135,10 @@ public sealed class EnlargerNode : BaseNode
             _ => DataType.STRING,
         };
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

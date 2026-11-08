@@ -9,17 +9,21 @@ is intentionally left for the business implementation phase.
 
 - Display name: `FACT Launcher`
 - Category: `Data`
-- Input pins: `input_string_run` (`STRING`, optional), `input_string_settings` (`STRING`, optional), `input_int64_ret` (`INT64`, optional)
-- Output pins: `output_string_host` (`STRING`), `output_string_settings` (`STRING`), `output_string_cmd` (`STRING`)
-- Parameters: `Endpoint`, `TimeoutSeconds`, `FactKey`
+- Input pins: `input_string_run` (`STRING`, optional), `input_int64_ret` (`INT64`, optional)
+- Output pins: `output_string_host` (`STRING`), `output_string_cmd` (`STRING`)
+- Parameters: `Endpoint`, `TimeoutSeconds`, `FactKey`, `Position` (`A`, `B`, `C`, `D`, `F`)
 
 ## Lifecycle
 
-`Initialize` captures the node logger. `Run` sets `Running = true`, captures the logger, and
-clears cached input data without sending anything. After `input_string_run` receives a valid
-payload, the node requests user settings through `output_string_settings`. If that output is
-not connected, or sending fails, the node logs an error. `Stop` clears the running state and
-logger. The cached FSN and IMEI values are cleared during initialize, run, and stop.
+`Initialize` captures the node logger, clears cached settings/input state, and loads
+`C:\AC710\UserSettings\UserSettings.ini` once through `UserSettingsParser`. If the file is
+missing, unreadable, or does not contain CMD/IP/SLOT/PORTHUB, initialization logs an error,
+publishes a `fact.launcher.error` message on `TopicBus` for product/business subscribers,
+and then fails so the workflow does not start with incomplete settings. The generic
+AgentFlow editor GUI does not subscribe to this broadcast. `Run` sets `Running = true`.
+After `input_string_run` receives a valid payload, the node validates it against the cached
+settings and sends a command through `output_string_cmd` when the SLOT values match.
+`Stop` clears the running state, logger, and cached state.
 
 ## Run Input Contract
 
@@ -29,15 +33,15 @@ logger. The cached FSN and IMEI values are cleared during initialize, run, and s
 {"SLOT":"1","FSN":"603122002902AB","IMEI":"354360451234561"}
 ```
 
-The node uses the instance `DisplayName` to validate the SLOT group before saving metadata:
+The node uses the `Position` parameter to validate the SLOT group before saving metadata. At runtime, `DisplayName` is rendered as `FACT Launcher {Position}`:
 
-| DisplayName | Accepted SLOT values |
+| Position | Runtime DisplayName | Accepted SLOT values |
 | --- | --- |
-| `FACT Launcher A` | `1`, `6` |
-| `FACT Launcher B` | `2`, `7` |
-| `FACT Launcher C` | `3`, `8` |
-| `FACT Launcher D` | `4`, `9` |
-| `FACT Launcher F` | `5`, `10` |
+| `A` | `FACT Launcher A` | `1`, `6` |
+| `B` | `FACT Launcher B` | `2`, `7` |
+| `C` | `FACT Launcher C` | `3`, `8` |
+| `D` | `FACT Launcher D` | `4`, `9` |
+| `F` | `FACT Launcher F` | `5`, `10` |
 
 A matching payload must contain non-empty string values for `SLOT`, `FSN`, and `IMEI`.
 When the group matches the instance letter and all values are valid, the node stores the
@@ -71,13 +75,13 @@ Parser behavior:
 - `TryParse` returns `false` for invalid JSON or an invalid payload shape.
 - `TryGetValues` and `GetSingleValue` provide case-insensitive key lookup.
 
-The node validates JSON received on `input_string_settings` and `input_string_run` and logs parse failures at
-`Error` level. The raw settings payload is still forwarded through `output_string_settings`.
+The node validates JSON received on `input_string_run` and logs parse failures at `Error` level.
 
 ### Settings cache
 
-When `input_string_settings` receives a valid JSON object, the node stores the first value for each
-supported key in private cache fields for later process-launch use:
+The node keeps the first value for each supported settings key in private cache fields for
+later process-launch use. `UserSettingsParser` loads the fixed INI file once during
+`Initialize`; there is no lazy load from `ReceiveSample`:
 
 | JSON key | Private field |
 | --- | --- |
@@ -86,10 +90,6 @@ supported key in private cache fields for later process-launch use:
 | `SLOT` | `_slot` |
 | `PORTHUB` | `_porthub` |
 
-Invalid JSON does not overwrite the cached settings. These fields, together with `_fsn` and `_imei`,
-are cleared during node initialization, run startup, and stop.
-
-
-
-
-
+These fields, together with `_fsn` and `_imei`, are cleared during node initialization and stop.
+If loading fails or any required section is missing, initialization records an error, broadcasts
+a `fact.launcher.error` event, and fails the node instead of retrying within the same run.

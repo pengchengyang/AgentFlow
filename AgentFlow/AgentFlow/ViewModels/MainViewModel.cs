@@ -22,6 +22,11 @@ using Hosting.Logging;
 namespace AgentFlow.ViewModels;
 /// <summary>A node entry in the component palette.</summary>
 public sealed record PaletteItem(string Name, string DisplayName, string Category, string PinSummary, SolidColorBrush Accent);
+internal sealed record CopiedNodeSnapshot(
+    string OriginalId, string TypeName, string DisplayName, Point Location, int Priority,
+    IReadOnlyDictionary<string, object?> Parameters);
+internal sealed record CopiedConnectionSnapshot(
+    string FromNodeId, string FromPin, string ToNodeId, string ToPin);
 public partial class MainViewModel : ViewModelBase
 {
     private readonly NodeRegistry _registry = new();
@@ -34,6 +39,10 @@ public partial class MainViewModel : ViewModelBase
     private readonly BroadcastDemo _broadcastDemo;
     private CancellationTokenSource? _runCts;
     private int _nodeSpawnIndex;
+    private readonly List<CopiedNodeSnapshot> _nodeClipboard = new();
+    private readonly List<CopiedConnectionSnapshot> _connectionClipboard = new();
+    private Point _copyOrigin;
+    private int _pasteCount;
     private bool _isLoading;
     private bool _suppressAutoSave;
     private bool _autoSaveInFlight;
@@ -506,15 +515,130 @@ public partial class MainViewModel : ViewModelBase
         _logger.LogTrace("Added node {Name} #{InstanceId} at ({X:0.##},{Y:0.##})", node.Name, node.Id, graphLocation.X, graphLocation.Y);
         RecordHistory(historySnapshot);
     }
+    /// <summary>Copy all selected nodes (and wires whose endpoints are both selected) to an in-app clipboard.</summary>
+    public bool CopySelection()
+    {
+        var selectedNodes = Nodes.Where(n => n.IsSelected).ToList();
+        if (selectedNodes.Count == 0)
+            return false;
+
+        _nodeClipboard.Clear();
+        _connectionClipboard.Clear();
+        _copyOrigin = new Point(
+            selectedNodes.Min(n => n.Location.X),
+            selectedNodes.Min(n => n.Location.Y));
+        _pasteCount = 0;
+
+        foreach (var node in selectedNodes)
+        {
+            var parameters = node.Parameters.ToDictionary(p => p.Key, p => p.ToValue());
+            _nodeClipboard.Add(new CopiedNodeSnapshot(
+                node.Id, node.Name, node.DisplayName, node.Location, node.Priority, parameters));
+        }
+
+        var selectedIds = selectedNodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var connection in Connections)
+        {
+            if (selectedIds.Contains(connection.Source.Node.Id)
+                && selectedIds.Contains(connection.Target.Node.Id))
+            {
+                _connectionClipboard.Add(new CopiedConnectionSnapshot(
+                    connection.Source.Node.Id,
+                    connection.Source.Name,
+                    connection.Target.Node.Id,
+                    connection.Target.Name));
+            }
+        }
+
+        _logger.LogTrace("Copied {NodeCount} node(s) and {ConnectionCount} connection(s).",
+            _nodeClipboard.Count, _connectionClipboard.Count);
+        return true;
+    }
+
+    public bool HasCopiedNodes => _nodeClipboard.Count > 0;
+
+    /// <summary>Paste the copied nodes and their internal wires as one undoable edit.</summary>
+    public bool PasteSelection(Point? graphLocation = null)
+    {
+        if (!CanEditGraphNow() || _nodeClipboard.Count == 0)
+            return false;
+
+        var historySnapshot = CaptureHistorySnapshot();
+        var offset = graphLocation.HasValue ? 0 : 24 * (_pasteCount + 1);
+        var origin = graphLocation ?? new Point(_copyOrigin.X + offset, _copyOrigin.Y + offset);
+        _pasteCount++;
+
+        var pastedNodes = new List<NodeViewModel>();
+        var idMap = new Dictionary<string, NodeViewModel>(StringComparer.Ordinal);
+        foreach (var copied in _nodeClipboard)
+        {
+            var location = new Point(
+                origin.X + (copied.Location.X - _copyOrigin.X),
+                origin.Y + (copied.Location.Y - _copyOrigin.Y));
+            var editorNode = _workflowHost.CreateNode(
+                copied.TypeName,
+                location.X,
+                location.Y,
+                copied.Parameters,
+                displayName: copied.DisplayName,
+                priority: copied.Priority);
+            var node = new NodeViewModel(new NodeModel(editorNode.RuntimeNode))
+            {
+                DisplayName = copied.DisplayName,
+                Priority = copied.Priority,
+                Location = location,
+                Runtime = editorNode
+            };
+            node.Id = node.Runtime.Id;
+            node.ApplyParameterValues(copied.Parameters);
+            node.RefreshPinTypes();
+            HookSelection(node);
+            Nodes.Add(node);
+            pastedNodes.Add(node);
+            idMap[copied.OriginalId] = node;
+        }
+
+        foreach (var copied in _connectionClipboard)
+        {
+            if (!idMap.TryGetValue(copied.FromNodeId, out var fromNode)
+                || !idMap.TryGetValue(copied.ToNodeId, out var toNode))
+                continue;
+            var source = fromNode.Outputs.FirstOrDefault(p => p.Name == copied.FromPin);
+            var target = toNode.Inputs.FirstOrDefault(p => p.Name == copied.ToPin);
+            if (source is null || target is null)
+            {
+                _logger.LogWarning("Copied wire {FromPin} -> {ToPin} could not be restored.", copied.FromPin, copied.ToPin);
+                continue;
+            }
+            Establish(source, target);
+        }
+
+        SelectNodes(pastedNodes);
+        RecordHistory(historySnapshot);
+        _logger.LogTrace("Pasted {NodeCount} node(s).", pastedNodes.Count);
+        return pastedNodes.Count > 0;
+    }
+
     public void ToggleSelection(NodeViewModel node)
     {
         node.IsSelected = !node.IsSelected;
-        if (node.IsSelected)
-            SelectedNode = node;
+        if (!node.IsSelected)
+            SelectedNode = Nodes.LastOrDefault(n => n.IsSelected);
     }
+
     /// <summary>Raise a node to the top of the visual stacking order.</summary>
     public void BringToFront(NodeViewModel node)
         => node.ZIndex = Nodes.Count == 0 ? 0 : Nodes.Max(n => n.ZIndex) + 1;
+
+    /// <summary>Replace the selection, or add to it when <paramref name="additive"/> is true.</summary>
+    public void SelectNodes(IEnumerable<NodeViewModel> nodes, bool additive = false)
+    {
+        var targets = nodes.ToHashSet();
+        foreach (var n in Nodes)
+            n.IsSelected = targets.Contains(n) || (additive && n.IsSelected);
+        SelectedNode = Nodes.LastOrDefault(n => n.IsSelected);
+    }
+
     /// <summary>Single-selection mode: select only the given node and deselect every other node.</summary>
     public void SelectOnly(NodeViewModel? node)
     {
@@ -558,6 +682,9 @@ public partial class MainViewModel : ViewModelBase
             .ToList();
 
         runtime.RuntimeNode.Configure(values);
+        // Configure may derive DisplayName from node parameters (for example the FACT
+        // Launcher position), so synchronize it before updating the Core graph.
+        node.DisplayName = runtime.RuntimeNode.DisplayName ?? node.DisplayName;
         _workflowHost.UpdateNode(
             runtime.Id, node.DisplayName, node.Priority,
             node.Location.X, node.Location.Y, values);
@@ -902,6 +1029,50 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Execute the same command on every selected node that exposes it. Confirmation is requested
+    /// once for the whole selection instead of once per node.
+    /// </summary>
+    public async Task ExecuteNodeCommandForSelectionAsync(NodeViewModel contextNode, NodeCommandInfo command)
+    {
+        if (contextNode is null || command is null) return;
+
+        var selectedNodes = Nodes.Where(n => n.IsSelected).ToList();
+        if (selectedNodes.Count == 0)
+            selectedNodes.Add(contextNode);
+
+        var targets = selectedNodes
+            .Where(n => GetNodeCommands(n).Any(c => c.Id == command.Id && c.IsEnabled))
+            .ToList();
+        if (targets.Count == 0)
+            return;
+
+        if (command.RequiresConfirmation)
+        {
+            var message = targets.Count == 1
+                ? $"Run '{command.Title}' on node '{targets[0].Title}'?"
+                : $"Run '{command.Title}' on {targets.Count} selected nodes?";
+            var confirmed = await RequestConfirmationAsync(command.Title, message);
+            if (!confirmed)
+                return;
+        }
+
+        foreach (var target in targets)
+        {
+            try
+            {
+                await _workflowHost.ExecuteNodeCommandAsync(target.InstanceId, command.Id);
+                _logger.LogTrace("Node command {CommandId} executed on #{InstanceId}",
+                    command.Id, target.InstanceId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Node command {CommandId} failed on #{InstanceId}",
+                    command.Id, target.InstanceId);
+                Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            }
+        }
+    }
     /// <summary>Raised when a generic confirmation dialog should be shown by the view layer.</summary>
     public event EventHandler<ConfirmDialogViewModel>? ConfirmRequested;
 
@@ -1265,6 +1436,22 @@ public partial class MainViewModel : ViewModelBase
         await Stop();
     }
 
+    /// <summary>
+    /// Invoke every node's final exit callback after Stop and any pending save have succeeded.
+    /// Failures are logged but do not prevent the application from closing.
+    /// </summary>
+    public async Task ShutdownForExitAsync()
+    {
+        try
+        {
+            await Task.Run(() => _workflowHost.ShutdownAsync());
+        }
+        catch (Exception ex)
+        {
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Application shutdown callback failed.");
+        }
+    }
     /// <summary>Allow the editor to be used again when the close sequence is aborted (save failed).</summary>
     public void CancelShutdown() => _shuttingDown = false;
 
@@ -1459,4 +1646,3 @@ public partial class MainViewModel : ViewModelBase
         LoadFromPath(path);
     }
 }
-

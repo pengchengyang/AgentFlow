@@ -47,12 +47,12 @@
 				<!-- Right-aligned: level buttons + search + clear -->
 				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
 					<StackPanel Orientation="Horizontal" Spacing="4">
-						<ToggleButton Content="All" FontSize="12" Classes="level all" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=ALL}" Command="{Binding ToggleLevelCommand}" CommandParameter="ALL"/>
-						<ToggleButton Content="Trace" FontSize="12" Classes="level trace" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=TRACE}" Command="{Binding ToggleLevelCommand}" CommandParameter="TRACE"/>
-						<ToggleButton Content="Debug" FontSize="12" Classes="level debug" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=DEBUG}" Command="{Binding ToggleLevelCommand}" CommandParameter="DEBUG"/>
-						<ToggleButton Content="Info" FontSize="12" Classes="level info" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=INFO}" Command="{Binding ToggleLevelCommand}" CommandParameter="INFO"/>
-						<ToggleButton Content="Warn" FontSize="12" Classes="level warn" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=WARN}" Command="{Binding ToggleLevelCommand}" CommandParameter="WARN"/>
-						<ToggleButton Content="Error" FontSize="12" Classes="level error" IsChecked="{Binding SelectedLevels, Converter={StaticResource LvlIn}, ConverterParameter=ERROR}" Command="{Binding ToggleLevelCommand}" CommandParameter="ERROR"/>
+						<ToggleButton Content="All" FontSize="12" Classes="level all" IsChecked="{Binding SelectedLevels, Mode=OneWay, Converter={StaticResource LvlIn}, ConverterParameter=ALL}" Command="{Binding ToggleLevelCommand}" CommandParameter="ALL"/>
+						<ToggleButton Content="Trace" FontSize="12" Classes="level trace" IsChecked="{Binding SelectedLevels, Mode=OneWay, Converter={StaticResource LvlIn}, ConverterParameter=TRACE}" Command="{Binding ToggleLevelCommand}" CommandParameter="TRACE"/>
+						<ToggleButton Content="Debug" FontSize="12" Classes="level debug" IsChecked="{Binding SelectedLevels, Mode=OneWay, Converter={StaticResource LvlIn}, ConverterParameter=DEBUG}" Command="{Binding ToggleLevelCommand}" CommandParameter="DEBUG"/>
+						<ToggleButton Content="Info" FontSize="12" Classes="level info" IsChecked="{Binding SelectedLevels, Mode=OneWay, Converter={StaticResource LvlIn}, ConverterParameter=INFO}" Command="{Binding ToggleLevelCommand}" CommandParameter="INFO"/>
+						<ToggleButton Content="Warn" FontSize="12" Classes="level warn" IsChecked="{Binding SelectedLevels, Mode=OneWay, Converter={StaticResource LvlIn}, ConverterParameter=WARN}" Command="{Binding ToggleLevelCommand}" CommandParameter="WARN"/>
+						<ToggleButton Content="Error" FontSize="12" Classes="level error" IsChecked="{Binding SelectedLevels, Mode=OneWay, Converter={StaticResource LvlIn}, ConverterParameter=ERROR}" Command="{Binding ToggleLevelCommand}" CommandParameter="ERROR"/>
 					</StackPanel>
 					<TextBox Classes="logsearch" PlaceholderText="Search..."
 							 Text="{Binding SearchText, Mode=TwoWay}" FontSize="11"

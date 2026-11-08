@@ -47,6 +47,26 @@ Product-specific GUIs must use only `IWorkflowReadOnlyHost`. They do not render
 nodes, pins, or connections and do not mutate workflow documents. They read
 per-node/runtime health and display their own product data through separate
 domain services.
+## CLI Multi-Instance Execution
+
+`AgentFlow.Cli` runs every configured workflow instance independently in one
+process. A workflow may be repeated, and different workflow files may be mixed:
+
+```powershell
+AgentFlow.Cli run.workflow.json --instances 5
+
+AgentFlow.Cli --plugin-dir plugins `
+  --workflow a.workflow.json --instances 3 `
+  --workflow b.workflow.json --instances 2
+```
+
+`--instances` applies to the most recently declared workflow and defaults to 1.
+Each instance receives a fresh `WorkflowGraph`, `WorkflowEngine`, node
+instances, contexts, and lifecycle cleanup. One instance failing does not cancel
+the others. The CLI prints a result record per instance and exits with 0 only
+when every instance succeeds; any failure returns 1, and Ctrl+C returns 130.
+The legacy positional form `AgentFlow.Cli <workflow.json> [pluginDir]` remains
+supported.
 ## Node Lifecycle
 
 `BaseNode` owns the runtime lifecycle state:
@@ -181,26 +201,28 @@ and receive hooks without implementing final business behavior yet:
 
 | Plugin | Role | Default pins |
 | --- | --- | --- |
-| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture and cached CMD/IP/SLOT/PORTHUB settings | `input_string_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_settings`, and `output_string_cmd` outputs |
+| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, cached CMD/IP/SLOT/PORTHUB settings, and direct `UserSettingsParser` support | `input_string_run` and `input_int64_ret` inputs; `output_string_host` and `output_string_cmd` outputs |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
 | `Node.AutoStart` | Workflow start trigger and SLOT router | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
+| `Node.AutoStop` | Workflow stop trigger and SLOT router | `input_string_stop` string input; `output_string_stopA/B/C/D/F` string outputs |
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
-| `Node.UserSettings` | Profile / settings adapter | `input_string_normal` string input; `output_string_json` string output |
+
+`UserSettingsParser` now lives in `Node.FACTLauncher` for future use; the standalone `Node.UserSettings` plugin was removed.
 
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.
 
 `Node.AutoStart` buffers semicolon-terminated `SLOT`/`FSN`/`IMEI` JSON groups from
-`input_string_start`, validates each group, sends the corresponding JSON group to the output mapped from `SLOT`,
-and emits a host-neutral start request through `IWorkflowStartRequestSink`. The host
-registers the service when GUI integration is implemented; the plugin has no Avalonia
-dependency.
+`input_string_start`, validates each group, sends the corresponding JSON group to the output mapped from `SLOT`, and emits a host-neutral start request through `IWorkflowStartRequestSink`. A product-specific host registers the service implementation; the plugin has no Avalonia dependency.
+
+`Node.AutoStop` mirrors that contract on `input_string_stop` and `output_string_stopA/B/C/D/F`,
+and requests a normal workflow stop through `IWorkflowStopRequestSink` after dispatching the
+validated group. The service is implemented by the consuming product host, not by the generic AgentFlow editor GUI; it does not invoke final application `Shutdown`.
 
 The TCP demo nodes expose a raw byte-stream interface. `TCP Client` and `TCP Server`
 each expose `input_string`, `input_binary`, `output_string`, and `output_binary`.
 Text inputs are UTF-8 encoded, binary inputs are sent unchanged, and received byte blocks
 are published without adding framing or automatic replies. See `docs/tcp-transport.md`.
-
 
 
 

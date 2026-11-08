@@ -659,6 +659,13 @@ public abstract class BaseNode
     public abstract Task Stop(INodeContext context, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Final application-exit callback. Called once when the editor or CLI is about to terminate,
+    /// after the normal <see cref="Stop"/> lifecycle has released runtime resources. Nodes must
+    /// implement this even when they currently have nothing extra to release. Keep it idempotent
+    /// and safe when the node was never initialized or has already been stopped. This callback must
+    /// not replace <see cref="Stop"/>: workflows remain restartable through Stop alone.
+    /// </summary>
+    public abstract Task Shutdown(INodeContext context, CancellationToken cancellationToken = default);
     /// Called by an input pin when data arrives from an upstream output pin.
     /// The default implementation is a no-op for nodes that only read inputs
     /// inside <see cref="Run"/>.

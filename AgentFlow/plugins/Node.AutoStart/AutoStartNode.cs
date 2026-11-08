@@ -110,38 +110,44 @@ public sealed class AutoStartNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, _startPin) ||
-            value is not StringSample input ||
-            input.StringValue is not { } inputText)
+        if (ReferenceEquals(pin, _startPin))
         {
-            return;
-        }
-
-        lock (_inputGate)
-        {
-            _pendingInput += inputText;
-            if (_pendingInput.Length > MaxPendingCharacters)
+            if (value is not StringSample input ||
+                input.StringValue is not { } inputText)
             {
                 _logger?.LogError(
-                    "AutoStart input exceeded the {MaxCharacters}-character buffer limit and was cleared.",
-                    MaxPendingCharacters);
-                _pendingInput = string.Empty;
+                    "AutoStart ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
                 return;
             }
 
-            while (true)
+            lock (_inputGate)
             {
-                var separatorIndex = _pendingInput.IndexOf(';');
-                if (separatorIndex < 0)
-                    break;
+                _pendingInput += inputText;
+                if (_pendingInput.Length > MaxPendingCharacters)
+                {
+                    _logger?.LogError(
+                        "AutoStart input exceeded the {MaxCharacters}-character buffer limit and was cleared.",
+                        MaxPendingCharacters);
+                    _pendingInput = string.Empty;
+                    return;
+                }
 
-                var segment = _pendingInput[..separatorIndex].Trim();
-                _pendingInput = _pendingInput[(separatorIndex + 1)..];
+                while (true)
+                {
+                    var separatorIndex = _pendingInput.IndexOf(';');
+                    if (separatorIndex < 0)
+                        break;
 
-                if (segment.Length == 0)
-                    continue;
+                    var segment = _pendingInput[..separatorIndex].Trim();
+                    _pendingInput = _pendingInput[(separatorIndex + 1)..];
 
-                ProcessCompletedSegment(segment, pin.Context);
+                    if (segment.Length == 0)
+                        continue;
+
+                    ProcessCompletedSegment(segment, pin.Context);
+                }
             }
         }
     }
@@ -235,9 +241,10 @@ public sealed class AutoStartNode : BaseNode
         value = string.Empty;
         return false;
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }
-
-
-
-
-

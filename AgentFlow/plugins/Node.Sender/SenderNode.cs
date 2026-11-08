@@ -486,4 +486,10 @@ public sealed class SenderNode : BaseNode
 
         return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "(null)";
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

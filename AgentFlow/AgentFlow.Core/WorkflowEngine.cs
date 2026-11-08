@@ -72,9 +72,37 @@ public sealed class WorkflowEngine
     }
 
     /// <summary>
+    /// Execute one complete headless lifecycle: initialize, run to completion, stop, then invoke
+    /// the final shutdown callback. CLI hosts use this because the process executes one workflow
+    /// pass and exits instead of remaining resident like the desktop editor.
+    /// </summary>
+    public async Task RunOnceAsync(WorkflowGraph graph, CancellationToken ct = default)
+    {
+        _logger.LogTrace("WorkflowEngine: run once ({NodeCount} nodes).", graph.Nodes.Count);
+        var run = Prepare(graph);
+        try
+        {
+            await run.Manager.InitializeAsync(run.GetContext, ct).ConfigureAwait(false);
+            await run.Manager.RunAsync(run.GetContext, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                await run.Manager.StopAsync(run.GetContext, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                await run.Manager.ShutdownAsync(run.GetContext, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+    /// <summary>
     /// Start a persistent workflow: initialize every node, then run them (uses
-    /// <see cref="NodeInstanceManager"/>). Does NOT stop automatically; the caller (GUI Stop
-    /// button or CLI Ctrl+C) is responsible for calling <see cref="StopAsync"/>.
+    /// <see cref="NodeInstanceManager"/>). Does NOT stop automatically; the caller (desktop host Stop
+    /// button or another persistent host) is responsible for calling <see cref="StopAsync"/>.
     /// </summary>
     public async Task StartAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
@@ -104,6 +132,26 @@ public sealed class WorkflowEngine
         await run.Manager.StopAsync(run.GetContext, ct);
     }
 
+    /// <summary>
+    /// Invoke every node's final application-exit callback after normal Stop cleanup. The CLI
+    /// calls this immediately before the process terminates; it is not part of workflow restart.
+    /// </summary>
+    public async Task ShutdownAsync(WorkflowGraph graph, CancellationToken ct = default)
+    {
+        _logger.LogTrace("WorkflowEngine: shutdown.");
+        WorkflowRun run;
+        try
+        {
+            run = Prepare(graph);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("Shutdown skipped for an unprepared workflow: {Message}", ex.Message);
+            return;
+        }
+
+        await run.Manager.ShutdownAsync(run.GetContext, ct);
+    }
     /// <summary>Returns the prepared run for the given graph, preparing it once per graph instance.</summary>
     private WorkflowRun Prepare(WorkflowGraph graph)
     {

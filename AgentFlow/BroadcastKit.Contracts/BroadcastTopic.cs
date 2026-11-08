@@ -19,6 +19,13 @@ public static class BroadcastTopics
 
     /// <summary>Node.Broadcast.Demo -> GUI. Payload: <see cref="BroadcastTopicMessage"/>.</summary>
     public const string NodeToGui = "broadcast.demo.node-to-gui";
+
+    /// <summary>
+    /// FACT Launcher -> product/business subscribers. Payload: <see cref="BroadcastTopicMessage"/>
+    /// whose Payload contains a JSON error record. The generic AgentFlow editor GUI does not
+    /// subscribe to this topic.
+    /// </summary>
+    public const string FactLauncherError = "fact.launcher.error";
 }
 
 /// <summary>

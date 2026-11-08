@@ -82,15 +82,16 @@ public sealed class ReceiverNode : BaseNode
     /// <summary>Log every received value at Information level; no output is produced.</summary>
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, _inPin))
-            return;
+        if (ReferenceEquals(pin, _inPin))
+        {
+            _logger?.LogInformation(
+                "Receiver {Node} received on {Pin}: {Type} {Value}",
+                DisplayName,
+                pin.Name,
+                value?.Type.ToString() ?? "null",
+                FormatValue(value));
 
-        _logger?.LogInformation(
-            "Receiver {Node} received on {Pin}: {Type} {Value}",
-            DisplayName,
-            pin.Name,
-            value?.Type.ToString() ?? "null",
-            FormatValue(value));
+        }
     }
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
@@ -133,4 +134,10 @@ public sealed class ReceiverNode : BaseNode
 
         return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "(null)";
     }
+    /// <summary>
+    /// Final application-exit hook. Runtime resources were already released by Stop; this node
+    /// currently has no additional process-exit cleanup.
+    /// </summary>
+    public override Task Shutdown(INodeContext context, CancellationToken ct = default)
+        => Task.CompletedTask;
 }
