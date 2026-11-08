@@ -94,3 +94,4 @@ plugins/**/artifacts/
 # 如果要提交预编译的官方/第三方插件 DLL，请用白名单放开，例如：
 # !plugins/vendor/**/*.dll
 # !plugins/runtime/**/*.so
+!*.bat
