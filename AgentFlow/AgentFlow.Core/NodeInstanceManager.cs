@@ -184,29 +184,248 @@ public sealed class NodeInstanceManager
     /// is disposing the old one.
     /// </para>
     /// </summary>
-    private void Launch(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
+    private Task Launch(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ct.ThrowIfCancellationRequested();
         Interlocked.Exchange(ref _autoStopRequested, 0);
+
         // Callers hold the lifecycle gate and Start/RunAsync stop the previous session first, so no
         // live run can still be using the old token. Cancel before dispose anyway as a safety net.
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = _runCts.Token;
-        foreach (var node in Instances)
+
+        var nodes = Instances.ToList();
+        var byId = new Dictionary<int, BaseNode>();
+        foreach (var node in nodes)
         {
-            // The token also covers the automatic stop: when an earlier node failed while this loop
-            // was still launching nodes, the remaining ones are simply not started.
-            if (token.IsCancellationRequested) break;
-            var context = contextFactory(node);
-            node.SetConnecting();
-            var run = RunNodeAsync(node, context, token, contextFactory);
-            lock (_runTasksGate) _runTasks.Add((node, run));
+            if (!byId.TryAdd(node.InstanceId, node))
+                throw new InvalidOperationException($"Duplicate node instance id #{node.InstanceId} prevents dependency startup.");
         }
 
+        var dependencies = new Dictionary<BaseNode, List<BaseNode>>();
+        var dependents = new Dictionary<int, List<BaseNode>>();
+        var pendingDependencyCount = new Dictionary<BaseNode, int>();
+        foreach (var node in nodes)
+        {
+            var nodeDependencies = new List<BaseNode>();
+            foreach (var dependencyId in BaseNode.NormalizeDependsOn(node.DependsOn))
+            {
+                if (dependencyId == node.InstanceId)
+                    throw new InvalidOperationException(
+                        $"Node '{NodeDisplayName(node)}' (#{node.InstanceId}) cannot depend on itself.");
+                if (!byId.TryGetValue(dependencyId, out var dependency))
+                    throw new InvalidOperationException(
+                        $"Node '{NodeDisplayName(node)}' (#{node.InstanceId}) depends on missing node instance #{dependencyId}.");
+
+                nodeDependencies.Add(dependency);
+            }
+
+            dependencies[node] = nodeDependencies;
+            pendingDependencyCount[node] = nodeDependencies.Count;
+            foreach (var dependency in nodeDependencies)
+            {
+                if (!dependents.TryGetValue(dependency.InstanceId, out var dependentList))
+                {
+                    dependentList = new List<BaseNode>();
+                    dependents[dependency.InstanceId] = dependentList;
+                }
+                dependentList.Add(node);
+            }
+        }
+
+        // Detect a dependency cycle before any node starts. Otherwise the scheduler would wait for
+        // nodes that can never become ready and the workflow would appear to start forever.
+        var cycleCheckCount = 0;
+        var cycleCheckQueue = new Queue<BaseNode>(nodes.Where(n => pendingDependencyCount[n] == 0));
+        var cycleCheckIndegree = pendingDependencyCount.ToDictionary(kv => kv.Key, kv => kv.Value);
+        while (cycleCheckQueue.Count > 0)
+        {
+            var node = cycleCheckQueue.Dequeue();
+            cycleCheckCount++;
+            if (!dependents.TryGetValue(node.InstanceId, out var next))
+                continue;
+            foreach (var dependent in next)
+            {
+                cycleCheckIndegree[dependent]--;
+                if (cycleCheckIndegree[dependent] == 0)
+                    cycleCheckQueue.Enqueue(dependent);
+            }
+        }
+        if (cycleCheckCount != nodes.Count)
+            throw new InvalidOperationException("The DependsOn graph contains a cycle; no nodes were started.");
+
+        _logger.LogInformation(
+            "Launch plan:{NewLine}{LaunchPlan}",
+            Environment.NewLine,
+            string.Join(
+                Environment.NewLine,
+                nodes.Select(node =>
+                {
+                    var nodeDependencies = dependencies[node];
+                    return nodeDependencies.Count == 0
+                        ? $"  #{node.InstanceId} \"{NodeDisplayName(node)}\" -> independent, asynchronous start"
+                        : $"  #{node.InstanceId} \"{NodeDisplayName(node)}\" -> waits for {string.Join(", ", nodeDependencies.Select(dependency => $"#{dependency.InstanceId} \"{NodeDisplayName(dependency)}\""))}";
+                })));
+
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pendingLaunches = new HashSet<BaseNode>(nodes);
+        var launchGate = new object();
+        var pendingDependencyGate = new object();
+
+        void CompleteNodeLaunch(BaseNode node)
+        {
+            lock (launchGate)
+            {
+                pendingLaunches.Remove(node);
+                if (pendingLaunches.Count == 0)
+                    completion.TrySetResult(true);
+            }
+        }
+
+        void CancelPendingLaunches()
+        {
+            lock (launchGate)
+            {
+                pendingLaunches.Clear();
+                completion.TrySetResult(true);
+            }
+        }
+
+        token.Register(CancelPendingLaunches);
+
+        void StartNode(BaseNode node)
+        {
+            if (token.IsCancellationRequested)
+            {
+                CompleteNodeLaunch(node);
+                return;
+            }
+
+            var task = RunNodeAfterDependenciesAsync(node, dependencies[node], contextFactory, token,
+                dependents, pendingDependencyCount, pendingDependencyGate, StartNode, CompleteNodeLaunch);
+            lock (_runTasksGate) _runTasks.Add((node, task));
+        }
+
+        foreach (var node in nodes.Where(n => pendingDependencyCount[n] == 0))
+            StartNode(node);
+
         _healthMonitorTask = MonitorRunningNodesAsync(contextFactory, token);
+        return completion.Task;
+    }
+
+    /// <summary>
+    /// Start one node only after every dependency has completed its startup path and still reports
+    /// <see cref="BaseNode.Running"/> = true. Successful dependencies schedule their dependents through
+    /// the shared pending-dependency counter, so a multi-dependency node starts exactly once after the
+    /// last dependency becomes ready.
+    /// </summary>
+    private async Task RunNodeAfterDependenciesAsync(
+        BaseNode node,
+        IReadOnlyList<BaseNode> dependencies,
+        Func<BaseNode, INodeContext> contextFactory,
+        CancellationToken token,
+        IReadOnlyDictionary<int, List<BaseNode>> dependents,
+        IDictionary<BaseNode, int> pendingDependencyCount,
+        object pendingDependencyGate,
+        Action<BaseNode> startNode,
+        Action<BaseNode> completeNodeLaunch)
+    {
+        try
+        {
+            if (token.IsCancellationRequested)
+                return;
+
+            var unmet = dependencies
+                .Where(dependency => dependency.State != NodeState.Running || !dependency.Running)
+                .ToList();
+            if (unmet.Count > 0)
+            {
+                node.SetFailed();
+                _logger.LogError(
+                    "Node '{Node}' (#{InstanceId}) was not started because dependency node(s) {Dependencies} did not reach Running = true.",
+                    node.Name, node.InstanceId, string.Join(", ", unmet.Select(d => $"#{d.InstanceId}")));
+                RequestAutoStop(contextFactory);
+                return;
+            }
+
+            INodeContext context;
+            try
+            {
+                context = contextFactory(node);
+            }
+            catch (Exception ex)
+            {
+                node.SetFailed();
+                _logger.LogError(ex,
+                    "Node '{Node}' (#{InstanceId}) could not create its runtime context and was not started.",
+                    node.Name, node.InstanceId);
+                RequestAutoStop(contextFactory);
+                return;
+            }
+
+            if (dependencies.Count == 0)
+            {
+                _logger.LogInformation(
+                    "Starting independent node #{InstanceId} '{Node}' asynchronously.",
+                    node.InstanceId, NodeDisplayName(node));
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Dependencies satisfied for node #{InstanceId} '{Node}': {Dependencies}. Starting node now.",
+                    node.InstanceId,
+                    NodeDisplayName(node),
+                    string.Join(", ", dependencies.Select(dependency => $"#{dependency.InstanceId} '{NodeDisplayName(dependency)}' Running=true")));
+            }
+
+            node.SetConnecting();
+            await RunNodeAsync(node, context, token, contextFactory).ConfigureAwait(false);
+
+            if (token.IsCancellationRequested)
+                return;
+
+            if (node.State != NodeState.Running || !node.Running)
+                return;
+
+            foreach (var dependent in dependents.GetValueOrDefault(node.InstanceId) ?? Enumerable.Empty<BaseNode>())
+            {
+                bool ready;
+                int remainingAfterSatisfaction;
+                lock (pendingDependencyGate)
+                {
+                    pendingDependencyCount.TryGetValue(dependent, out var remaining);
+                    remaining--;
+                    pendingDependencyCount[dependent] = remaining;
+                    remainingAfterSatisfaction = remaining;
+                    ready = remaining == 0;
+                }
+
+                _logger.LogTrace(
+                    "Dependency gate for node #{DependentId} '{Dependent}' satisfied by dependency #{DependencyId} '{Dependency}'; remaining dependencies: {Remaining}.",
+                    dependent.InstanceId, NodeDisplayName(dependent), node.InstanceId, NodeDisplayName(node), remainingAfterSatisfaction);
+
+                if (ready)
+                    startNode(dependent);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!token.IsCancellationRequested)
+            {
+                node.SetFailed();
+                _logger.LogError(ex,
+                    "Node '{Node}' (#{InstanceId}) failed while starting its dependency gate.",
+                    node.Name, node.InstanceId);
+                RequestAutoStop(contextFactory);
+            }
+        }
+        finally
+        {
+            completeNodeLaunch(node);
+        }
     }
 
     /// <summary>
@@ -225,28 +444,29 @@ public sealed class NodeInstanceManager
             EnsureReusableNodes();
             try
             {
-                Launch(contextFactory, ct);
+                var launchTask = Launch(contextFactory, ct);
                 foreach (var node in Instances)
                     _everStarted.Add(node);
+
+                if (await Task.WhenAny(launchTask, Task.Delay(RunTimeout, CancellationToken.None))
+                        .ConfigureAwait(false) != launchTask)
+                    throw new TimeoutException(
+                        $"Node startup dependency gates did not settle within {RunTimeout}.");
+
+                await launchTask.ConfigureAwait(false);
+                if (ct.IsCancellationRequested)
+                    throw new OperationCanceledException(ct);
+
+                if (Instances.FirstOrDefault(n => n.Failed) is { } failed)
+                    throw new InvalidOperationException(
+                        $"Node '{failed.DisplayName}' failed to run (state: {failed.State}).");
             }
             catch
             {
-                // Launch is now after successful initialization in StartAsync, but RunAsync is
-                // also public: a context-factory / token failure must release whatever launched.
                 await StopCoreAsync(contextFactory, CancellationToken.None, preserveFailure: false)
                     .ConfigureAwait(false);
                 throw;
             }
-            var runs = TakeRunTasks();
-            var completed = await WaitForRunsAsync(runs, RunTimeout).ConfigureAwait(false);
-
-            if (Instances.FirstOrDefault(n => n.Failed) is { } failed)
-                throw new InvalidOperationException(
-                    $"Node '{failed.DisplayName}' failed to run (state: {failed.State}).");
-
-            if (!completed)
-                throw new InvalidOperationException(
-                    $"Node(s) did not finish within {RunTimeout}; the run watchdog stopped waiting.");
         }
         finally
         {
@@ -330,7 +550,7 @@ public sealed class NodeInstanceManager
             }
             try
             {
-                Launch(contextFactory, ct);
+                _ = Launch(contextFactory, ct);
                 foreach (var node in Instances)
                     _everStarted.Add(node);
             }

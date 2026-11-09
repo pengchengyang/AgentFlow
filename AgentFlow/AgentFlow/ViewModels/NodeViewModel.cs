@@ -177,10 +177,15 @@ public partial class NodeViewModel : ViewModelBase
     public string Uuid => Model.Uuid;
     public int InstanceId => Model.InstanceId;
 
-    public int DependsOn => Model.Node.DependsOn;
+    public IReadOnlyList<int> DependsOn => Model.Node.DependsOn;
+    public string DependsOnText => Model.Node.DependsOnText;
 
     /// <summary>Notify listeners that the DependsOn parameter changed (raised after the dialog applies it).</summary>
-    public void NotifyDependsOnChanged() => OnPropertyChanged(nameof(DependsOn));
+    public void NotifyDependsOnChanged()
+    {
+        OnPropertyChanged(nameof(DependsOn));
+        OnPropertyChanged(nameof(DependsOnText));
+    }
 
     /// <summary>Refresh the type bindings of every pin after a parameter changed a pin's DataType.</summary>
     public void RefreshPinTypes()

@@ -185,7 +185,7 @@ public sealed class WorkflowEngine
             // carried inside spec.Parameters), so DependsOn ordering works in headless mode too.
             var instanceId = WorkflowValidation.ToInt(spec.Parameters.GetValueOrDefault("InstanceId"));
             if (instanceId > 0) node.InstanceId = instanceId;
-            node.DependsOn = WorkflowValidation.ToInt(spec.Parameters.GetValueOrDefault("DependsOn"));
+            node.DependsOn = WorkflowValidation.ToIntList(spec.Parameters.GetValueOrDefault("DependsOn"));
             instances[spec.Id] = node;
             contexts[spec.Id] = new NodeContext(
                 spec.Id, node,

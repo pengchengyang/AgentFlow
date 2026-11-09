@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Your Company" file="JsonKeyValueParser.cs">
 //     Copyright (c) Your Company. All rights reserved.
 // </copyright>
@@ -9,8 +9,9 @@ using System.Text.Json;
 namespace Node.FACTLauncher;
 
 /// <summary>
-/// Parses a JSON object whose values are string arrays into a key/value collection.
-/// Key lookup is case-insensitive, while values preserve their original casing and order.
+/// Parses a JSON object whose values are scalar strings or string arrays into a key/value
+/// collection. Key lookup is case-insensitive, while values preserve their original casing
+/// and order.
 /// </summary>
 public static class JsonKeyValueParser
 {
@@ -36,17 +37,23 @@ public static class JsonKeyValueParser
 
             foreach (var property in document.RootElement.EnumerateObject())
             {
-                if (string.IsNullOrWhiteSpace(property.Name) ||
-                    property.Value.ValueKind != JsonValueKind.Array)
-                {
+                if (string.IsNullOrWhiteSpace(property.Name))
                     return false;
-                }
 
                 if (!parsed.TryGetValue(property.Name, out var values))
                 {
                     values = new List<string>();
                     parsed.Add(property.Name, values);
                 }
+
+                if (property.Value.ValueKind == JsonValueKind.String)
+                {
+                    values.Add(property.Value.GetString() ?? string.Empty);
+                    continue;
+                }
+
+                if (property.Value.ValueKind != JsonValueKind.Array)
+                    return false;
 
                 foreach (var item in property.Value.EnumerateArray())
                 {
@@ -115,7 +122,7 @@ public static class JsonKeyValueParser
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> Parse(string? json)
     {
         if (!TryParse(json, out var settings))
-            throw new FormatException("The JSON key/value payload must be an object whose values are string arrays.");
+            throw new FormatException("The JSON key/value payload must be an object whose values are strings or string arrays.");
 
         return settings;
     }

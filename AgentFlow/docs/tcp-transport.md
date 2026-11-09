@@ -15,7 +15,7 @@ framing, length headers, checksums, or reassembly rules.
 
 ## Pins
 
-Both nodes expose the same fixed pin set:
+Both nodes expose these common data pins:
 
 | Pin | Direction | Type | Behavior |
 | --- | --- | --- | --- |
@@ -23,6 +23,12 @@ Both nodes expose the same fixed pin set:
 | `input_binary` | Input | BIN | Sends the received byte array unchanged. |
 | `output_string` | Output | STRING | UTF-8 decodes each received byte block for text debugging. |
 | `output_binary` | Output | BIN | Emits each received byte block unchanged; recommended for production pipelines. |
+
+`TCP Client` also exposes:
+
+| Pin | Direction | Type | Behavior |
+| --- | --- | --- | --- |
+| `input_string_endpoint` | Input | STRING | Changes the active connection target using `host:port` format. |
 
 Output pins publish only when they have a downstream connection. The UTF-8 output is
 a debugging view and can produce replacement characters if a multi-byte text character
@@ -35,6 +41,13 @@ the configured `Host:Port` and starts one read loop and one write loop. When the
 ends, the node closes the current socket, waits for the configured reconnect delay, and
 connects again until `Stop` is called. The node remains `Running = true` while reconnecting.
 Input blocks are queued for transmission. No payload is sent automatically at startup.
+
+The `input_string_endpoint` pin accepts values such as `192.168.2.1:8900`. A valid update
+changes only the runtime connection target; the workflow `Host` and `Port` parameters remain
+unchanged and are not persisted with the new value. If the client is already connected or
+connecting, the supervisor abandons the current endpoint and reconnects to the new target.
+An endpoint update triggers a new connection attempt even when `AutoReconnect` is disabled.
+Invalid values are logged and ignored, leaving the existing connection target unchanged.
 
 ## TCP server behavior
 
@@ -50,8 +63,8 @@ up to `MaxClients`.
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
-| `Host` | `127.0.0.1` client / `0.0.0.0` server | Remote endpoint or local bind address. |
-| `Port` | `9000` | TCP port. |
+| `Host` | `127.0.0.1` client / `0.0.0.0` server | Initial remote endpoint or local bind address. |
+| `Port` | `9000` | Initial TCP port. For the client, `input_string_endpoint` can override it at runtime without changing this parameter. |
 | `ConnectTimeoutSeconds` | `5` | Per-attempt client connect timeout. |
 | `MaxConnectAttempts` | `5` | Client attempts per connection cycle before entering the reconnect delay. |
 | `AutoReconnect` | `true` | Keep retrying after a failed or closed connection until stopped. |

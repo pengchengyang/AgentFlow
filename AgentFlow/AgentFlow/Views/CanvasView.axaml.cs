@@ -373,7 +373,7 @@ public sealed class GraphCanvas : Control
             new SolidColorBrush(ColorName), 10);
         if (TextWidth(node.Name, 10, FontWeight.Normal) > metaMaxWidth + 0.5)
             l.HoverRegions.Add((new Rect(x + PadX, y + HeaderHeight + 6, metaMaxWidth, 18), node.Name));
-        var dependsText = $"DependsOn: {node.DependsOn}";
+        var dependsText = $"DependsOn: {node.DependsOnText}";
         DrawText(ctx, Ellipsize(dependsText, 10, FontWeight.Normal, metaMaxWidth),
             new Point(x + PadX, y + HeaderHeight + 24),
             new SolidColorBrush(ColorMuted), 10);
@@ -1070,6 +1070,7 @@ public sealed class GraphCanvas : Control
             || e.PropertyName == nameof(NodeViewModel.ZIndex)
             || e.PropertyName == nameof(NodeViewModel.Title)
             || e.PropertyName == nameof(NodeViewModel.DependsOn)
+            || e.PropertyName == nameof(NodeViewModel.DependsOnText)
             || e.PropertyName == nameof(NodeViewModel.Running)
             || e.PropertyName == nameof(NodeViewModel.Started)
             || e.PropertyName == nameof(NodeViewModel.Connecting)

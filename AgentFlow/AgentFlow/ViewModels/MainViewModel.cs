@@ -1248,7 +1248,7 @@ public partial class MainViewModel : ViewModelBase
                     throw new InvalidOperationException($"Node '{spec.Id}' is missing name in logic.");
                 var displayName = JsonValueReader.GetString(spec.Logic, "displayName") ?? "";
                 var instanceId = JsonValueReader.GetInt(spec.Logic, "instanceId");
-                var dependsOn = JsonValueReader.GetInt(spec.Logic, "dependsOn");
+                var dependsOn = JsonValueReader.GetIntList(spec.Logic, "dependsOn");
                 // PluginLoader now owns restore: create node/pin instances, reserve the saved
                 // instance id, set dependsOn and deserialize the logic blob.
                 var instance = _pluginLoader.CreateNodeInstance(name, instanceId, dependsOn, spec.Logic);

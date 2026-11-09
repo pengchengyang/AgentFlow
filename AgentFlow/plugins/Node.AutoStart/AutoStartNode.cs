@@ -112,6 +112,9 @@ public sealed class AutoStartNode : BaseNode
     {
         if (ReferenceEquals(pin, _startPin))
         {
+            if (!Running)
+                return;
+
             if (value is not StringSample input ||
                 input.StringValue is not { } inputText)
             {
@@ -241,6 +244,7 @@ public sealed class AutoStartNode : BaseNode
         value = string.Empty;
         return false;
     }
+
     /// <summary>
     /// Final application-exit hook. Runtime resources were already released by Stop; this node
     /// currently has no additional process-exit cleanup.

@@ -17,6 +17,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
+    <ProjectReference Include="..\..\BroadcastKit.Contracts\BroadcastKit.Contracts.csproj" />
+    <ProjectReference Include="..\..\BroadcastKit\BroadcastKit.csproj" />
+    <ProjectReference Include="..\..\FACT.Shared\FACT.Shared.csproj" />
   </ItemGroup>
 
 </Project>

@@ -16,11 +16,14 @@ namespace BroadcastKit;
 /// </summary>
 public sealed class TopicBus : ITopicBus, IAsyncDisposable
 {
+    private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>Process-wide default instance; shared by hosts/plugins that load this assembly together.</summary>
     public static TopicBus Instance { get; } = new();
 
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, TopicSubscriber>> _topics =
         new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<Guid, PendingRequest> _pendingRequests = new();
     private readonly ConcurrentDictionary<long, Task> _pumps = new();
     private readonly object _gate = new();
     private readonly object _stateGate = new();
@@ -36,6 +39,7 @@ public sealed class TopicBus : ITopicBus, IAsyncDisposable
     public BroadcastState State => (BroadcastState)Volatile.Read(ref _state);
     public TopicBusOptions Options => _options;
     public int SubscriberCount => _topics.Values.Sum(topic => topic.Count);
+    public int PendingRequestCount => _pendingRequests.Count;
     public IReadOnlyCollection<string> Topics => _topics.Keys.ToArray();
 
     /// <summary>Raised for handler failures or dropped messages; sender callers never see handler errors.</summary>
@@ -122,6 +126,114 @@ public sealed class TopicBus : ITopicBus, IAsyncDisposable
         Guid? correlationId = null,
         CancellationToken ct = default)
     {
+        await PublishCoreAsync(topic, payload, correlationId, replyTo: null, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Publish a request and wait for the first correlated reply on <paramref name="replyTopic"/>.
+    /// The temporary reply subscription is registered before the request is published, so a
+    /// fast responder cannot race ahead of the requester.
+    /// </summary>
+    public async Task<TopicMessage> RequestAsync(
+        string requestTopic,
+        string replyTopic,
+        object? payload = null,
+        TimeSpan? timeout = null,
+        CancellationToken ct = default)
+    {
+        ValidateTopic(requestTopic);
+        ValidateTopic(replyTopic);
+
+        var effectiveTimeout = timeout ?? DefaultRequestTimeout;
+        if (effectiveTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeout),
+                effectiveTimeout,
+                "Request timeout must be greater than zero.");
+        }
+
+        ct.ThrowIfCancellationRequested();
+        EnsureRunning();
+
+        var correlationId = Guid.NewGuid();
+        var completion = new TaskCompletionSource<TopicMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = new PendingRequest
+        {
+            ReplyTopic = replyTopic,
+            Completion = completion
+        };
+
+        if (!_pendingRequests.TryAdd(correlationId, pending))
+            throw new InvalidOperationException("Unable to register a pending request.");
+
+        ITopicSubscription? subscription = null;
+        try
+        {
+            subscription = Subscribe(replyTopic, message =>
+            {
+                if (!_pendingRequests.TryGetValue(correlationId, out var current))
+                    return Task.CompletedTask;
+
+                if (message.CorrelationId != correlationId)
+                    return Task.CompletedTask;
+
+                current.Completion.TrySetResult(message);
+                return Task.CompletedTask;
+            });
+
+            await PublishCoreAsync(requestTopic, payload, correlationId, replyTopic, ct)
+                .ConfigureAwait(false);
+
+            return await completion.Task
+                .WaitAsync(effectiveTimeout, ct)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException(
+                $"Request on topic '{requestTopic}' did not receive a reply on '{replyTopic}' " +
+                $"within {effectiveTimeout.TotalMilliseconds:0} ms.",
+                ex);
+        }
+        finally
+        {
+            subscription?.Dispose();
+            _pendingRequests.TryRemove(correlationId, out _);
+        }
+    }
+
+    /// <summary>Reply to a request using its reply topic and correlation id.</summary>
+    public async Task ReplyAsync(
+        TopicMessage request,
+        object? payload = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.CorrelationId is not { } correlationId)
+        {
+            throw new ArgumentException(
+                "The request message must have a correlation id.",
+                nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ReplyTo))
+            throw new ArgumentException("The request message must have a reply topic.", nameof(request));
+
+        await PublishCoreAsync(request.ReplyTo, payload, correlationId, replyTo: null, ct)
+            .ConfigureAwait(false);
+    }
+
+    private async Task PublishCoreAsync(
+        string topic,
+        object? payload,
+        Guid? correlationId,
+        string? replyTo,
+        CancellationToken ct)
+    {
         ValidateTopic(topic);
         EnsureRunning();
 
@@ -139,6 +251,7 @@ public sealed class TopicBus : ITopicBus, IAsyncDisposable
             Payload = payload,
             Timestamp = DateTimeOffset.UtcNow,
             CorrelationId = correlationId,
+            ReplyTo = replyTo,
             Sequence = Interlocked.Increment(ref _sequence)
         };
 
@@ -176,6 +289,12 @@ public sealed class TopicBus : ITopicBus, IAsyncDisposable
                 return;
 
             Volatile.Write(ref _state, (int)BroadcastState.Disposing);
+        }
+
+        foreach (var pending in _pendingRequests.Values)
+        {
+            pending.Completion.TrySetException(
+                new BroadcastDisposedException());
         }
 
         lock (_gate)
@@ -433,5 +552,11 @@ public sealed class TopicBus : ITopicBus, IAsyncDisposable
 
         public Task PumpTask { get; set; } = Task.CompletedTask;
         public volatile bool Active = true;
+    }
+
+    private sealed class PendingRequest
+    {
+        public required string ReplyTopic { get; init; }
+        public required TaskCompletionSource<TopicMessage> Completion { get; init; }
     }
 }

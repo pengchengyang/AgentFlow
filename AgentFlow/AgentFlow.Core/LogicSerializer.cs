@@ -37,7 +37,10 @@ public static class LogicSerializer
         var logic = new JsonObject();
         node.SerializeParameters(logic);
         logic["pins"] = SerializePins(node);
-        logic["dependsOn"] = node.DependsOn;
+        var dependsOn = new JsonArray();
+        foreach (var id in node.DependsOn)
+            dependsOn.Add(id);
+        logic["dependsOn"] = dependsOn;
         return logic;
     }
 

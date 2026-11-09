@@ -39,6 +39,57 @@ public static class JsonValueReader
         return fallback;
     }
 
+    /// <summary>
+    /// Dependency-id list. Accepts a JSON array, a single number, a numeric string, or a
+    /// comma/semicolon-separated string so new and legacy workflow files both load safely.
+    /// </summary>
+    public static IReadOnlyList<int> GetIntList(JsonObject? obj, string key)
+    {
+        var node = obj?[key];
+        var ids = new List<int>();
+
+        if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item is JsonValue arrayValue && TryReadInt(arrayValue, out var arrayId))
+                    ids.Add(arrayId);
+            }
+        }
+        else if (node is JsonValue value)
+        {
+            if (value.TryGetValue<string>(out var text) &&
+                (text.Contains(',') || text.Contains(';')))
+            {
+                foreach (var part in text.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (int.TryParse(part, out var parsed))
+                        ids.Add(parsed);
+                }
+            }
+            else if (TryReadInt(value, out var id))
+            {
+                ids.Add(id);
+            }
+        }
+
+        return AgentFlow.Contracts.BaseNode.NormalizeDependsOn(ids);
+    }
+
+    private static bool TryReadInt(JsonValue value, out int result)
+    {
+        if (value.TryGetValue<int>(out result))
+            return true;
+        if (value.TryGetValue<long>(out var longNumber))
+        {
+            result = (int)Math.Clamp(longNumber, int.MinValue, int.MaxValue);
+            return true;
+        }
+        if (value.TryGetValue<string>(out var text) && int.TryParse(text, out result))
+            return true;
+        result = 0;
+        return false;
+    }
     /// <summary>Boolean value (bool or "true"/"false"), or <paramref name="fallback"/>.</summary>
     public static bool GetBool(JsonObject? obj, string key, bool fallback = false)
     {

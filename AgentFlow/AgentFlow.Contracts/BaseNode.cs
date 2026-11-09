@@ -52,12 +52,58 @@ public abstract class BaseNode
 
     /// <summary>Unique id of this node instance. Assigned/managed by AgentFlow.Core.</summary>
     public int InstanceId { get; set; }
+    private IReadOnlyList<int> _dependsOn = Array.Empty<int>();
 
     /// <summary>
-    /// Instance id of another node this node depends on before it may run (optional).
-    /// Serialized into the node's <c>logic</c> blob so dependencies persist across saves.
+    /// Instance ids of nodes that must report <see cref="Running"/> = true before this node may run.
+    /// Empty means the node has no startup dependencies. Serialized into the node's <c>logic</c> blob.
     /// </summary>
-    public int DependsOn { get; set; }
+    public IReadOnlyList<int> DependsOn
+    {
+        get => _dependsOn;
+        set => _dependsOn = NormalizeDependsOn(value);
+    }
+
+    /// <summary>Comma-separated dependency text used by the editable General parameter.</summary>
+    public string DependsOnText => FormatDependsOn(DependsOn);
+
+    /// <summary>Normalize dependency ids by dropping non-positive values and duplicates.</summary>
+    public static IReadOnlyList<int> NormalizeDependsOn(IEnumerable<int>? ids)
+    {
+        if (ids is null)
+            return Array.Empty<int>();
+
+        var seen = new HashSet<int>();
+        var normalized = new List<int>();
+        foreach (var id in ids)
+        {
+            if (id <= 0 || !seen.Add(id))
+                continue;
+            normalized.Add(id);
+        }
+
+        return normalized.Count == 0 ? Array.Empty<int>() : normalized.ToArray();
+    }
+
+    /// <summary>Parse a comma/semicolon-separated dependency id string.</summary>
+    public static IReadOnlyList<int> ParseDependsOn(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return Array.Empty<int>();
+
+        var ids = new List<int>();
+        foreach (var part in text.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (int.TryParse(part, out var id))
+                ids.Add(id);
+        }
+
+        return NormalizeDependsOn(ids);
+    }
+
+    /// <summary>Format dependency ids for the editable General parameter and canvas metadata.</summary>
+    public static string FormatDependsOn(IEnumerable<int>? ids)
+        => string.Join(",", NormalizeDependsOn(ids));
 
     /// <summary>
     /// Whether this node instance may be started again after <see cref="Stop"/>. The default is
@@ -314,7 +360,7 @@ public abstract class BaseNode
         AddParameter(new NodeParameter("Uuid", typeof(string), Uuid, isEditable: false, group: "General"));
         AddParameter(new NodeParameter("InstanceId", typeof(int), InstanceId, isEditable: false, group: "General"));
         AddParameter(new NodeParameter("DisplayName", typeof(string), DisplayName, isEditable: true, group: "General"));
-        AddParameter(new NodeParameter("DependsOn", typeof(int), DependsOn, isEditable: true, group: "General"));
+        AddParameter(new NodeParameter("DependsOn", typeof(string), DependsOnText, isEditable: true, group: "General"));
     }
 
     /// <summary>Apply parameters (from JSON deserialization / property panel).</summary>
@@ -331,7 +377,14 @@ public abstract class BaseNode
     public void RefreshBuiltInParameters()
     {
         SetBuiltInValue("Name", Name);
-        SetBuiltInValue("DependsOn", DependsOn);
+        var dependsOnParameter = BuiltInParam("DependsOn");
+        if (dependsOnParameter is not null)
+        {
+            // Older workflow files declared DependsOn as int. The editable contract is now a
+            // comma-separated string, so normalize both metadata and value before serialization.
+            dependsOnParameter.Type = typeof(string);
+            dependsOnParameter.Value = DependsOnText;
+        }
         SetBuiltInValue("Uuid", Uuid);
         SetBuiltInValue("DisplayName", DisplayName);
         SetBuiltInValue("InstanceId", InstanceId);
@@ -342,8 +395,12 @@ public abstract class BaseNode
     {
         var display = BuiltInParam("DisplayName")?.Value?.ToString();
         if (display is not null) DisplayName = display;
-        if (BuiltInParam("DependsOn")?.Value is { } dep && int.TryParse(dep.ToString(), out var d))
-            DependsOn = d;
+        if (BuiltInParam("DependsOn") is { } dependsOnParameter)
+        {
+            DependsOn = ParseDependsOn(dependsOnParameter.Value?.ToString());
+            dependsOnParameter.Type = typeof(string);
+            dependsOnParameter.Value = DependsOnText;
+        }
     }
 
     private NodeParameter? BuiltInParam(string name) =>
@@ -432,11 +489,11 @@ public abstract class BaseNode
                     var obj = new JsonObject
                     {
                         ["name"] = p.Name,
-                        ["type"] = p.Type.FullName ?? p.Type.Name,
+                        ["type"] = ResolveSerializableParameterType(p).FullName ?? ResolveSerializableParameterType(p).Name,
                         ["isEditable"] = p.IsEditable,
                         ["zone"] = p.Zone ?? string.Empty,
                         ["group"] = p.Group ?? string.Empty,
-                        ["value"] = p.Value is null ? null : JsonSerializer.SerializeToNode(p.Value, p.Type)
+                        ["value"] = SerializeParameterValue(p)
                     };
 
                     // Editor metadata is part of the parameter declaration and must round-trip with
@@ -456,6 +513,27 @@ public abstract class BaseNode
                 zoneObj[group.Key] = arr;
             }
         }
+    }
+
+    private static Type ResolveSerializableParameterType(NodeParameter parameter)
+    {
+        if (parameter.Value is null)
+            return parameter.Type;
+
+        var runtimeType = parameter.Value.GetType();
+        var nullableUnderlying = Nullable.GetUnderlyingType(parameter.Type);
+        return parameter.Type == runtimeType || nullableUnderlying == runtimeType
+            ? parameter.Type
+            : runtimeType;
+    }
+
+    private static JsonNode? SerializeParameterValue(NodeParameter parameter)
+    {
+        if (parameter.Value is null)
+            return null;
+
+        var serializationType = ResolveSerializableParameterType(parameter);
+        return JsonSerializer.SerializeToNode(parameter.Value, serializationType);
     }
 
     /// <summary>

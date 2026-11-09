@@ -151,7 +151,11 @@ public sealed class PluginLoader
     /// <see cref="BaseNode.DependsOn"/>, and applies the saved logical parameters
     /// (uuid / displayName / instanceId / dependsOn / parameters) from <paramref name="logic"/>.
     /// </summary>
-    public BaseNode CreateNodeInstance(string name, int instanceId, int dependsOn, JsonObject? logic = null)
+    public BaseNode CreateNodeInstance(
+        string name,
+        int instanceId,
+        IReadOnlyList<int>? dependsOn,
+        JsonObject? logic = null)
     {
         var registry = _registry ?? throw new InvalidOperationException(
             "PluginLoader is not initialized: call LoadFromDirectory first.");
@@ -169,7 +173,7 @@ public sealed class PluginLoader
             {
                 instance.InstanceId = _nodeIds.Allocate();
             }
-            instance.DependsOn = dependsOn;
+            instance.DependsOn = BaseNode.NormalizeDependsOn(dependsOn);
             _instances.Add(instance);
         }
         if (logic is not null)
@@ -178,9 +182,17 @@ public sealed class PluginLoader
             LogicDeserializer.RestorePinIds(instance, logic);
         }
         _logger.LogTrace("PluginLoader: restored node instance #{InstanceId} ({Name}, dependsOn={DependsOn})",
-            instanceId, name, dependsOn);
+            instanceId, name, instance.DependsOnText);
         return instance;
     }
+
+    /// <summary>Compatibility overload for callers that still pass one legacy dependency id.</summary>
+    public BaseNode CreateNodeInstance(string name, int instanceId, int dependsOn, JsonObject? logic = null)
+        => CreateNodeInstance(
+            name,
+            instanceId,
+            dependsOn > 0 ? new[] { dependsOn } : Array.Empty<int>(),
+            logic);
 
     /// <summary>Delete a managed node instance by its <see cref="BaseNode.InstanceId"/>.</summary>
     /// <returns>True if the instance was found and removed.</returns>

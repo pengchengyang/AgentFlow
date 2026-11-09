@@ -5,14 +5,16 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
+using BroadcastKit;
+using BroadcastKit.Contracts;
+using FACT.Shared.Broadcast;
 using Microsoft.Extensions.Logging;
 
 namespace Node.AutoStop;
 
 /// <summary>
-/// Workflow control node that receives semicolon-terminated JSON groups and emits each
-/// validated JSON group through the output selected by its SLOT value. The actual workflow-stop action
-/// is supplied by the host through <see cref="IWorkflowStopRequestSink"/>.
+/// Workflow control node that receives semicolon-terminated JSON groups, validates them,
+/// and requests a workflow stop through <see cref="IWorkflowStopRequestSink"/>.
 /// </summary>
 public sealed class AutoStopNode : BaseNode
 {
@@ -21,22 +23,6 @@ public sealed class AutoStopNode : BaseNode
     private readonly BasePin _stopPin =
         new("input_string_stop", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _stopAPin =
-        new("output_string_stopA", DataType.STRING, PinDirection.Output);
-
-    private readonly BasePin _stopBPin =
-        new("output_string_stopB", DataType.STRING, PinDirection.Output);
-
-    private readonly BasePin _stopCPin =
-        new("output_string_stopC", DataType.STRING, PinDirection.Output);
-
-    private readonly BasePin _stopDPin =
-        new("output_string_stopD", DataType.STRING, PinDirection.Output);
-
-    private readonly BasePin _stopFPin =
-        new("output_string_stopF", DataType.STRING, PinDirection.Output);
-
-    private readonly BasePin[] _stopPins;
     private readonly object _inputGate = new();
 
     private INodeContext? _context;
@@ -45,15 +31,6 @@ public sealed class AutoStopNode : BaseNode
 
     public AutoStopNode()
     {
-        _stopPins = new[]
-        {
-            _stopAPin,
-            _stopBPin,
-            _stopCPin,
-            _stopDPin,
-            _stopFPin,
-        };
-
         Uuid = "C60BAA9B-C0AB-4817-8683-F1646BC863AE";
         AddParam();
         AddPins();
@@ -66,8 +43,6 @@ public sealed class AutoStopNode : BaseNode
     public override void AddPins()
     {
         AddInputPin(_stopPin);
-        foreach (var stopPin in _stopPins)
-            AddOutputPin(stopPin);
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
@@ -181,26 +156,39 @@ public sealed class AutoStopNode : BaseNode
             return;
         }
 
-        var stopPin = GetStopPin(slot);
-        if (stopPin is null)
-        {
-            _logger?.LogError("AutoStop could not map SLOT {Slot} to a stop output pin.", slot);
-            return;
-        }
+        _logger?.LogTrace(
+            "AutoStop accepted SLOT {Slot}, FSN {Fsn}, IMEI {Imei} and requested a workflow stop.",
+            slot,
+            fsn,
+            imei);
 
-        var stopSample = StringSample.CreateSample();
-        stopSample.StringValue = segment;
-        if (stopPin.SendSample(stopSample))
-        {
-            _logger?.LogTrace(
-                "AutoStop dispatched SLOT {Slot}, FSN {Fsn}, IMEI {Imei} to {Pin}.",
-                slot,
-                fsn,
-                imei,
-                stopPin.Name);
-        }
-
+        _ = BroadcastLauncherStopAsync();
         RequestWorkflowStop(segment, pinContext);
+    }
+
+    private async Task BroadcastLauncherStopAsync()
+    {
+        try
+        {
+            var sample = StringSample.CreateSample();
+            sample.SetValue("Stop");
+
+            await TopicBus.Instance.PublishAsync(
+                FactBroadcastSubscriptions.LauncherStop,
+                BroadcastTopicMessage.FromSample(sample),
+                ct: CancellationToken.None).ConfigureAwait(false);
+
+            _logger?.LogTrace(
+                "AutoStop broadcast launcher stop signal on {Topic}.",
+                FactBroadcastSubscriptions.LauncherStop);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "AutoStop failed to broadcast launcher stop signal on {Topic}.",
+                FactBroadcastSubscriptions.LauncherStop);
+        }
     }
 
     private void RequestWorkflowStop(string triggerMessage, INodeContext? pinContext)
@@ -217,16 +205,6 @@ public sealed class AutoStopNode : BaseNode
             _logger?.LogTrace("AutoStop stop request was not accepted by the host.");
     }
 
-    private BasePin? GetStopPin(int slot) => slot switch
-    {
-        1 or 6 => _stopAPin,
-        2 or 7 => _stopBPin,
-        3 or 8 => _stopCPin,
-        4 or 9 => _stopDPin,
-        5 or 10 => _stopFPin,
-        _ => null,
-    };
-
     private static bool TryGetRequiredValue(
         IReadOnlyDictionary<string, string> values,
         string key,
@@ -241,6 +219,7 @@ public sealed class AutoStopNode : BaseNode
         value = string.Empty;
         return false;
     }
+
     /// <summary>
     /// Final application-exit hook. Runtime resources were already released by Stop; this node
     /// currently has no additional process-exit cleanup.

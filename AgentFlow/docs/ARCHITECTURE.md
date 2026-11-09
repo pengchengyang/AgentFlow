@@ -16,8 +16,9 @@ desktop, CLI, headless, or future web hosts.
 | `AgentFlow.Desktop` | Desktop entry point and host logging setup. |
 | `AgentFlow.Cli` | Headless workflow entry point. |
 | `Hosting.Logging` | Shared Serilog-compatible logging integration. |
+| `FACT.Shared` | GUI-neutral FACT declarations, including shared error/result contracts and broadcast subscription names. |
 | `plugins/*` | Dynamically loaded node implementations and demo nodes. |
-| `BroadcastKit*` | Optional broadcast transport used by demo nodes. |
+| `BroadcastKit*` | Optional process-local broadcast transport and shared topic/message contracts, including ordered sample batches and correlated request/reply. |
 
 ## Dependency Direction
 
@@ -47,6 +48,23 @@ Product-specific GUIs must use only `IWorkflowReadOnlyHost`. They do not render
 nodes, pins, or connections and do not mutate workflow documents. They read
 per-node/runtime health and display their own product data through separate
 domain services.
+
+## Broadcast Request/Reply
+
+`BroadcastKit` keeps `PublishAsync` as a one-way, no-reply operation. The optional
+`RequestAsync` API adds correlated request/reply behavior without changing existing
+publishers:
+
+- `RequestAsync(requestTopic, replyTopic, payload, timeout, ct)` subscribes to the
+  reply topic before publishing the request.
+- Request messages carry `CorrelationId` and `ReplyTo`; only the first reply with the
+  matching correlation id completes the request.
+- `ReplyAsync(request, payload, ct)` publishes the response to `request.ReplyTo` with
+  the original correlation id.
+- The default request timeout is five seconds. Timeout, cancellation, and disposal
+  always remove the temporary subscription and pending request.
+- The bus does not inspect payloads; business meaning remains defined by topic contracts.
+
 ## CLI Multi-Instance Execution
 
 `AgentFlow.Cli` runs every configured workflow instance independently in one
@@ -89,6 +107,25 @@ the node can still accept or process work until `Stop()` is called.
    marks that node failed and automatically stops the workflow. This applies
    equally to GUI, CLI, and headless hosts.
 
+### Startup Dependencies
+
+`BaseNode.DependsOn` is a normalized `IReadOnlyList<int>` of node instance ids.
+A node with `DependsOn = [1001, 1002, 1003]` is not started until all three
+dependency nodes have completed their startup path and still report both
+`State == NodeState.Running` and `Running = true`. This is a startup barrier,
+not merely a call-order preference:
+
+- Root nodes without dependencies start concurrently.
+- Multi-dependency nodes start once, after the final dependency becomes ready.
+- If any dependency fails, the dependent node does not call `Run()` and Core
+  stops the workflow.
+- Missing, self-referencing, duplicate instance-id, and cyclic dependency graphs
+  are rejected before runtime launch by validation / Core.
+- The editable General parameter accepts comma- or semicolon-separated ids
+  (for example `1001,1002,1003`). `0` and non-positive values mean no dependency.
+- JSON stores dependencies as an array (`{"dependsOn":[1001,1002,1003]}`) while
+  old single-number files (`{"dependsOn":1001}`) remain loadable.
+
 GUI status indicators are derived from real node state. The bottom status bar
 shows `Running` only when every node is both started and still reporting
 `Running = true`. The canvas refresh/gear indicator rotates only while the
@@ -110,7 +147,7 @@ incoming samples to `BaseNode.ReceiveSample`. On an output pin,
 input pin it is the stored upstream reference. The editor layer only draws and
 establishes/removes connections; runtime delivery is performed by the Core
 graph and pin objects. `BasePin.SendSample` rejects every output send when
-`TargetCount == 0`, records an `ERROR` through the bound node context, and
+`TargetCount == 0`, records a `WARN` through the bound node context, and
 returns `false` without invoking downstream delivery. It returns `true` only
 after dispatching to one or more targets. Nodes use this result to gate
 success logs, so disconnected outputs never produce misleading "sent" traces.
@@ -123,7 +160,7 @@ User-operation rejections and recoverable editing constraints are logged at `WAR
 
 - Trying to drag, delete, add, wire, clear, save, or edit parameters while the workflow is running.
 - Connection validation failures such as wrong direction, self-connection, type mismatch, or occupied pins.
-- Expected precondition failures and user cancellations.
+- Expected precondition failures, disconnected optional outputs, and user cancellations.
 
 Actual runtime faults remain at `ERROR`:
 
@@ -150,7 +187,8 @@ Actual runtime faults remain at `ERROR`:
 ## Serialization
 
 - `LogicSerializer` / `LogicDeserializer` in Core handle node logic and parameter
-  JSON without GUI data.
+  JSON without GUI data. Startup dependencies are persisted in the logic blob as
+  a normalized `dependsOn` array, with legacy scalar values accepted on load.
 - `GraphSerializer` / `GraphDeserializer` in the Avalonia project merge logic
   JSON with UI-only data such as coordinates and viewport state.
 
@@ -201,28 +239,37 @@ and receive hooks without implementing final business behavior yet:
 
 | Plugin | Role | Default pins |
 | --- | --- | --- |
-| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, cached CMD/IP/SLOT/PORTHUB settings, and direct `UserSettingsParser` support | `input_string_run` and `input_int64_ret` inputs; `output_string_host` and `output_string_cmd` outputs |
+| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, pin-based user-settings coordination, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host` and `output_string_cmd` outputs |
+| `Node.UserSettings` | Standalone INI settings reader that returns section values as JSON for configuration consumers | `input_string_ready` string input; `output_string_slotA/B/C/D/F` string outputs |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
-| `Node.AutoStart` | Workflow start trigger and SLOT router | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
-| `Node.AutoStop` | Workflow stop trigger and SLOT router | `input_string_stop` string input; `output_string_stopA/B/C/D/F` string outputs |
+| `Node.AutoStart` | Workflow start trigger and SLOT router; validates input and routes valid groups to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
+| `Node.AutoStop` | Workflow stop trigger with input validation and launcher-stop publication | `input_string_stop` string input; no output pins |
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
+| `Node.ProcessRunner` | Windows command runner using the already-elevated AgentFlow host token; streams stdout/stderr lines to the log panel in real time and publishes the final combined output | `input_string_cmd` string input; `output_string_ret` string output and `output_int64_ret` int64 output |
 
-`UserSettingsParser` now lives in `Node.FACTLauncher` for future use; the standalone `Node.UserSettings` plugin was removed.
+`Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
 
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.
 
 `Node.AutoStart` buffers semicolon-terminated `SLOT`/`FSN`/`IMEI` JSON groups from
-`input_string_start`, validates each group, sends the corresponding JSON group to the output mapped from `SLOT`, and emits a host-neutral start request through `IWorkflowStartRequestSink`. A product-specific host registers the service implementation; the plugin has no Avalonia dependency.
+`input_string_start`, validates each group, sends the corresponding JSON group to the output
+mapped from `SLOT`, and emits a host-neutral start request through
+`IWorkflowStartRequestSink`. A product-specific host registers the service implementation;
+the plugin has no Avalonia dependency.
 
-`Node.AutoStop` mirrors that contract on `input_string_stop` and `output_string_stopA/B/C/D/F`,
-and requests a normal workflow stop through `IWorkflowStopRequestSink` after dispatching the
-validated group. The service is implemented by the consuming product host, not by the generic AgentFlow editor GUI; it does not invoke final application `Shutdown`.
+`Node.AutoStop` validates semicolon-terminated groups on `input_string_stop`, publishes the
+shared LauncherStop broadcast, and requests a normal workflow stop through
+`IWorkflowStopRequestSink`. It has no output pins. The service is implemented by the consuming
+product host, not by the generic AgentFlow editor GUI; it does not invoke final application
+`Shutdown`.
 
 The TCP demo nodes expose a raw byte-stream interface. `TCP Client` and `TCP Server`
 each expose `input_string`, `input_binary`, `output_string`, and `output_binary`.
-Text inputs are UTF-8 encoded, binary inputs are sent unchanged, and received byte blocks
-are published without adding framing or automatic replies. See `docs/tcp-transport.md`.
+`TCP Client` additionally exposes `input_string_endpoint` for runtime-only `host:port`
+changes without modifying persisted workflow parameters. Text inputs are UTF-8 encoded,
+binary inputs are sent unchanged, and received byte blocks are published without adding
+framing or automatic replies. See `docs/tcp-transport.md`.
 
 
 

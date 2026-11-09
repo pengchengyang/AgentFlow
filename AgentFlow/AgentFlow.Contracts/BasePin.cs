@@ -160,7 +160,7 @@ public class BasePin
     /// Runs <see cref="OnSend"/> and forwards the value to every connected target (one-to-one
     /// today). The target array is read once, so concurrent rewiring never causes a
     /// "collection was modified" exception inside the sending node. An output pin without a
-    /// downstream connection is not allowed to send; the bound node context records an error.
+    /// downstream connection is not allowed to send; the bound node context records a warning.
     /// Returns true only when the sample was delivered to one or more downstream targets.
     /// </summary>
     public virtual bool SendSample(Sample? value)
@@ -171,7 +171,7 @@ public class BasePin
         var targets = Volatile.Read(ref _targets);
         if (targets.Length == 0)
         {
-            Context?.Logger.LogError(
+            Context?.Logger.LogWarning(
                 "Output pin {Node}.{Pin} is not connected; data was not sent.",
                 Owner?.DisplayName ?? "<unassigned>",
                 Name);

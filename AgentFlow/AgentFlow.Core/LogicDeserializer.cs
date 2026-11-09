@@ -37,8 +37,11 @@ public static class LogicDeserializer
         // New format is the logic object itself. A legacy wrapper containing a "logic" key
         // is also accepted for files saved before the top-level rename.
         var logic = json["logic"] as JsonObject ?? json;
-        node.DependsOn = JsonValueReader.GetInt(logic, "dependsOn");
+        node.DependsOn = JsonValueReader.GetIntList(logic, "dependsOn");
         node.DeserializeParameters(logic);
+        // Older documents may have persisted DependsOn only inside the General parameter
+        // group. Applying the built-in parameters after the group restore keeps that form loadable.
+        node.ApplyBuiltInParameters();
     }
 
     /// <summary>

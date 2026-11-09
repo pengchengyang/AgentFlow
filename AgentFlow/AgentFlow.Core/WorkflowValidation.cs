@@ -113,8 +113,9 @@ public static class WorkflowValidation
             }
         }
 
-        // DependsOn (startup dependency) checks: the referenced instance id must exist in the graph,
-        // must not be the node itself, and the dependency graph must not contain a cycle.
+        // DependsOn startup dependency checks: every referenced instance must exist, self-dependencies
+        // are invalid, and the dependency graph must be acyclic. DependsOn accepts the new array/string
+        // forms and the legacy single integer.
         var byInstanceId = new Dictionary<int, NodeSpec>();
         foreach (var node in graph.Nodes)
         {
@@ -127,12 +128,13 @@ public static class WorkflowValidation
         foreach (var node in graph.Nodes)
         {
             var instanceId = ToInt(GetParameter(node, "InstanceId"));
-            var dependsOn = ToInt(GetParameter(node, "DependsOn"));
-            if (dependsOn == 0) continue;
-            if (dependsOn == instanceId)
-                errors.Add($"Node '{node.Id}' depends on itself (DependsOn = {dependsOn}).");
-            else if (!byInstanceId.ContainsKey(dependsOn))
-                errors.Add($"Node '{node.Id}' depends on missing node instance #{dependsOn}.");
+            foreach (var dependsOn in ToIntList(GetParameter(node, "DependsOn")))
+            {
+                if (dependsOn == instanceId)
+                    errors.Add($"Node '{node.Id}' depends on itself (DependsOn = {dependsOn}).");
+                else if (!byInstanceId.ContainsKey(dependsOn))
+                    errors.Add($"Node '{node.Id}' depends on missing node instance #{dependsOn}.");
+            }
         }
 
         foreach (var cycle in FindDependencyCycles(graph, byInstanceId))
@@ -196,6 +198,70 @@ public static class WorkflowValidation
             : node.Parameters.FirstOrDefault(kv => string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)).Value;
 
     /// <summary>Convert a built-in parameter value (native, JSON element or numeric string) to an int.</summary>
+    /// <summary>
+    /// Convert a DependsOn value to a normalized list. Accepts a typed list, a legacy integer,
+    /// a comma/semicolon-separated string, or a JSON array/string/number.
+    /// </summary>
+    internal static IReadOnlyList<int> ToIntList(object? value)
+    {
+        var ids = new List<int>();
+
+        switch (value)
+        {
+            case null:
+                return Array.Empty<int>();
+            case IEnumerable<int> values:
+                ids.AddRange(values);
+                break;
+            case JsonElement { ValueKind: JsonValueKind.Array } array:
+                foreach (var item in array.EnumerateArray())
+                    AddJsonInt(item, ids);
+                break;
+            case JsonElement element:
+                AddJsonInt(element, ids);
+                break;
+            case string text:
+                foreach (var part in text.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (int.TryParse(part, out var parsed))
+                        ids.Add(parsed);
+                }
+                break;
+            case int or long or short or byte:
+                ids.Add(Convert.ToInt32(value));
+                break;
+        }
+
+        return BaseNode.NormalizeDependsOn(ids);
+    }
+
+    private static void AddJsonInt(JsonElement element, ICollection<int> ids)
+    {
+        if (element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var number))
+        {
+            ids.Add(number);
+            return;
+        }
+
+        if (element.ValueKind != JsonValueKind.String)
+            return;
+
+        var text = element.GetString();
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        if (int.TryParse(text, out var single))
+        {
+            ids.Add(single);
+            return;
+        }
+
+        foreach (var part in text.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (int.TryParse(part, out var parsed))
+                ids.Add(parsed);
+        }
+    }
     internal static int ToInt(object? value) => value switch
     {
         int i => i,
@@ -211,32 +277,49 @@ public static class WorkflowValidation
         WorkflowGraph graph,
         IReadOnlyDictionary<int, NodeSpec> byInstanceId)
     {
+        var state = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var stack = new List<NodeSpec>();
         var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var start in graph.Nodes)
         {
-            var path = new List<string>();
-            var index = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var node = start;
-            while (true)
+            foreach (var cycle in Visit(start))
+                yield return cycle;
+        }
+
+        IEnumerable<string> Visit(NodeSpec node)
+        {
+            state[node.Id] = 1;
+            stack.Add(node);
+
+            foreach (var dependencyId in ToIntList(GetParameter(node, "DependsOn")))
             {
-                if (index.TryGetValue(node.Id, out var begin))
+                if (!byInstanceId.TryGetValue(dependencyId, out var dependency) ||
+                    string.Equals(dependency.Id, node.Id, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!state.TryGetValue(dependency.Id, out var dependencyState))
                 {
-                    var cycle = path.Skip(begin).ToList();
-                    var key = string.Join(" -> ", cycle.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
-                    if (reported.Add(key))
-                        yield return $"DependsOn cycle: {string.Join(" -> ", cycle)} -> {node.Id}.";
-                    break;
+                    foreach (var nestedCycle in Visit(dependency))
+                        yield return nestedCycle;
+                    continue;
                 }
 
-                index[node.Id] = path.Count;
-                path.Add(node.Id);
+                if (dependencyState != 1)
+                    continue;
 
-                var dependsOn = ToInt(GetParameter(node, "DependsOn"));
-                if (dependsOn == 0) break;
-                if (!byInstanceId.TryGetValue(dependsOn, out var target)) break;
-                if (string.Equals(target.Id, node.Id, StringComparison.OrdinalIgnoreCase)) break;
-                node = target;
+                var cycleStart = stack.FindIndex(n => string.Equals(n.Id, dependency.Id, StringComparison.OrdinalIgnoreCase));
+                if (cycleStart < 0)
+                    continue;
+
+                var cycleNodes = stack.Skip(cycleStart).Select(n => n.Id).ToList();
+                var key = string.Join(" -> ", cycleNodes.OrderBy(id => id, StringComparer.OrdinalIgnoreCase));
+                if (reported.Add(key))
+                    yield return $"DependsOn cycle: {string.Join(" -> ", cycleNodes)} -> {dependency.Id}.";
             }
+
+            stack.RemoveAt(stack.Count - 1);
+            state[node.Id] = 2;
         }
     }
 }

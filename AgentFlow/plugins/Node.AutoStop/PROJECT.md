@@ -3,8 +3,8 @@
 ## Purpose
 
 `Node.AutoStop` is a workflow-control plugin. It receives semicolon-terminated JSON groups
-on `input_string_stop`, validates each group, emits the original group JSON to a slot-specific
-output pin, and forwards a workflow-stop request to a host-provided service.
+on `input_string_stop`, validates each group, and forwards a workflow-stop request to a
+host-provided service. The node has one input pin and no output pins.
 
 ## Input Contract
 
@@ -25,27 +25,19 @@ Each JSON object must contain:
 Field-name lookup is case-insensitive. `FSN` and `IMEI` are preserved exactly, including
 any leading slash.
 
-## Output Mapping
+## Stop Request
 
-When a group is parsed successfully, the node sends the original validated JSON group to one output pin:
-
-| SLOT | Output pin |
-| --- | --- |
-| `1` or `6` | `output_string_stopA` |
-| `2` or `7` | `output_string_stopB` |
-| `3` or `8` | `output_string_stopC` |
-| `4` or `9` | `output_string_stopD` |
-| `5` or `10` | `output_string_stopF` |
-
-Multiple groups that map to the same pin are dispatched independently in input order.
+When a group is parsed successfully, the node broadcasts a single `STRING` sample with value
+`Stop` on `FactBroadcastSubscriptions.LauncherStop` and sends the original validated JSON
+group to `IWorkflowStopRequestSink.RequestStop`. It does not dispatch the group to output pins.
 
 ## Contract Surface
 
 - Display name: `Auto Stop`
 - Category: `Control`
 - Input pin: `input_string_stop` (`STRING`, optional)
-- Output pins: `output_string_stopA`, `output_string_stopB`, `output_string_stopC`, `output_string_stopD`, `output_string_stopF` (`STRING`)
-- Output payload: the validated JSON group without its trailing semicolon
+- Output pins: none
+- Stop trigger payload: the validated JSON group without its trailing semicolon
 - Required host service: `IWorkflowStopRequestSink`
 
 ## Streaming Behavior
@@ -55,7 +47,7 @@ TCP does not preserve message boundaries. The node keeps a pending input buffer 
 Incomplete trailing content remains buffered until later input arrives or the node stops.
 
 An empty segment between consecutive semicolons is ignored. Invalid JSON, missing fields,
-or an out-of-range `SLOT` is logged as an error and does not produce output.
+or an out-of-range `SLOT` is logged as an error and does not trigger a stop request.
 
 The pending buffer is capped at 64 KiB to prevent unbounded growth from malformed input.
 
@@ -65,9 +57,9 @@ The pending buffer is capped at 64 KiB to prevent unbounded growth from malforme
 `Run` sets `Running = true` and waits for JSON groups. `Stop` clears pending input and
 releases the cached context and logger.
 
-For each valid group, the node sends the original JSON group to the mapped output pin and calls
-`IWorkflowStopRequestSink.RequestStop`. If the host service is unavailable, the stop
-message is still dispatched and a warning is logged.
+For each valid group, the node publishes the shared LauncherStop signal and calls
+`IWorkflowStopRequestSink.RequestStop`. If the host service is unavailable, no workflow-stop
+request is sent and a warning is logged.
 
 ## JSON Key/Value Parsing
 

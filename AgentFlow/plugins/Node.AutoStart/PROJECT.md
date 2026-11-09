@@ -69,6 +69,9 @@ For each valid group, the node sends the original JSON group to the mapped outpu
 `IWorkflowStartRequestSink.RequestStart`. If the host service is unavailable, the ready
 message is still dispatched and a warning is logged.
 
+Invalid sample types or null string values are rejected before input buffering. Valid
+`StringSample` values are buffered and parsed without a launcher-start request or reply wait.
+
 ## JSON Key/Value Parsing
 
 `JsonKeyValueParser.cs` provides plugin-local parsing. It supports both the existing

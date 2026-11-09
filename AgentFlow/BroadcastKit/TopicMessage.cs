@@ -17,6 +17,7 @@ public sealed record TopicMessage
     public object? Payload { get; init; }
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public Guid? CorrelationId { get; init; }
+    public string? ReplyTo { get; init; }
     public long Sequence { get; init; }
 }
 
@@ -31,6 +32,23 @@ public interface ITopicBus
         string topic,
         object? payload = null,
         Guid? correlationId = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Publish a request and wait for the first correlated reply on <paramref name="replyTopic"/>.
+    /// A temporary reply subscription is active before the request is published.
+    /// </summary>
+    Task<TopicMessage> RequestAsync(
+        string requestTopic,
+        string replyTopic,
+        object? payload = null,
+        TimeSpan? timeout = null,
+        CancellationToken ct = default);
+
+    /// <summary>Reply to a request using its <see cref="TopicMessage.ReplyTo"/> and correlation id.</summary>
+    Task ReplyAsync(
+        TopicMessage request,
+        object? payload = null,
         CancellationToken ct = default);
 }
 

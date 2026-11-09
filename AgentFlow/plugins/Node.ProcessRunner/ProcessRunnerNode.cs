@@ -4,9 +4,8 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
-using System.ComponentModel;
 using System.Diagnostics;
-using System.Globalization;
+using System.Security.Principal;
 using System.Text;
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
@@ -14,15 +13,14 @@ using Microsoft.Extensions.Logging;
 namespace Node.ProcessRunner;
 
 /// <summary>
-/// Runs a Windows command through an elevated helper process. The command is supplied
-/// as a single command-line string. The process exit code is always published on the
-/// INT64 output pin; captured stdout/stderr is published on the STRING output pin when
-/// available.
+/// Runs a Windows command through <c>cmd.exe</c>. AgentFlow must already run with an elevated
+/// administrator token; child processes inherit that token and no UAC prompt is raised. The
+/// exit code is always published on the INT64 output pin, and captured stdout/stderr is
+/// published on the STRING output pin when available.
 /// </summary>
 public sealed class ProcessRunnerNode : BaseNode
 {
     private const long LaunchFailureExitCode = -1;
-    private const int UserCancelledErrorCode = 1223;
 
     private readonly BasePin _commandPin =
         new("input_string_cmd", DataType.STRING, PinDirection.Input, required: false);
@@ -90,7 +88,7 @@ public sealed class ProcessRunnerNode : BaseNode
             }
             catch (Exception ex)
             {
-                _logger?.LogTrace(ex, "ProcessRunner could not terminate the elevated helper process.");
+                _logger?.LogTrace(ex, "ProcessRunner could not terminate the command process.");
             }
         }
 
@@ -121,6 +119,7 @@ public sealed class ProcessRunnerNode : BaseNode
     private async Task ExecuteCommandAsync(string command, CancellationToken cancellationToken)
     {
         string? tempDirectory = null;
+        Process? process = null;
         var gateEntered = false;
 
         try
@@ -130,7 +129,15 @@ public sealed class ProcessRunnerNode : BaseNode
 
             if (!OperatingSystem.IsWindows())
             {
-                _logger?.LogWarning("ProcessRunner only supports elevated process execution on Windows.");
+                _logger?.LogError("ProcessRunner only supports Windows elevated process execution.");
+                PublishResult(LaunchFailureExitCode, null);
+                return;
+            }
+
+            if (!IsProcessElevated())
+            {
+                _logger?.LogError(
+                    "ProcessRunner requires AgentFlow to be launched with administrator privileges; the command was not started.");
                 PublishResult(LaunchFailureExitCode, null);
                 return;
             }
@@ -143,44 +150,41 @@ public sealed class ProcessRunnerNode : BaseNode
             Directory.CreateDirectory(tempDirectory);
 
             var commandFile = Path.Combine(tempDirectory, "command.cmd");
-            var stdoutFile = Path.Combine(tempDirectory, "stdout.txt");
-            var stderrFile = Path.Combine(tempDirectory, "stderr.txt");
-            var exitCodeFile = Path.Combine(tempDirectory, "exit-code.txt");
-            var helperFile = Path.Combine(tempDirectory, "run-elevated.ps1");
-
             await File.WriteAllTextAsync(
                 commandFile,
                 command,
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
                 cancellationToken).ConfigureAwait(false);
 
-            await File.WriteAllTextAsync(
-                helperFile,
-                BuildElevatedHelperScript(commandFile, stdoutFile, stderrFile, exitCodeFile),
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-                cancellationToken).ConfigureAwait(false);
-
             var startInfo = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{helperFile}\"",
-                UseShellExecute = true,
-                Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Hidden
+                FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+                Arguments = $"/d /s /c \"\"{commandFile}\"\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
 
-            var helperProcess = Process.Start(startInfo);
-            if (helperProcess is null)
-                throw new InvalidOperationException("Windows did not return a process handle for the elevated helper.");
+            process = Process.Start(startInfo);
+            if (process is null)
+                throw new InvalidOperationException("Windows did not return a process handle for the command.");
 
-            Interlocked.Exchange(ref _activeProcess, helperProcess);
-            await helperProcess.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            Interlocked.Exchange(ref _activeProcess, null);
+            Interlocked.Exchange(ref _activeProcess, process);
+            var stdoutTask = ReadProcessStreamAsync(
+                process.StandardOutput,
+                "STDOUT",
+                cancellationToken);
+            var stderrTask = ReadProcessStreamAsync(
+                process.StandardError,
+                "STDERR",
+                cancellationToken);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 
-            var exitCode = await ReadExitCodeAsync(exitCodeFile, helperProcess)
-                .ConfigureAwait(false);
-            var output = await ReadCombinedOutputAsync(stdoutFile, stderrFile, cancellationToken)
-                .ConfigureAwait(false);
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            var stderr = await stderrTask.ConfigureAwait(false);
+            var exitCode = process.ExitCode;
+            var output = CombineOutput(stdout, stderr);
 
             _logger?.LogTrace(
                 "ProcessRunner command exited with code {ExitCode}; captured output length {OutputLength}.",
@@ -193,11 +197,6 @@ public sealed class ProcessRunnerNode : BaseNode
         {
             _logger?.LogTrace("ProcessRunner command was cancelled.");
         }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == UserCancelledErrorCode)
-        {
-            _logger?.LogWarning("ProcessRunner elevation was cancelled by the user.");
-            PublishResult(LaunchFailureExitCode, null);
-        }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "ProcessRunner failed to start or monitor the elevated command.");
@@ -206,6 +205,7 @@ public sealed class ProcessRunnerNode : BaseNode
         finally
         {
             Interlocked.Exchange(ref _activeProcess, null);
+            process?.Dispose();
 
             if (tempDirectory is not null)
             {
@@ -224,6 +224,49 @@ public sealed class ProcessRunnerNode : BaseNode
         }
     }
 
+    private static bool IsProcessElevated()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    private async Task<string> ReadProcessStreamAsync(
+        StreamReader reader,
+        string streamName,
+        CancellationToken cancellationToken)
+    {
+        var output = new StringBuilder();
+
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            output.AppendLine(line);
+
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                _logger?.LogInformation(
+                    "ProcessRunner [{Stream}] {Line}",
+                    streamName,
+                    line);
+            }
+        }
+
+        return output.ToString();
+    }
+
+    private static string CombineOutput(string stdout, string stderr)
+    {
+        if (string.IsNullOrWhiteSpace(stderr))
+            return stdout;
+
+        if (string.IsNullOrWhiteSpace(stdout))
+            return stderr;
+
+        return stdout.TrimEnd() + Environment.NewLine + stderr;
+    }
+
     private void PublishResult(long exitCode, string? output)
     {
         if (!string.IsNullOrWhiteSpace(output))
@@ -238,84 +281,6 @@ public sealed class ProcessRunnerNode : BaseNode
         _exitCodePin.SendSample(exitCodeSample);
     }
 
-    private static async Task<long> ReadExitCodeAsync(string exitCodeFile, Process helperProcess)
-    {
-        if (File.Exists(exitCodeFile))
-        {
-            var text = await File.ReadAllTextAsync(exitCodeFile).ConfigureAwait(false);
-            if (long.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var exitCode))
-                return exitCode;
-        }
-
-        return helperProcess.ExitCode;
-    }
-
-    private static async Task<string> ReadCombinedOutputAsync(
-        string stdoutFile,
-        string stderrFile,
-        CancellationToken cancellationToken)
-    {
-        var stdout = File.Exists(stdoutFile)
-            ? await File.ReadAllTextAsync(stdoutFile, cancellationToken).ConfigureAwait(false)
-            : "";
-        var stderr = File.Exists(stderrFile)
-            ? await File.ReadAllTextAsync(stderrFile, cancellationToken).ConfigureAwait(false)
-            : "";
-
-        if (string.IsNullOrWhiteSpace(stderr))
-            return stdout;
-
-        if (string.IsNullOrWhiteSpace(stdout))
-            return stderr;
-
-        return stdout.TrimEnd() + Environment.NewLine + stderr;
-    }
-
-    private static string BuildElevatedHelperScript(
-        string commandFile,
-        string stdoutFile,
-        string stderrFile,
-        string exitCodeFile)
-    {
-        return $$"""
-$ErrorActionPreference = 'Stop'
-$commandFile = '{{EscapePowerShellLiteral(commandFile)}}'
-$stdoutFile = '{{EscapePowerShellLiteral(stdoutFile)}}'
-$stderrFile = '{{EscapePowerShellLiteral(stderrFile)}}'
-$exitCodeFile = '{{EscapePowerShellLiteral(exitCodeFile)}}'
-$process = $null
-try {
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $env:ComSpec
-    $startInfo.Arguments = '/d /s /c ""' + $commandFile + '""'
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-
-    $process = [System.Diagnostics.Process]::Start($startInfo)
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-
-    $stdout = $stdoutTask.Result
-    $stderr = $stderrTask.Result
-    [IO.File]::WriteAllText($stdoutFile, $stdout, [Text.Encoding]::UTF8)
-    [IO.File]::WriteAllText($stderrFile, $stderr, [Text.Encoding]::UTF8)
-
-    $exitCode = $process.ExitCode
-    [IO.File]::WriteAllText($exitCodeFile, [string]$exitCode, [Text.Encoding]::UTF8)
-    exit $exitCode
-}
-catch {
-    [IO.File]::WriteAllText($stderrFile, $_.Exception.ToString(), [Text.Encoding]::UTF8)
-    [IO.File]::WriteAllText($exitCodeFile, '-1', [Text.Encoding]::UTF8)
-    exit -1
-}
-""";
-    }
-
-    private static string EscapePowerShellLiteral(string value) => value.Replace("'", "''", StringComparison.Ordinal);
     /// <summary>
     /// Final application-exit hook. Runtime resources were already released by Stop; this node
     /// currently has no additional process-exit cleanup.

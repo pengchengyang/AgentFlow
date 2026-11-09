@@ -18,9 +18,10 @@ namespace AgentFlow.Core;
 public static class WorkflowOrdering
 {
     /// <summary>
-    /// Return <paramref name="nodes"/> in dependency order (Kahn). Nodes whose DependsOn target is
-    /// missing are treated as independent; a dependency cycle falls back to the input order for the
-    /// nodes that could not be placed (call <see cref="WorkflowValidation"/> to report it as an error).
+    /// Return <paramref name="nodes"/> in dependency order (Kahn). Every dependency edge contributes
+    /// to a node's indegree, so a node with <c>DependsOn = [1001, 1002, 1003]</c> is ordered after all
+    /// three nodes. Missing dependencies are treated as independent here; validation reports them.
+    /// A dependency cycle falls back to the input order for nodes that could not be placed.
     /// </summary>
     public static List<BaseNode> SortByDependencies(IReadOnlyList<BaseNode> nodes)
     {
@@ -37,17 +38,21 @@ public static class WorkflowOrdering
 
         foreach (var node in nodes)
         {
-            if (node.DependsOn == 0 || !byId.TryGetValue(node.DependsOn, out var dependency))
-                continue;
-
-            if (!dependents.TryGetValue(dependency.InstanceId, out var list))
+            foreach (var dependencyId in BaseNode.NormalizeDependsOn(node.DependsOn))
             {
-                list = new List<BaseNode>();
-                dependents[dependency.InstanceId] = list;
-            }
+                if (!byId.TryGetValue(dependencyId, out var dependency) ||
+                    ReferenceEquals(dependency, node))
+                    continue;
 
-            list.Add(node);
-            indegree[node]++;
+                if (!dependents.TryGetValue(dependency.InstanceId, out var list))
+                {
+                    list = new List<BaseNode>();
+                    dependents[dependency.InstanceId] = list;
+                }
+
+                list.Add(node);
+                indegree[node]++;
+            }
         }
 
         var queue = new Queue<BaseNode>(nodes.Where(n => indegree[n] == 0));

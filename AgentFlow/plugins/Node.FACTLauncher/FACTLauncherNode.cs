@@ -1,31 +1,31 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Your Company" file="FACTLauncherNode.cs">
 //     Copyright (c) Your Company. All rights reserved.
 // </copyright>
 // -----------------------------------------------------------------------
 
-using System.Text.Json;
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
+using FACT.Shared.Broadcast;
 using Microsoft.Extensions.Logging;
 
 namespace Node.FACTLauncher;
 
 /// <summary>
-/// Default skeleton for a FACT launch node. It declares the input / output pins and
-/// the endpoint configuration expected by the future business implementation.
+/// FACT launcher node for SLOT-aware FSN/IMEI capture and user-settings coordination.
 /// </summary>
 public sealed class FACTLauncherNode : BaseNode
 {
-    private const string SettingsDirectory = @"C:\AC710\UserSettings";
-    private const string SettingsFilePath = @"C:\AC710\UserSettings\UserSettings.ini";
     private const string DefaultDisplayName = "FACT Launcher";
     private const string DefaultPosition = "A";
     private static readonly string[] PositionOptions = { "A", "B", "C", "D", "F" };
 
     private readonly BasePin _slotFsnImeiInputPin =
         new("str_slotfsnimei_run", DataType.STRING, PinDirection.Input, required: false);
+
+    private readonly BasePin _settingsInputPin =
+        new("input_string_settings", DataType.STRING, PinDirection.Input, required: false);
 
     private readonly BasePin _retInputPin =
         new("input_int64_ret", DataType.INT64, PinDirection.Input, required: false);
@@ -72,6 +72,7 @@ public sealed class FACTLauncherNode : BaseNode
     public override void AddPins()
     {
         AddInputPin(_slotFsnImeiInputPin);
+        AddInputPin(_settingsInputPin);
         AddInputPin(_retInputPin);
         AddOutputPin(_outputPin);
         AddOutputPin(_cmdOutputPin);
@@ -80,9 +81,6 @@ public sealed class FACTLauncherNode : BaseNode
     protected override void AddParam()
     {
         base.AddParam();
-        AddParameter(new NodeParameter(
-            "Endpoint", typeof(string), "", isEditable: true,
-            group: "Connection", zone: "FACTLauncherZone"));
         AddParameter(new NodeParameter(
             "TimeoutSeconds", typeof(int), 30, isEditable: true,
             group: "Connection", zone: "FACTLauncherZone"));
@@ -98,8 +96,6 @@ public sealed class FACTLauncherNode : BaseNode
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
-        if (parameters.TryGetValue("Endpoint", out var endpoint))
-            Param("Endpoint").Value = ParameterValues.GetString(endpoint, "") ?? "";
         if (parameters.TryGetValue("TimeoutSeconds", out var timeout))
             Param("TimeoutSeconds").Value = ParameterValues.GetInt(timeout, 30);
         if (parameters.TryGetValue("FactKey", out var factKey))
@@ -110,7 +106,7 @@ public sealed class FACTLauncherNode : BaseNode
         RefreshPosition();
     }
 
-    public override async Task Initialize(INodeContext context, CancellationToken ct = default)
+    public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
         RefreshPosition();
@@ -125,7 +121,7 @@ public sealed class FACTLauncherNode : BaseNode
             _fsnImeiSlot = null;
         }
 
-        await EnsureSettingsLoadedAsync().ConfigureAwait(false);
+        return Task.CompletedTask;
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
@@ -134,9 +130,9 @@ public sealed class FACTLauncherNode : BaseNode
         _logger = context.Logger;
         RefreshPosition();
         _logger?.LogTrace(
-            "FACTLauncher {DisplayName} is running with endpoint {Endpoint}.",
+            "FACTLauncher {DisplayName} is ready to run and waits for user settings on {Pin}.",
             DisplayName,
-            Param("Endpoint").Value);
+            _settingsInputPin.Name);
 
         return Task.CompletedTask;
     }
@@ -144,7 +140,6 @@ public sealed class FACTLauncherNode : BaseNode
     public override Task Stop(INodeContext context, CancellationToken ct = default)
     {
         Running = false;
-        _logger = null;
         lock (_inputGate)
         {
             _fsn = null;
@@ -156,32 +151,116 @@ public sealed class FACTLauncherNode : BaseNode
             _fsnImeiSlot = null;
         }
 
+        _logger = null;
         return Task.CompletedTask;
     }
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (ReferenceEquals(pin, _slotFsnImeiInputPin))
+        if (ReferenceEquals(pin, _settingsInputPin))
         {
-            if (value is not StringSample input ||
-                input.StringValue is not { } inputText)
-            {
-                _logger?.LogError(
-                    "FACTLauncher ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
-                    pin.Name,
-                    value?.Type.ToString() ?? "null");
-                return;
-            }
-
-            lock (_inputGate)
-                _lastInput = inputText;
-
-            _logger?.LogTrace("FACTLauncher received FSN/IMEI input for FACT key {FactKey}: {Input}",
-                Param("FactKey").Value, inputText);
-
-            if (ProcessRunInput(inputText) && HasCompleteCachedSettings())
-                SendCommand();
+            HandleSettingsInput(value);
+            return;
         }
+
+        if (!ReferenceEquals(pin, _slotFsnImeiInputPin))
+            return;
+
+        if (value is not StringSample input ||
+            input.StringValue is not { } inputText)
+        {
+            _logger?.LogError(
+                "FACTLauncher ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                pin.Name,
+                value?.Type.ToString() ?? "null");
+            return;
+        }
+
+        lock (_inputGate)
+            _lastInput = inputText;
+
+        _logger?.LogTrace("FACTLauncher received FSN/IMEI input for FACT key {FactKey}: {Input}",
+            Param("FactKey").Value, inputText);
+
+        if (!ProcessRunInput(inputText))
+            return;
+
+        if (HasCompleteCachedSettings())
+        {
+            SendCommand();
+        }
+        else
+        {
+            int? cachedSlot;
+            lock (_inputGate)
+                cachedSlot = _fsnImeiSlot;
+
+            _logger?.LogTrace(
+                "FACTLauncher cached FSN/IMEI data for SLOT {Slot} and waits for user settings on {Pin}.",
+                cachedSlot,
+                _settingsInputPin.Name);
+        }
+    }
+
+    private void HandleSettingsInput(Sample? value)
+    {
+        if (value is not StringSample { StringValue: { } inputText })
+        {
+            _logger?.LogWarning(
+                "FACTLauncher ignored invalid user-settings input on {Pin}: expected StringSample with non-null StringValue.",
+                _settingsInputPin.Name);
+            return;
+        }
+
+        if (!JsonKeyValueParser.TryParse(inputText, out var settings))
+        {
+            _logger?.LogWarning(
+                "FACTLauncher ignored input on {Pin}: expected a JSON object with string or string-array values.",
+                _settingsInputPin.Name);
+            return;
+        }
+
+        var factCommand = JsonKeyValueParser.GetSingleValue(settings, "CMD");
+        var ip = JsonKeyValueParser.GetSingleValue(settings, "IP");
+        var slotText = JsonKeyValueParser.GetSingleValue(settings, "SLOT");
+        var portHub = JsonKeyValueParser.GetSingleValue(settings, "PORTHUB");
+
+        if (string.IsNullOrWhiteSpace(factCommand) ||
+            string.IsNullOrWhiteSpace(ip) ||
+            string.IsNullOrWhiteSpace(portHub))
+        {
+            _logger?.LogWarning(
+                "FACTLauncher ignored incomplete user settings; CMD, IP, and PORTHUB are required.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(slotText))
+        {
+            _logger?.LogError(
+                "FACTLauncher rejected user settings because SLOT is required.");
+            return;
+        }
+
+        if (!TryValidateSlotForPosition(slotText, out var settingsSlot))
+            return;
+
+        lock (_inputGate)
+        {
+            _factCommand = factCommand;
+            _ip = ip;
+            _slot = settingsSlot.ToString();
+            _porthub = portHub;
+        }
+
+        _logger?.LogInformation(
+            "FACTLauncher received user settings: CMD={Command}, IP={Ip}, SLOT={Slot}, PORTHUB={PortHub}.",
+            factCommand,
+            ip,
+            settingsSlot,
+            portHub);
+
+        _ = BroadcastLauncherSettingsAsync();
+        SendCommand();
     }
 
     private bool HasCompleteCachedSettings()
@@ -200,92 +279,56 @@ public sealed class FACTLauncherNode : BaseNode
                !string.IsNullOrWhiteSpace(_porthub);
     }
 
-    private async Task EnsureSettingsLoadedAsync()
+    private async Task BroadcastLauncherSettingsAsync()
     {
-        _logger?.LogInformation(
-            "FACTLauncher is loading user settings during initialization from {FilePath}: CMD, IP, SLOT, PORTHUB.",
-            SettingsFilePath);
-
-        var parser = new UserSettingsParser(_logger, SettingsDirectory, SettingsFilePath);
-        if (!parser.TryLoad(out var settings))
-        {
-            const string message =
-                "FACTLauncher initialization failed because UserSettings.ini could not be loaded.";
-            _logger?.LogError(
-                "{Message} FilePath={FilePath}; command will not be sent.",
-                message,
-                SettingsFilePath);
-            await BroadcastErrorAsync("LauncherSettingsLoadFailed", message).ConfigureAwait(false);
-            throw new InvalidOperationException(message);
-        }
-
-        var factCommand = JsonKeyValueParser.GetSingleValue(settings, "CMD");
-        var ip = JsonKeyValueParser.GetSingleValue(settings, "IP");
-        var slot = JsonKeyValueParser.GetSingleValue(settings, "SLOT");
-        var portHub = JsonKeyValueParser.GetSingleValue(settings, "PORTHUB");
+        string? factCommand;
+        string? ip;
+        string? slot;
+        string? portHub;
 
         lock (_inputGate)
         {
-            _factCommand = factCommand;
-            _ip = ip;
-            _slot = slot;
-            _porthub = portHub;
+            factCommand = _factCommand;
+            ip = _ip;
+            slot = _slot;
+            portHub = _porthub;
         }
 
-        if (!HasCompleteCachedSettings())
+        var samples = new List<Sample>
         {
-            const string message =
-                "FACTLauncher initialization failed because CMD, IP, SLOT, or PORTHUB is missing from UserSettings.ini.";
-            _logger?.LogError(
-                "{Message} FilePath={FilePath}; command will not be sent.",
-                message,
-                SettingsFilePath);
-            await BroadcastErrorAsync("LauncherSettingsIncomplete", message).ConfigureAwait(false);
-            throw new InvalidOperationException(message);
-        }
+            CreateStringSample("CMD", factCommand),
+            CreateStringSample("IP", ip),
+            CreateStringSample("SLOT", slot),
+            CreateStringSample("PORTHUB", portHub),
+        };
 
-        _logger?.LogInformation(
-            "FACTLauncher loaded user settings from {FilePath}: CMD={Command}, IP={Ip}, SLOT={Slot}, PORTHUB={PortHub}.",
-            SettingsFilePath,
-            factCommand ?? "<missing>",
-            ip ?? "<missing>",
-            slot ?? "<missing>",
-            portHub ?? "<missing>");
-    }
-
-    private async Task BroadcastErrorAsync(string errorCode, string message)
-    {
         try
         {
-            var payload = JsonSerializer.Serialize(new FactLauncherErrorBroadcast(
-                Name,
-                DisplayName,
-                _position,
-                errorCode,
-                message,
-                DateTimeOffset.UtcNow));
-
             await TopicBus.Instance.PublishAsync(
-                BroadcastTopics.FactLauncherError,
-                BroadcastTopicMessage.FromPayload(payload),
+                FactBroadcastSubscriptions.LauncherSettings,
+                BroadcastTopicMessage.FromSamples(samples),
                 ct: CancellationToken.None).ConfigureAwait(false);
+
+            _logger?.LogTrace(
+                "FACTLauncher {DisplayName} broadcast module information with {Count} ordered samples.",
+                DisplayName,
+                samples.Count);
         }
         catch (Exception ex)
         {
             _logger?.LogError(
                 ex,
-                "FACTLauncher failed to broadcast initialization error {ErrorCode}.",
-                errorCode);
+                "FACTLauncher {DisplayName} failed to broadcast module information.",
+                DisplayName);
         }
     }
 
-    private sealed record FactLauncherErrorBroadcast(
-        string NodeName,
-        string DisplayName,
-        string Position,
-        string ErrorCode,
-        string Message,
-        DateTimeOffset Timestamp);
+    private static StringSample CreateStringSample(string key, string? value)
+    {
+        var sample = StringSample.CreateSample();
+        sample.SetValue(value ?? string.Empty, key);
+        return sample;
+    }
 
     private void SendCommand()
     {
@@ -312,18 +355,13 @@ public sealed class FACTLauncherNode : BaseNode
             fsnImeiSlot = _fsnImeiSlot.Value;
         }
 
-        if (!int.TryParse(slotText.Trim(), out var settingsSlot))
-        {
-            _logger?.LogWarning(
-                "FACTLauncher cannot send command because settings SLOT {Slot} is invalid.",
-                slotText);
+        if (!TryValidateSlotForPosition(slotText, out var settingsSlot))
             return;
-        }
 
         if (fsnImeiSlot != settingsSlot)
         {
-            _logger?.LogWarning(
-                "FACTLauncher ignored FSN/IMEI input for SLOT {InputSlot}; settings SLOT is {SettingsSlot}.",
+            _logger?.LogError(
+                "FACTLauncher rejected command because FSN/IMEI SLOT {InputSlot} does not match settings SLOT {SettingsSlot}.",
                 fsnImeiSlot,
                 settingsSlot);
             return;
@@ -377,30 +415,8 @@ public sealed class FACTLauncherNode : BaseNode
             return false;
         }
 
-        if (!int.TryParse(slotText.Trim(), out var slot) || slot is < 1 or > 10)
-        {
-            _logger?.LogError("FACTLauncher ignored FSN/IMEI input with invalid SLOT {Slot}.", slotText);
+        if (!TryValidateSlotForPosition(slotText, out var slot))
             return false;
-        }
-
-        if (!TryGetLauncherGroup(out var launcherGroup))
-        {
-            _logger?.LogError(
-                "FACTLauncher DisplayName {DisplayName} must end with A, B, C, D, or F.",
-                DisplayName);
-            return false;
-        }
-
-        var expectedGroup = GetGroupForSlot(slot);
-        if (expectedGroup != launcherGroup)
-        {
-            _logger?.LogWarning(
-                "FACTLauncher {DisplayName} ignored SLOT {Slot}; expected group {ExpectedGroup}.",
-                DisplayName,
-                slot,
-                expectedGroup);
-            return false;
-        }
 
         lock (_inputGate)
         {
@@ -414,6 +430,41 @@ public sealed class FACTLauncherNode : BaseNode
             fsn,
             imei,
             slot);
+        return true;
+    }
+
+    private bool TryValidateSlotForPosition(string slotText, out int slot)
+    {
+        slot = 0;
+
+        if (!int.TryParse(slotText.Trim(), out var parsedSlot) || parsedSlot is < 1 or > 10)
+        {
+            _logger?.LogError(
+                "FACTLauncher rejected SLOT {Slot}; expected an integer from 1 to 10.",
+                slotText);
+            return false;
+        }
+
+        if (!TryGetLauncherGroup(out var launcherGroup))
+        {
+            _logger?.LogError(
+                "FACTLauncher DisplayName {DisplayName} must end with A, B, C, D, or F.",
+                DisplayName);
+            return false;
+        }
+
+        var expectedGroup = GetGroupForSlot(parsedSlot);
+        if (expectedGroup != launcherGroup)
+        {
+            _logger?.LogError(
+                "FACTLauncher rejected SLOT {Slot}; SLOT maps to position {ExpectedGroup}, but this node is position {ActualGroup}.",
+                parsedSlot,
+                expectedGroup,
+                launcherGroup);
+            return false;
+        }
+
+        slot = parsedSlot;
         return true;
     }
 
@@ -483,10 +534,8 @@ public sealed class FACTLauncherNode : BaseNode
     }
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
-    /// <summary>
-    /// Final application-exit hook. Runtime resources were already released by Stop; this node
-    /// currently has no additional process-exit cleanup.
-    /// </summary>
+
+    /// <summary>Final application-exit hook; this node owns no external resources.</summary>
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
 }

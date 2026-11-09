@@ -446,7 +446,7 @@ public sealed class WorkflowHost : IWorkflowEditorHost
             throw new InvalidDataException($"Node '{id}' is missing name in logic.");
 
         var instanceId = ReadInt(logicElement, "instanceId", "InstanceId");
-        var dependsOn = ReadInt(logicElement, "dependsOn", "DependsOn");
+        var dependsOn = JsonValueReader.GetIntList(logicObject, "dependsOn");
         var displayName = ReadString(logicElement, "displayName", "DisplayName") ?? string.Empty;
         var x = ReadDouble(nodeElement, "x", "X");
         var y = ReadDouble(nodeElement, "y", "Y");

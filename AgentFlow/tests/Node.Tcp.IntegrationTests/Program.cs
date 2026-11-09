@@ -140,6 +140,25 @@ static async Task RunTestsAsync()
     Assert(client.Running, "client must remain running across reconnects");
     Check("client reconnects after the remote endpoint closes");
 
+    var runtimePort = GetFreePort();
+    using var runtimeListener = new TcpListener(IPAddress.Loopback, runtimePort);
+    runtimeListener.Start();
+    client.ReceiveSample(
+        client.InputEndpointPin,
+        StringSampleWith($"127.0.0.1:{runtimePort}"));
+    using var runtimePeer = await runtimeListener
+        .AcceptTcpClientAsync()
+        .WaitAsync(TimeSpan.FromSeconds(5));
+    var runtimeStream = runtimePeer.GetStream();
+    client.ReceiveSample(client.InputStringPin, StringSampleWith("after endpoint change"));
+    await ReadAtLeastAsync(runtimeStream, "after endpoint change"u8.ToArray(), TimeSpan.FromSeconds(3));
+    Assert(client.Running, "client must remain running after a runtime endpoint change");
+    Assert(
+        client.NodeParameters.First(p => p.Name == "Port").Value is int persistedPort &&
+        persistedPort == clientPort,
+        "runtime endpoint changes must not overwrite the persisted Port parameter");
+    Check("client dynamic endpoint reconnects without modifying workflow parameters");
+
     await client.Stop(clientContext);
     await client.Stop(clientContext);
     Check("client Stop is idempotent");
@@ -177,11 +196,18 @@ static BinSample BinSampleWith(byte[] value)
 
 static void AssertPinLayout(BaseNode node, string label)
 {
-    Assert(node.InputPins.Count == 2, $"{label} must expose exactly two input pins");
+    var expectedInputPins = label == "TCP Client" ? 3 : 2;
+    Assert(node.InputPins.Count == expectedInputPins,
+        $"{label} must expose exactly {expectedInputPins} input pins");
     Assert(node.InputPins.Any(p => p.Name == "input_string" && p.DataType == DataType.STRING),
         $"{label} must expose input_string");
     Assert(node.InputPins.Any(p => p.Name == "input_binary" && p.DataType == DataType.BIN),
         $"{label} must expose input_binary");
+    if (label == "TCP Client")
+    {
+        Assert(node.InputPins.Any(p => p.Name == "input_string_endpoint" && p.DataType == DataType.STRING),
+            $"{label} must expose input_string_endpoint");
+    }
     Assert(node.OutputPins.Count == 2, $"{label} must expose exactly two output pins");
     Assert(node.OutputPins.Any(p => p.Name == "output_string" && p.DataType == DataType.STRING),
         $"{label} must expose output_string");
