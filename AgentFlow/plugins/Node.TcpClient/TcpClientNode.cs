@@ -29,9 +29,13 @@ public sealed class TcpClientNode : BaseNode
     private const int DefaultReadTimeoutSeconds = 0;
     private const int DefaultWriteTimeoutSeconds = 10;
     private const int DefaultReceiveBufferSize = 4096;
+    private const string ImmediateConnectMode = "Immediate";
+    private const string WaitForEndpointConnectMode = "WaitForEndpoint";
+    private static readonly string[] ConnectModeOptions = { ImmediateConnectMode, WaitForEndpointConnectMode };
 
     private readonly SemaphoreSlim _stopLock = new(1, 1);
     private readonly object _connectionGate = new();
+    private readonly object _supervisorStartGate = new();
     private TcpSocket? _client;
     private NetworkStream? _stream;
     private CancellationTokenSource? _cts;
@@ -41,9 +45,12 @@ public sealed class TcpClientNode : BaseNode
     private Channel<byte[]>? _sendChannel;
     private Channel<bool>? _reconnectRequests;
     private ILogger? _logger;
+    private INodeContext? _context;
 
     private string _host = "127.0.0.1";
     private int _port = 9000;
+    private string _connectMode = ImmediateConnectMode;
+    private volatile bool _endpointInputReceived;
     private int _connectTimeoutSeconds = DefaultConnectTimeoutSeconds;
     private int _maxConnectAttempts = DefaultMaxConnectAttempts;
     private bool _autoReconnect = true;
@@ -108,6 +115,15 @@ public sealed class TcpClientNode : BaseNode
             isEditable: true, group: "Connection", zone: "TcpClientZone"));
         AddParameter(new NodeParameter("Port", typeof(int), 9000,
             isEditable: true, group: "Connection", zone: "TcpClientZone"));
+        AddParameter(new NodeParameter(
+            "ConnectMode",
+            typeof(string),
+            ImmediateConnectMode,
+            isEditable: true,
+            group: "Connection",
+            zone: "TcpClientZone",
+            editor: ParameterEditorKind.SingleSelect,
+            options: ConnectModeOptions));
         AddParameter(new NodeParameter("ConnectTimeoutSeconds", typeof(int), DefaultConnectTimeoutSeconds,
             isEditable: true, group: "Connection", zone: "TcpClientZone"));
         AddParameter(new NodeParameter("MaxConnectAttempts", typeof(int), DefaultMaxConnectAttempts,
@@ -134,6 +150,8 @@ public sealed class TcpClientNode : BaseNode
             Param("Host").Value = ParameterValues.GetString(host, "127.0.0.1") ?? "127.0.0.1";
         if (parameters.TryGetValue("Port", out var port) && port is not null)
             Param("Port").Value = ParameterValues.GetInt(port, 9000);
+        if (parameters.TryGetValue("ConnectMode", out var connectMode) && connectMode is not null)
+            Param("ConnectMode").Value = ParameterValues.GetString(connectMode, ImmediateConnectMode) ?? ImmediateConnectMode;
         if (parameters.TryGetValue("ConnectTimeoutSeconds", out var connectTimeout) && connectTimeout is not null)
             Param("ConnectTimeoutSeconds").Value = ParameterValues.GetInt(connectTimeout, DefaultConnectTimeoutSeconds);
         if (parameters.TryGetValue("MaxConnectAttempts", out var attempts) && attempts is not null)
@@ -158,6 +176,9 @@ public sealed class TcpClientNode : BaseNode
     {
         _logger = context.Logger;
         await Stop(context, ct).ConfigureAwait(false);
+        _context = context;
+        _connectMode = NormalizeConnectMode(context);
+        _endpointInputReceived = false;
 
         var configuredHost = (ParameterValues.GetString(Param("Host").Value, "127.0.0.1") ?? "127.0.0.1").Trim();
         if (configuredHost.Length == 0)
@@ -192,9 +213,15 @@ public sealed class TcpClientNode : BaseNode
 
         var endpoint = GetEndpoint();
         context.Logger.LogInformation(
-            "TCP client initialized for {Host}:{Port}; queue={Queue}, autoReconnect={AutoReconnect}, reconnectDelay={ReconnectDelay}s, reconnectMaxDelay={ReconnectMaxDelay}s, readTimeout={ReadTimeout}s, writeTimeout={WriteTimeout}s",
-            endpoint.Host, endpoint.Port, _sendQueueCapacity, _autoReconnect, _reconnectDelaySeconds, _reconnectMaxDelaySeconds,
-            _readTimeoutSeconds, _writeTimeoutSeconds);
+            "TCP client initialized for {Host}:{Port}; connectMode={ConnectMode}, queue={Queue}, autoReconnect={AutoReconnect}, reconnectDelay={ReconnectDelay}s, reconnectMaxDelay={ReconnectMaxDelay}s, readTimeout={ReadTimeout}s, writeTimeout={WriteTimeout}s",
+            endpoint.Host, endpoint.Port, _connectMode, _sendQueueCapacity, _autoReconnect, _reconnectDelaySeconds,
+            _reconnectMaxDelaySeconds, _readTimeoutSeconds, _writeTimeoutSeconds);
+
+        if (_connectMode == WaitForEndpointConnectMode && InputEndpointPin.ConnectedPin is null)
+        {
+            context.Logger.LogWarning(
+                "TCP client ConnectMode=WaitForEndpoint but input_string_endpoint is not connected; Run will wait indefinitely for an endpoint input.");
+        }
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
@@ -207,14 +234,56 @@ public sealed class TcpClientNode : BaseNode
             throw new InvalidOperationException("TCP client is already running.");
 
         Running = true;
-        _supervisorTask = Task.Run(
-            () => ConnectionSupervisorAsync(context, rootCts.Token, reconnectRequests.Reader),
-            CancellationToken.None);
-        var endpoint = GetEndpoint();
-        context.Logger.LogInformation(
-            "TCP client supervisor started for {Host}:{Port}; autoReconnect={AutoReconnect}.",
-            endpoint.Host, endpoint.Port, _autoReconnect);
+
+        if (_connectMode == WaitForEndpointConnectMode && !_endpointInputReceived)
+        {
+            var endpoint = GetEndpoint();
+            context.Logger.LogInformation(
+                "TCP client is waiting for the first input_string_endpoint value before connecting; configured fallback is {Host}:{Port}.",
+                endpoint.Host, endpoint.Port);
+            return Task.CompletedTask;
+        }
+
+        TryStartConnectionSupervisor(context);
         return Task.CompletedTask;
+    }
+
+    private string NormalizeConnectMode(INodeContext context)
+    {
+        var configured = (ParameterValues.GetString(Param("ConnectMode").Value, ImmediateConnectMode) ?? ImmediateConnectMode).Trim();
+        if (string.Equals(configured, ImmediateConnectMode, StringComparison.OrdinalIgnoreCase))
+            return ImmediateConnectMode;
+        if (string.Equals(configured, WaitForEndpointConnectMode, StringComparison.OrdinalIgnoreCase))
+            return WaitForEndpointConnectMode;
+
+        context.Logger.LogWarning(
+            "TCP client parameter ConnectMode={ConnectMode} is invalid; using {Fallback}.",
+            configured, ImmediateConnectMode);
+        Param("ConnectMode").Value = ImmediateConnectMode;
+        return ImmediateConnectMode;
+    }
+
+    private bool TryStartConnectionSupervisor(INodeContext context)
+    {
+        lock (_supervisorStartGate)
+        {
+            if (!Running || _supervisorTask is not null)
+                return false;
+
+            var rootCts = _cts;
+            var reconnectRequests = _reconnectRequests;
+            if (rootCts is null || _sendChannel is null || reconnectRequests is null)
+                throw new InvalidOperationException("TCP client must be initialized before starting its connection supervisor.");
+
+            _supervisorTask = Task.Run(
+                () => ConnectionSupervisorAsync(context, rootCts.Token, reconnectRequests.Reader),
+                CancellationToken.None);
+            var endpoint = GetEndpoint();
+            context.Logger.LogInformation(
+                "TCP client supervisor started for {Host}:{Port}; connectMode={ConnectMode}, autoReconnect={AutoReconnect}.",
+                endpoint.Host, endpoint.Port, _connectMode, _autoReconnect);
+            return true;
+        }
     }
 
     public override async Task Stop(INodeContext context, CancellationToken ct = default)
@@ -222,22 +291,28 @@ public sealed class TcpClientNode : BaseNode
         await _stopLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            var cts = _cts;
-            _cts = null;
+            CancellationTokenSource? cts;
+            Channel<byte[]>? channel;
+            Channel<bool>? reconnectRequests;
+            Task? supervisorTask;
+            lock (_supervisorStartGate)
+            {
+                cts = _cts;
+                _cts = null;
+                Running = false;
+                channel = _sendChannel;
+                _sendChannel = null;
+                reconnectRequests = _reconnectRequests;
+                _reconnectRequests = null;
+                supervisorTask = _supervisorTask;
+                _supervisorTask = null;
+            }
+
             cts?.Cancel();
-
-            var channel = _sendChannel;
-            _sendChannel = null;
             channel?.Writer.TryComplete();
-
-            var reconnectRequests = _reconnectRequests;
-            _reconnectRequests = null;
             reconnectRequests?.Writer.TryComplete();
 
             DisposeCurrentConnection();
-
-            var supervisorTask = _supervisorTask;
-            _supervisorTask = null;
             var supervisorStopped = true;
             if (supervisorTask is not null)
             {
@@ -267,7 +342,7 @@ public sealed class TcpClientNode : BaseNode
             if (supervisorStopped)
                 cts?.Dispose();
 
-            Running = false;
+            _endpointInputReceived = false;
             SetIdle();
             context.Logger.LogInformation(
                 "TCP client stopped: sent={Sent}, received={Received}, dropped={Dropped}",
@@ -285,7 +360,7 @@ public sealed class TcpClientNode : BaseNode
     {
         if (ReferenceEquals(pin, InputEndpointPin))
         {
-            HandleEndpointInput(value);
+            HandleEndpointInput(pin, value);
             return;
         }
 
@@ -336,23 +411,39 @@ public sealed class TcpClientNode : BaseNode
         }
     }
 
-    private void HandleEndpointInput(Sample? value)
+    private void HandleEndpointInput(BasePin pin, Sample? value)
     {
+        if (value is null)
+        {
+            _logger?.LogError("TCP client ignored a null endpoint value on {Pin}.", pin.Name);
+            return;
+        }
+
+        if (value.Type != pin.DataType)
+        {
+            _logger?.LogError(
+                "TCP client rejected {ActualType} on {Pin}; expected {ExpectedType}.",
+                value.Type, pin.Name, pin.DataType);
+            return;
+        }
+
         if (value is not StringSample { StringValue: { } inputText })
         {
-            _logger?.LogWarning(
-                "TCP client ignored a dynamic endpoint update because the value is not a non-null StringSample.");
+            _logger?.LogError(
+                "TCP client ignored an endpoint update on {Pin} because the value is not a non-null StringSample.",
+                pin.Name);
             return;
         }
 
         if (!TryParseEndpoint(inputText, out var host, out var port))
         {
-            _logger?.LogWarning(
-                "TCP client ignored invalid dynamic endpoint {Endpoint}; expected host:port.",
+            _logger?.LogError(
+                "TCP client ignored invalid endpoint {Endpoint}; expected host:port.",
                 inputText);
             return;
         }
 
+        var firstEndpoint = !_endpointInputReceived;
         var changed = false;
         lock (_connectionGate)
         {
@@ -364,19 +455,51 @@ public sealed class TcpClientNode : BaseNode
             }
         }
 
-        if (!changed)
+        _endpointInputReceived = true;
+
+        if (changed)
         {
-            _logger?.LogTrace(
-                "TCP client dynamic endpoint is already {Host}:{Port}.", host, port);
+            _logger?.LogInformation(
+                "TCP client runtime endpoint changed to {Host}:{Port}; persisted Host and Port parameters are unchanged.",
+                host, port);
+        }
+        else if (firstEndpoint)
+        {
+            _logger?.LogInformation(
+                "TCP client received the first runtime endpoint {Host}:{Port}.", host, port);
+        }
+
+        if (!Running)
+        {
+            _logger?.LogInformation(
+                "TCP client cached runtime endpoint {Host}:{Port}; it will connect when Run starts.",
+                host, port);
             return;
         }
 
-        _logger?.LogInformation(
-            "TCP client runtime endpoint changed to {Host}:{Port}; persisted Host and Port parameters are unchanged.",
-            host, port);
+        var context = _context ?? pin.Context;
+        if (context is null)
+        {
+            _logger?.LogError(
+                "TCP client could not start its connection supervisor after receiving endpoint {Host}:{Port} because no node context is available.",
+                host, port);
+            return;
+        }
 
-        if (Running)
+        if (TryStartConnectionSupervisor(context))
+        {
+            _logger?.LogInformation(
+                "TCP client started its connection supervisor after receiving runtime endpoint {Host}:{Port}.",
+                host, port);
+            return;
+        }
+
+        if (changed)
             RequestReconnect();
+        else
+            _logger?.LogTrace(
+                "TCP client dynamic endpoint is already {Host}:{Port} and a connection supervisor is already running.",
+                host, port);
     }
 
     private void RequestReconnect()
@@ -384,8 +507,12 @@ public sealed class TcpClientNode : BaseNode
         var reconnectRequests = _reconnectRequests;
         if (reconnectRequests is null || !reconnectRequests.Writer.TryWrite(true))
         {
-            _logger?.LogWarning(
+            _logger?.LogError(
                 "TCP client could not schedule a reconnect after the runtime endpoint changed.");
+        }
+        else
+        {
+            _logger?.LogTrace("TCP client scheduled a reconnect after the runtime endpoint changed.");
         }
     }
 
@@ -567,9 +694,47 @@ public sealed class TcpClientNode : BaseNode
 
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                using var reconnectWaitCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var delayTask = Task.Delay(delay, ct);
+                var reconnectDuringDelayTask = reconnectRequests.ReadAsync(reconnectWaitCts.Token).AsTask();
+                try
+                {
+                    var delayCompleted = await Task.WhenAny(delayTask, reconnectDuringDelayTask).ConfigureAwait(false);
+                    if (ReferenceEquals(delayCompleted, reconnectDuringDelayTask) &&
+                        reconnectDuringDelayTask.Status == TaskStatus.RanToCompletion)
+                    {
+                        reconnectAttempt = 0;
+                        currentEndpoint = GetEndpoint();
+                        context.Logger.LogInformation(
+                            "TCP client endpoint changed while waiting to reconnect; reconnecting immediately to {Host}:{Port}.",
+                            currentEndpoint.Host, currentEndpoint.Port);
+                        continue;
+                    }
+
+                    await delayTask.ConfigureAwait(false);
+                }
+                finally
+                {
+                    reconnectWaitCts.Cancel();
+                    try
+                    {
+                        await reconnectDuringDelayTask.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when the delay completes before an endpoint change arrives.
+                    }
+                    catch (ChannelClosedException)
+                    {
+                        // Expected when Stop completes the request channel.
+                    }
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (ChannelClosedException)
             {
                 break;
             }

@@ -163,6 +163,93 @@ static async Task RunTestsAsync()
     await client.Stop(clientContext);
     Check("client Stop is idempotent");
 
+    var waitPort = GetFreePort();
+    using var waitListener = new TcpListener(IPAddress.Loopback, waitPort);
+    waitListener.Start();
+    var waitClient = new TcpClientNode();
+    waitClient.Configure(new Dictionary<string, object?>
+    {
+        ["Host"] = "127.0.0.1",
+        ["Port"] = waitPort,
+        ["ConnectMode"] = "WaitForEndpoint",
+        ["ConnectTimeoutSeconds"] = 1,
+        ["MaxConnectAttempts"] = 1,
+        ["AutoReconnect"] = true,
+        ["ReconnectDelaySeconds"] = 1,
+        ["ReconnectMaxDelaySeconds"] = 3,
+        ["SendQueueCapacity"] = 16,
+        ["ReadTimeoutSeconds"] = 0,
+        ["WriteTimeoutSeconds"] = 2,
+        ["ReceiveBufferSize"] = 128,
+    });
+
+    var waitContext = new TestContext(loggerFactory.CreateLogger("wait-client"));
+    await waitClient.Initialize(waitContext);
+    await waitClient.Run(waitContext);
+    await Task.Delay(200);
+    Assert(!waitListener.Pending(), "WaitForEndpoint must not connect before endpoint input");
+    Check("client WaitForEndpoint waits before connecting");
+
+    waitClient.ReceiveSample(
+        waitClient.InputEndpointPin,
+        StringSampleWith($"127.0.0.1:{waitPort}"));
+    using var waitPeer = await waitListener
+        .AcceptTcpClientAsync()
+        .WaitAsync(TimeSpan.FromSeconds(5));
+    var waitPeerStream = waitPeer.GetStream();
+    waitClient.ReceiveSample(waitClient.InputStringPin, StringSampleWith("after endpoint input"));
+    await ReadAtLeastAsync(waitPeerStream, "after endpoint input"u8.ToArray(), TimeSpan.FromSeconds(3));
+    Check("client WaitForEndpoint connects after endpoint input");
+
+    await waitClient.Stop(waitContext);
+    await waitClient.Stop(waitContext);
+    Check("WaitForEndpoint client Stop is idempotent");
+
+    var retryPort = GetFreePort();
+    var retryClient = new TcpClientNode();
+    retryClient.Configure(new Dictionary<string, object?>
+    {
+        ["Host"] = "127.0.0.1",
+        ["Port"] = retryPort,
+        ["ConnectMode"] = "WaitForEndpoint",
+        ["ConnectTimeoutSeconds"] = 1,
+        ["MaxConnectAttempts"] = 1,
+        ["AutoReconnect"] = true,
+        ["ReconnectDelaySeconds"] = 1,
+        ["ReconnectMaxDelaySeconds"] = 3,
+        ["SendQueueCapacity"] = 16,
+        ["ReadTimeoutSeconds"] = 0,
+        ["WriteTimeoutSeconds"] = 2,
+        ["ReceiveBufferSize"] = 128,
+    });
+
+    var retryContext = new TestContext(loggerFactory.CreateLogger("retry-client"));
+    await retryClient.Initialize(retryContext);
+    await retryClient.Run(retryContext);
+    retryClient.ReceiveSample(
+        retryClient.InputEndpointPin,
+        StringSampleWith($"127.0.0.1:{retryPort}"));
+    await WaitUntil(
+        () => logs.Any(line =>
+            line.StartsWith("[retry-client]", StringComparison.Ordinal) &&
+            line.Contains("will reconnect", StringComparison.Ordinal)),
+        "initial connection failure did not enter auto-reconnect");
+    Assert(retryClient.Running, "AutoReconnect must keep the node running after an initial connection failure");
+
+    using var retryListener = new TcpListener(IPAddress.Loopback, retryPort);
+    retryListener.Start();
+    using var retryPeer = await retryListener
+        .AcceptTcpClientAsync()
+        .WaitAsync(TimeSpan.FromSeconds(5));
+    var retryPeerStream = retryPeer.GetStream();
+    retryClient.ReceiveSample(retryClient.InputStringPin, StringSampleWith("after server startup"));
+    await ReadAtLeastAsync(retryPeerStream, "after server startup"u8.ToArray(), TimeSpan.FromSeconds(3));
+    Assert(retryClient.Running, "AutoReconnect must keep the node running after recovering");
+    Check("client WaitForEndpoint retries initial connection after server starts later");
+
+    await retryClient.Stop(retryContext);
+    Check("retry client Stop succeeds");
+
     var invalid = new TcpServerNode();
     invalid.Configure(new Dictionary<string, object?>
     {
