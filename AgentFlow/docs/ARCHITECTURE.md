@@ -125,6 +125,8 @@ not merely a call-order preference:
   (for example `1001,1002,1003`). `0` and non-positive values mean no dependency.
 - JSON stores dependencies as an array (`{"dependsOn":[1001,1002,1003]}`) while
   old single-number files (`{"dependsOn":1001}`) remain loadable.
+- Core writes an INFO launch plan, logs whether a node starts independently/asynchronously
+  or after named dependencies become ready, and emits TRACE dependency-gate progress.
 
 GUI status indicators are derived from real node state. The bottom status bar
 shows `Running` only when every node is both started and still reporting
