@@ -266,7 +266,7 @@ and receive hooks without implementing final business behavior yet:
 | `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, pin-based user-settings coordination, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host` and `output_string_cmd` outputs |
 | `Node.UserSettings` | Standalone INI settings reader that returns section values as JSON for configuration consumers | `input_string_ready` string input; `output_string_slotA/B/C/D/F` string outputs |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
-| `Node.FACTFlatFileParser` | FACT flat-file parsing skeleton; parsing behavior is deferred | `input_string_run` string input; `output_string_contents` string output |
+| `Node.FACTFlatFileParser` | Parses FACT XML logs and publishes original XML plus normalized JSON with the legacy FlatFile row split into indexed fields | `input_string_path` string input; `output_string_raw_xml` and `output_string_json` string outputs |
 | `Node.WorkflowFileConverter` | Developer-only conversion between encrypted `.rw` workflows and readable JSON files | `input_string_rw` and `input_string_json` string inputs; `output_string_json` and `output_string_rw` string outputs |
 | `Node.AutoStart` | Workflow start trigger and SLOT router; validates input and routes valid groups to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
 | `Node.AutoStop` | Workflow stop trigger with input validation and launcher-stop publication | `input_string_stop` string input; no output pins |

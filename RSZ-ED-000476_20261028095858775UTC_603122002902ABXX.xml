@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FactLogInfo>
+    <PC os="Microsoft Windows 11 Pro" osversion="10.0.26200" servicepack="N/A" OSArchitecture="64-bit" pcmanufacturer="Dell Inc." pctype="x64-based PC"/>
+    <Station name="RSZ-ED-000476" ip="10.22.55.24" location="10" number="81" line="13"/>
+    <Software>
+        <FACT ver="5.2.7.5"/>
+        <FDT name="" ver="" crash="0" hang="0"/>
+        <FACTDB ver=""/>
+        <DRIVER ver="10095.20.1000.0"/>
+        <DRIVERWPDll ver="Unavailable"/>
+        <DRIVERStarInterface ver="Unavailable"/>
+    </Software>
+    <Device model="RN934A" fsn="603122002902ABXX" hfsn="" QualcommSerialNumber="" ICCID="">
+        <SKU num="xxxxxxx" rev="001.000" cust="MFT"/>
+        <IMEI old="354360451234561" new="354360451234561"/>
+        <MEID old="" new=""/>
+        <Firmware old="AFPQ52XA_00.25.07.00" new="AFPQ52XA_00.25.07.00"/>
+        <USBSpeed old="HIGH" new="HIGH"/>
+        <AirVantageFW></AirVantageFW>
+        <PSK type="ATT" keylabel="" data=""/>
+        <CrashDump>OK</CrashDump>
+        <BadBlock>
+            <Flashmanufacturer></Flashmanufacturer>
+            <BadBlockLogInitial>OK</BadBlockLogInitial>
+            <NumOfBadBlockInitial></NumOfBadBlockInitial>
+            <BadBlockRangeInitial></BadBlockRangeInitial>
+            <BadBlockLogEnd>OK</BadBlockLogEnd>
+            <NumOfBadBlockFinal></NumOfBadBlockFinal>
+            <BadBlockRangeFinal></BadBlockRangeFinal>
+        </BadBlock>
+        <FlashCorruptionCountStart>
+!EFSCOUNTER: 
+00000000
+
+
+OK
+</FlashCorruptionCountStart>
+        <FlashCorruptionCountEnd>
+!EFSCOUNTER: 
+00000000
+
+
+OK
+</FlashCorruptionCountEnd>
+        <FlashCorruptionErrorStart>OK</FlashCorruptionErrorStart>
+        <FlashCorruptionErrorEnd>OK</FlashCorruptionErrorEnd>
+        <FlatFile>,603122002902AB,,xxxxxxx,AFPQ52XA_00.25.07.00,,,,,,,,,,,,10/28/2026 09:59:13 UTC,5.2.7.5,001.000,,354360451234561,599237133156    558421738147    112513613180    112213300187    ,,800146251155    ,,,XX,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,</FlatFile>
+    </Device>
+    <ConfigSession start="2026-10-28 09:58:58" end="2026-10-28 09:59:13" TotalSecond="15">
+        <DeviceDetection PowerOffRecovery="" YellowBangRecovery="" YellowBangErrorCode=""/>
+        <DeviceEnumerationTime></DeviceEnumerationTime>
+        <InitialFWDownload start="" end="" code="" WorkAroundcode=""/>
+        <FirstFWDownload start="" end="" code="" WorkAroundcode=""/>
+        <LastFWDownload start="" end="" code="" WorkAroundcode=""/>
+        <IDSQueryTime start="" end="" TotalSecond="">
+            <DeviceLogin TotalMillisecond=""/>
+            <DevicePW TotalMillisecond=""/>
+            <ServerPW TotalMillisecond=""/>
+            <Nonce TotalMillisecond=""/>
+            <FWPublic TotalMillisecond=""/>
+            <APPLPublic TotalMillisecond=""/>
+            <LWM2MFWKey TotalMillisecond=""/>
+            <LWM2MAPPLKey TotalMillisecond=""/>
+            <BSServerURL TotalMillisecond=""/>
+            <PSKID TotalMillisecond=""/>
+            <PSKBS TotalMillisecond=""/>
+            <PSKATT TotalMillisecond=""/>
+        </IDSQueryTime>
+        <DumpDiffTime start="2026-10-28 09:59:11" end="2026-10-28 09:59:13" TotalSecond="2"/>
+        <Return code="0" err=""/>
+    </ConfigSession>
+    <DumpDiff>
+        <TotalCompared></TotalCompared>
+        <TotalMismatched></TotalMismatched>
+        <TotalNotFounded></TotalNotFounded>
+        <TotalSkipped></TotalSkipped>
+        <TotalDeleted></TotalDeleted>
+    </DumpDiff>
+</FactLogInfo>
