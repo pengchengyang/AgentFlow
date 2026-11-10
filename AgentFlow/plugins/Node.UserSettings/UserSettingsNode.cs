@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Your Company" file="UserSettingsNode.cs">
 //     Copyright (c) Your Company. All rights reserved.
 // </copyright>
@@ -168,13 +168,10 @@ public sealed class UserSettingsNode : BaseNode
 
         var sample = StringSample.CreateSample();
         sample.SetValue(endpoint, _endpointOutputPin.Name);
-        if (_endpointOutputPin.SendSample(sample))
-        {
-            _logger?.LogTrace(
-                "UserSettings published endpoint {Endpoint} through output pin {Pin}.",
-                endpoint,
-                _endpointOutputPin.Name);
-        }
+        _endpointOutputPin.SendSampleWithDispatchLog(
+            sample,
+            $"endpoint {endpoint}",
+            LogLevel.Information);
     }
 
     private void PublishSettingsBySlot(
@@ -204,14 +201,10 @@ public sealed class UserSettingsNode : BaseNode
             var json = SerializeSettingsForSlot(settings, assignment);
             var output = StringSample.CreateSample();
             output.SetValue(json, outputPin.Name);
-            if (outputPin.SendSample(output))
-            {
-                _logger?.LogTrace(
-                    "Published user settings JSON for SLOT {Slot} and PORTHUB {PortHub} through output pin {Pin}.",
-                    assignment.Slot,
-                    assignment.PortHub,
-                    outputPin.Name);
-            }
+            outputPin.SendSampleWithDispatchLog(
+                output,
+                $"SLOT {assignment.Slot} and PORTHUB {assignment.PortHub} settings JSON",
+                LogLevel.Information);
         }
 
         if (connectedOutputCount == 0)

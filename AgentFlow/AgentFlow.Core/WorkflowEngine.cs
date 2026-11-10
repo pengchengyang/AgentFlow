@@ -13,11 +13,12 @@ namespace AgentFlow.Core;
 
 /// <summary>
 /// Workflow execution engine:
-/// 1. Validate the graph (types, pins, required inputs, cycles, priority tie-breaks).
+/// 1. Validate graph structure, pins, required inputs, and the acyclic DependsOn startup graph.
 /// 2. Instantiate nodes and their runtime pins.
 /// 3. Wire the graph: each output pin holds references to its connected input pins (Connect).
-/// 4. Execute in topological order through <see cref="NodeInstanceManager"/> — the same
-///    unified lifecycle mechanism used by the AgentFlow GUI (initialize, run, always stop).
+///    Pin connections describe runtime data flow and may contain legitimate feedback cycles.
+/// 4. Execute through <see cref="NodeInstanceManager"/> — the same unified lifecycle mechanism
+///    used by the AgentFlow GUI. DependsOn alone determines startup ordering.
 /// Has no UI dependency and can run headless in the CLI.
 /// </summary>
 public sealed class WorkflowEngine
@@ -204,14 +205,12 @@ public sealed class WorkflowEngine
                 conn.FromNode, conn.FromPin, conn.ToNode, conn.ToPin);
         }
 
-        // 3. Start order: the wire topological order (with Priority tie-break) is the base, and the
-        // same DependsOn ordering the GUI uses (via PluginLoader) is applied on top. A DependsOn
-        // edge therefore always wins, while otherwise-independent nodes keep their priority/wiring
-        // order — previously headless mode ignored DependsOn entirely.
-        var wireOrder = WorkflowValidation.TopologicalSort(graph);
-        var topoInstances = wireOrder.Select(id => instances[id]).ToList();
-        var order = WorkflowOrdering.SortByDependencies(topoInstances);
-        _logger.LogTrace("Execution order: {Order}",
+        // 3. Build the startup list in document order, then apply only DependsOn ordering. Pin
+        // connections are runtime data-flow edges and may contain feedback cycles, so they are
+        // never used to compute startup order.
+        var nodeOrder = graph.Nodes.Select(spec => instances[spec.Id]).ToList();
+        var order = WorkflowOrdering.SortByDependencies(nodeOrder);
+        _logger.LogTrace("Startup order: {Order}",
             string.Join(" -> ", order.Select(n => n.InstanceId)));
 
         // 4. Build the same unified NodeInstanceManager used by the AgentFlow GUI.

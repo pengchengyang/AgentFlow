@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="EditorJsonLoader.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -7,6 +7,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AgentFlow.Contracts;
 
 namespace AgentFlow.Core;
 
@@ -59,7 +60,8 @@ public static class EditorJsonLoader
     /// <summary>Load an editor-persisted JSON file into a runnable <see cref="WorkflowGraph"/>.</summary>
     public static WorkflowGraph Load(string path, NodeRegistry registry)
     {
-        var doc = JsonSerializer.Deserialize<EditorDocument>(File.ReadAllText(path), Options)
+        var json = WorkflowFileCrypto.ReadWorkflowJsonFile(path);
+        var doc = JsonSerializer.Deserialize<EditorDocument>(json, Options)
             ?? throw new InvalidDataException("Editor JSON is empty or malformed");
         return Build(doc, registry);
     }

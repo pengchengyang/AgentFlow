@@ -100,7 +100,7 @@ public sealed class EnlargerNode : BaseNode
             }
 
             foreach (var outputPin in _outPins)
-                outputPin.SendSample(value);
+                outputPin.SendSampleWithDispatchLog(value, $"forward from {pin.Name}");
         }
     }
 

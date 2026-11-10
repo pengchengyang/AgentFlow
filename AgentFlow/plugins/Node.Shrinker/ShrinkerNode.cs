@@ -101,7 +101,7 @@ public sealed class ShrinkerNode : BaseNode
                 return;
             }
 
-            _outPin.SendSample(value);
+            _outPin.SendSampleWithDispatchLog(value, $"forward from {pin.Name}");
         }
     }
 

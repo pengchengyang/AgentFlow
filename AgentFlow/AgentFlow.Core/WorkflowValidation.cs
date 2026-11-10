@@ -11,7 +11,7 @@ using System.Text.Json;
 namespace AgentFlow.Core;
 
 /// <summary>
-/// Pre-flight graph validation and topological ordering.
+/// Pre-flight graph validation and startup-dependency checking.
 /// Mirrors ALC's pin-compatibility and startup-priority ideas while staying
 /// JSON-first and managed-code friendly.
 /// </summary>
@@ -140,55 +140,7 @@ public static class WorkflowValidation
         foreach (var cycle in FindDependencyCycles(graph, byInstanceId))
             errors.Add(cycle);
 
-        // Cycle detection.
-        try
-        {
-            TopologicalSort(graph);
-        }
-        catch (InvalidOperationException ex)
-        {
-            errors.Add(ex.Message);
-        }
-
         return errors;
-    }
-
-    /// <summary>
-    /// Kahn's algorithm with ALC-style startup priority used as a tie-breaker:
-    /// when several nodes are ready at the same time, smaller Priority runs first.
-    /// </summary>
-    public static List<string> TopologicalSort(WorkflowGraph graph)
-    {
-        if (graph.Nodes.Select(n => n.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != graph.Nodes.Count)
-            throw new InvalidOperationException("Duplicate node ids; cannot topologically sort.");
-
-        var indegree = graph.Nodes.ToDictionary(n => n.Id, _ => 0);
-        foreach (var c in graph.Connections)
-            indegree[c.ToNode]++;
-
-        var order = new List<string>(graph.Nodes.Count);
-        var added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        while (order.Count < graph.Nodes.Count)
-        {
-            var ready = graph.Nodes
-                .Where(n => indegree[n.Id] == 0 && !added.Contains(n.Id))
-                .OrderBy(n => n.Priority)
-                .ThenBy(n => n.Id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (ready.Count == 0)
-                throw new InvalidOperationException("The workflow contains a cycle; cannot topologically sort.");
-
-            var next = ready[0];
-            added.Add(next.Id);
-            order.Add(next.Id);
-
-            foreach (var c in graph.Connections.Where(c => c.FromNode == next.Id))
-                indegree[c.ToNode]--;
-        }
-
-        return order;
     }
 
     /// <summary>Read a built-in parameter value (exact key first, then case-insensitive).</summary>
@@ -197,7 +149,6 @@ public static class WorkflowValidation
             ? value
             : node.Parameters.FirstOrDefault(kv => string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)).Value;
 
-    /// <summary>Convert a built-in parameter value (native, JSON element or numeric string) to an int.</summary>
     /// <summary>
     /// Convert a DependsOn value to a normalized list. Accepts a typed list, a legacy integer,
     /// a comma/semicolon-separated string, or a JSON array/string/number.

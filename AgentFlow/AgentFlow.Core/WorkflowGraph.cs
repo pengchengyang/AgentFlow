@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="WorkflowGraph.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -7,6 +7,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentFlow.Contracts;
 
 namespace AgentFlow.Core;
 
@@ -58,7 +59,7 @@ public sealed class WorkflowGraph
         JsonSerializer.Deserialize<WorkflowGraph>(json, JsonOptions)
             ?? throw new InvalidDataException("Workflow JSON is empty or malformed");
 
-    public void Save(string path) => File.WriteAllText(path, ToJson());
+    public void Save(string path) => WorkflowFileCrypto.WriteWorkflowFile(path, ToJson());
 
-    public static WorkflowGraph Load(string path) => FromJson(File.ReadAllText(path));
+    public static WorkflowGraph Load(string path) => FromJson(WorkflowFileCrypto.ReadWorkflowJsonFile(path));
 }

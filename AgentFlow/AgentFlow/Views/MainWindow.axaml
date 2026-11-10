@@ -24,7 +24,7 @@
     <KeyBinding Gesture="F3" Command="{Binding Main.OpenCommand}" />
     <KeyBinding Gesture="F4" Command="{Binding Main.SaveCommand}" />
     <KeyBinding Gesture="F5" Command="{Binding Main.SaveAsCommand}" />
-    <KeyBinding Gesture="F6" Command="{Binding Main.ClearGraphCommand}" />
+    <KeyBinding Gesture="F6" Command="{Binding Main.NewWorkflowCommand}" />
     <KeyBinding Gesture="F7" Command="{Binding Main.ResetZoomCommand}" />
     <KeyBinding Gesture="F8" Command="{Binding Main.OpenLoginCommand}" />
     <KeyBinding Gesture="F9" Command="{Binding Main.ToggleThemeCommand}" />
@@ -99,9 +99,9 @@
                 </Path.Data>
               </Path>
             </Button>
-            <!-- Clear Canvas -->
-            <Button Classes="toolbtn clear" Command="{Binding Main.ClearGraphCommand}"
-                    ToolTip.Tip="{Binding [ClearCanvas], Source={x:Static s:Loc.Instance}, StringFormat={}{0} (F6)}">
+            <!-- New Workflow -->
+            <Button Classes="toolbtn clear" Command="{Binding Main.NewWorkflowCommand}"
+                    ToolTip.Tip="{Binding [NewWorkflow], Source={x:Static s:Loc.Instance}, StringFormat={}{0} (F6)}">
               <Path Data="M136.7 5.9C141.1-7.2 153.3-16 167.1-16l113.9 0c13.8 0 26 8.8 30.4 21.9L320 32 416 32c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 96C14.3 96 0 81.7 0 64S14.3 32 32 32l96 0 8.7-26.1zM32 144l384 0 0 304c0 35.3-28.7 64-64 64L96 512c-35.3 0-64-28.7-64-64l0-304zm88 64c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24zm104 0c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24zm104 0c-13.3 0-24 10.7-24 24l0 192c0 13.3 10.7 24 24 24s24-10.7 24-24l0-192c0-13.3-10.7-24-24-24z" Stretch="Uniform" Width="12" Height="12" Fill="{DynamicResource BrushClearFg}"/>
             </Button>
             <!-- Reset Zoom -->

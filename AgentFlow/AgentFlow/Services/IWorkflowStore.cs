@@ -1,9 +1,11 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="IWorkflowStore.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
 // </copyright>
 // -----------------------------------------------------------------------
+
+using AgentFlow.Contracts;
 
 namespace AgentFlow.Services;
 
@@ -29,20 +31,33 @@ public interface IWorkflowStore
 public sealed class LocalWorkflowStore : IWorkflowStore
 {
     private readonly string _path;
+    private readonly string _legacyJsonPath;
 
     public LocalWorkflowStore(string? path = null)
-        => _path = path ?? Path.Combine(AppContext.BaseDirectory, "workflow.json");
+    {
+        _path = WorkflowFileCrypto.NormalizeWorkflowPath(
+            path ?? Path.Combine(AppContext.BaseDirectory, "workflow.rw"));
+        _legacyJsonPath = Path.ChangeExtension(_path, ".json");
+    }
 
     public string Description => _path;
 
     public Task<string?> LoadAsync()
-        => Task.FromResult(File.Exists(_path) ? File.ReadAllText(_path) : null);
+    {
+        if (File.Exists(_path))
+            return Task.FromResult<string?>(WorkflowFileCrypto.ReadWorkflowJsonFile(_path));
+
+        // Existing projects may still contain workflow.json. Read it once as a legacy fallback;
+        // the next save writes the encrypted workflow.rw file.
+        if (File.Exists(_legacyJsonPath))
+            return Task.FromResult<string?>(File.ReadAllText(_legacyJsonPath));
+
+        return Task.FromResult<string?>(null);
+    }
 
     public Task SaveAsync(string json)
     {
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, json);
-        File.Move(temp, _path, overwrite: true);
+        WorkflowFileCrypto.WriteWorkflowFile(_path, json);
         return Task.CompletedTask;
     }
 }

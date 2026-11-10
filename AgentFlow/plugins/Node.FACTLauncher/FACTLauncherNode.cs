@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Your Company" file="FACTLauncherNode.cs">
 //     Copyright (c) Your Company. All rights reserved.
 // </copyright>
@@ -373,19 +373,10 @@ public sealed class FACTLauncherNode : BaseNode
         {
             var output = StringSample.CreateSample();
             output.StringValue = command;
-            if (_cmdOutputPin.SendSample(output))
-            {
-                _logger?.LogTrace(
-                    "FACTLauncher sent command through {Pin}: {Command}",
-                    _cmdOutputPin.Name,
-                    command);
-            }
-            else
-            {
-                _logger?.LogWarning(
-                    "FACTLauncher could not send command through {Pin}.",
-                    _cmdOutputPin.Name);
-            }
+            _cmdOutputPin.SendSampleWithDispatchLog(
+                output,
+                "FACT launch command",
+                LogLevel.Information);
         }
         catch (Exception ex)
         {

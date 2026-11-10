@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="GraphDeserializer.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -7,6 +7,8 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentFlow.Contracts;
+using AgentFlow.Core;
 
 namespace AgentFlow.Serialization;
 
@@ -46,6 +48,6 @@ public static class GraphDeserializer
         ArgumentException.ThrowIfNullOrEmpty(path);
         if (!File.Exists(path))
             throw new FileNotFoundException("Graph file not found.", path);
-        return Deserialize(File.ReadAllText(path));
+        return Deserialize(WorkflowFileCrypto.ReadWorkflowJsonFile(path));
     }
 }

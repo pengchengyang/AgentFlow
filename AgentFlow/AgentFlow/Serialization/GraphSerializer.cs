@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="GraphSerializer.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -8,6 +8,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using AgentFlow.Contracts;
 using AgentFlow.Core;
 
 namespace AgentFlow.Serialization;
@@ -89,11 +90,9 @@ public static class GraphSerializer
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         var json = Serialize(graph);
-        // Atomic replace: a crash mid-write must not leave a truncated workflow.json that can
-        // neither be opened by the GUI nor run by the CLI.
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, json);
-        File.Move(temp, path, overwrite: true);
+        // The persistence layer encrypts .rw targets and keeps explicit .json targets plain for
+        // legacy compatibility and developer conversion.
+        WorkflowFileCrypto.WriteWorkflowFile(path, json);
     }
 
     private static GraphDocument BuildDocument(EditorGraph graph)

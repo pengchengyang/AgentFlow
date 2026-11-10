@@ -193,15 +193,10 @@ public sealed class AutoStartNode : BaseNode
 
         var readySample = StringSample.CreateSample();
         readySample.StringValue = segment;
-        if (readyPin.SendSample(readySample))
-        {
-            _logger?.LogTrace(
-                "AutoStart dispatched SLOT {Slot}, FSN {Fsn}, IMEI {Imei} to {Pin}.",
-                slot,
-                fsn,
-                imei,
-                readyPin.Name);
-        }
+        readyPin.SendSampleWithDispatchLog(
+            readySample,
+            $"SLOT {slot} ready payload, FSN {fsn}, IMEI {imei}",
+            LogLevel.Information);
 
         RequestWorkflowStart(segment, pinContext);
     }

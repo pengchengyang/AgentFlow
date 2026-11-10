@@ -174,8 +174,10 @@ public sealed class SenderNode : BaseNode
 
         try
         {
-            if (_outPin.SendSample(CreateSample(dataType, value)))
-                logger.LogInformation("Sender sent {Type} value {Value}.", dataType, FormatValue(dataType, value));
+            _outPin.SendSampleWithDispatchLog(
+                CreateSample(dataType, value),
+                $"{dataType} value {FormatValue(dataType, value)}",
+                LogLevel.Information);
         }
         catch (Exception ex)
         {
@@ -260,7 +262,7 @@ public sealed class SenderNode : BaseNode
 
                 try
                 {
-                    _outPin.SendSample(CreateSample(dataType, value));
+                    _outPin.SendSampleWithDispatchLog(CreateSample(dataType, value), $"continuous {dataType} value");
                 }
                 catch (Exception ex)
                 {

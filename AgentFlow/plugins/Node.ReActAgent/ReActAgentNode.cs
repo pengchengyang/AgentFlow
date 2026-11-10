@@ -288,7 +288,7 @@ public sealed class ReActAgentNode : BaseNode
     {
         var sample = StringSample.CreateSample();
         sample.SetValue(answer, "Answer");
-        _outPin.SendSample(sample);
+        _outPin.SendSampleWithDispatchLog(sample, "final answer", LogLevel.Information);
     }
     /// <summary>
     /// Final application-exit hook. Runtime resources were already released by Stop; this node

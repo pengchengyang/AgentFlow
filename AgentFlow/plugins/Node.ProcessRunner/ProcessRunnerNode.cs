@@ -273,12 +273,12 @@ public sealed class ProcessRunnerNode : BaseNode
         {
             var stringSample = StringSample.CreateSample();
             stringSample.StringValue = output;
-            _stringResultPin.SendSample(stringSample);
+            _stringResultPin.SendSampleWithDispatchLog(stringSample, "captured command output", LogLevel.Information);
         }
 
         var exitCodeSample = Int64Sample.CreateSample();
         exitCodeSample.Int64Value = exitCode;
-        _exitCodePin.SendSample(exitCodeSample);
+        _exitCodePin.SendSampleWithDispatchLog(exitCodeSample, $"exit code {exitCode}", LogLevel.Information);
     }
 
     /// <summary>

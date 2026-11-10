@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="MainViewModel.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -7,6 +7,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using AgentFlow.Models;
+using AgentFlow.Contracts;
 using AgentFlow.Core;
 using NodeState = AgentFlow.Contracts.NodeState;
 using AgentFlow.Services;
@@ -45,6 +46,8 @@ public partial class MainViewModel : ViewModelBase
     private int _pasteCount;
     private bool _isLoading;
     private bool _suppressAutoSave;
+    private bool _autoSaveEnabled = true;
+    private bool _isUntitled;
     private bool _autoSaveInFlight;
     private bool _autoSavePending;
     private readonly DispatcherTimer _autoSaveTimer;
@@ -723,14 +726,14 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Schedule a debounced auto-save; no-op while a document is being loaded/cleared.</summary>
     private void ScheduleAutoSave()
     {
-        if (_isLoading || _suppressAutoSave) return;
+        if (_isLoading || _suppressAutoSave || !_autoSaveEnabled) return;
         _autoSaveTimer.Stop();
         _autoSaveTimer.Start();
     }
     /// <summary>Write the current graph to disk (no-op while we are itself loading).</summary>
     private async void AutoSaveNow()
     {
-        if (_isLoading || _suppressAutoSave) return;
+        if (_isLoading || _suppressAutoSave || !_autoSaveEnabled) return;
         if (_autoSaveInFlight)
         {
             _autoSavePending = true;
@@ -769,9 +772,8 @@ public partial class MainViewModel : ViewModelBase
         var json = GraphSerializer.Serialize(_graph);
         if (!string.IsNullOrEmpty(CurrentFilePath))
         {
-            var temp = CurrentFilePath + ".tmp";
-            File.WriteAllText(temp, json);
-            File.Move(temp, CurrentFilePath, overwrite: true);
+            CurrentFilePath = WorkflowFileCrypto.NormalizeWorkflowPath(CurrentFilePath);
+            WorkflowFileCrypto.WriteWorkflowFile(CurrentFilePath, json);
         }
         else
         {
@@ -1158,44 +1160,63 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand]
     private void ClearLog() => UiLogStore.Clear();
-    /// <summary>Raised when the clear-canvas confirmation dialog should be shown (View layer listens to open a window).</summary>
-    public event EventHandler<ConfirmDialogViewModel>? ClearRequested;
-    /// <summary>Clear the whole canvas: show a confirmation first; only on confirm delete all nodes and wires and clear the Core layer (including the PluginLoader instance container).</summary>
+    /// <summary>Raised when the new-workflow confirmation dialog should be shown (View layer listens to open a window).</summary>
+    public event EventHandler<ConfirmDialogViewModel>? NewWorkflowRequested;
+
+    /// <summary>
+    /// Start a new in-memory Untitled workflow. The editor is cleared, but the current workflow
+    /// file is detached and auto-save is disabled so the original file cannot be overwritten.
+    /// </summary>
     [RelayCommand]
-    private void ClearGraph()
+    private void NewWorkflow()
     {
         if (!CanEditGraphNow()) return;
+
+        var message = IsDirty
+            ? "Create a new Untitled workflow? Unsaved changes in the current editor will be discarded. The original workflow file will not be modified."
+            : "Create a new Untitled workflow? The original workflow file will not be modified.";
         var dialog = new ConfirmDialogViewModel(
-            "Clear Canvas",
-            "Clear the entire canvas and all underlying data?",
-            "Confirm", "Cancel");
+            L["NewWorkflow"],
+            message,
+            L["NewWorkflow"],
+            L["Cancel"]);
         dialog.RequestClose += (_, confirmed) =>
         {
-            if (!confirmed) return;
-            if (!CanEditGraphNow()) return;
-            // Suppress the collection-change auto-save while the visual and Core graphs are
-            // temporarily out of sync, then persist the actually-cleared graph once.
-            _autoSaveTimer.Stop();
-            var historySnapshot = CaptureHistorySnapshot();
-            _suppressAutoSave = true;
-            try
-            {
-                Nodes.Clear();
-                Connections.Clear();
-                SelectedNode = null;
-                _workflowHost.Clear();
-            }
-            finally
-            {
-                _suppressAutoSave = false;
-            }
-            MarkDirty();
-            RecordHistory(historySnapshot);
-            AutoSaveNow();
-            Log("Canvas cleared.");
-            _logger.LogTrace("Canvas cleared.");
+            if (!confirmed || !CanEditGraphNow()) return;
+            CreateUntitledWorkflow();
         };
-        ClearRequested?.Invoke(this, dialog);
+        NewWorkflowRequested?.Invoke(this, dialog);
+    }
+
+    /// <summary>Reset the editor to a detached, in-memory Untitled document.</summary>
+    private void CreateUntitledWorkflow()
+    {
+        _autoSaveTimer.Stop();
+        _suppressAutoSave = true;
+        try
+        {
+            Nodes.Clear();
+            Connections.Clear();
+            SelectedConnections.Clear();
+            SelectedNode = null;
+            _workflowHost.Clear();
+        }
+        finally
+        {
+            _suppressAutoSave = false;
+        }
+
+        // Invalidate any auto-save that was already in flight, then detach every target that
+        // could otherwise resolve to the previous file or store.
+        _changeVersion++;
+        CurrentFilePath = string.Empty;
+        _isUntitled = true;
+        _autoSaveEnabled = false;
+        IsDirty = false;
+        ClearHistory();
+        StatusText = L["UntitledWorkflow"];
+        Log("Created a new Untitled workflow. The original file was not modified.");
+        _logger.LogTrace("Created a new Untitled workflow. The original file was not modified.");
     }
     // ---------- Graph <-> ViewModel mapping ----------
     /// <summary>
@@ -1520,6 +1541,14 @@ public partial class MainViewModel : ViewModelBase
     public async Task<bool> SaveCurrentAsync()
     {
         if (!CanEditGraphNow()) return false;
+        if (_isUntitled)
+        {
+            // An untitled document has no safe default target. Never fall back to the startup
+            // store here, because that could overwrite the workflow the user just left behind.
+            SaveAs();
+            return false;
+        }
+
         _autoSaveTimer.Stop();
         var version = _changeVersion;
         try
@@ -1551,7 +1580,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void SaveAs()
     {
-        var suggested = $"AgentFlow_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.json";
+        var suggested = $"AgentFlow_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.rw";
         SaveAsRequested?.Invoke(this, suggested);
     }
     /// <summary>
@@ -1565,11 +1594,14 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             SyncGraphState();
-            GraphSerializer.Save(_graph, path);
-            CurrentFilePath = path;
+            var persistencePath = WorkflowFileCrypto.NormalizeWorkflowPath(path);
+            GraphSerializer.Save(_graph, persistencePath);
+            CurrentFilePath = persistencePath;
+            _isUntitled = false;
+            _autoSaveEnabled = true;
             IsDirty = false;
-            StatusText = $"{L["SavedTo"]}: {path}";
-            _logger.LogTrace("Saved graph to {Path}", path);
+            StatusText = $"{L["SavedTo"]}: {persistencePath}";
+            _logger.LogTrace("Saved graph to {Path}", persistencePath);
             return true;
         }
         catch (Exception ex)
@@ -1594,6 +1626,8 @@ public partial class MainViewModel : ViewModelBase
         if (!CanEditGraphNow()) return;
         var previousPath = CurrentFilePath;
         var previousDirty = IsDirty;
+        var previousIsUntitled = _isUntitled;
+        var previousAutoSaveEnabled = _autoSaveEnabled;
         string? backup = null;
         try
         {
@@ -1602,7 +1636,10 @@ public partial class MainViewModel : ViewModelBase
             var doc = GraphDeserializer.Load(path);
             LoadGraphFromDocument(doc);
             ClearHistory();
-            CurrentFilePath = path;
+            // Legacy JSON remains readable, but subsequent saves target the encrypted sibling .rw.
+            CurrentFilePath = WorkflowFileCrypto.NormalizeWorkflowPath(path);
+            _isUntitled = false;
+            _autoSaveEnabled = true;
             IsDirty = false;
             StatusText = $"{L["LoadedFrom"]}: {path}";
             _logger.LogTrace("Loaded graph from {Path} ({NodeCount} nodes)", path, Nodes.Count);
@@ -1617,6 +1654,8 @@ public partial class MainViewModel : ViewModelBase
                 {
                     LoadGraphFromDocument(GraphDeserializer.Deserialize(backup));
                     CurrentFilePath = previousPath;
+                    _isUntitled = previousIsUntitled;
+                    _autoSaveEnabled = previousAutoSaveEnabled;
                     IsDirty = previousDirty;
                     _logger.LogWarning("Restored the previous graph after a failed load: {Message}", ex.Message);
                 }
@@ -1625,6 +1664,8 @@ public partial class MainViewModel : ViewModelBase
                     // The backup itself is not loadable (very unlikely): at least do not leave the
                     // previous file association pointing at a now-empty canvas that Save could overwrite.
                     CurrentFilePath = string.Empty;
+                    _isUntitled = true;
+                    _autoSaveEnabled = false;
                     _logger.LogError(restoreEx, "Restoring the previous graph failed.");
                 }
             }
@@ -1637,8 +1678,12 @@ public partial class MainViewModel : ViewModelBase
     private void Load()
     {
         if (!CanEditGraphNow()) return;
-        var path = Path.Combine(AppContext.BaseDirectory, "workflow.json");
-        if (!File.Exists(path))
+        var rwPath = Path.Combine(AppContext.BaseDirectory, "workflow.rw");
+        var legacyJsonPath = Path.Combine(AppContext.BaseDirectory, "workflow.json");
+        var path = File.Exists(rwPath)
+            ? rwPath
+            : File.Exists(legacyJsonPath) ? legacyJsonPath : null;
+        if (path is null)
         {
             StatusText = L["NoWorkflowFile"];
             return;

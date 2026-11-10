@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="Loc.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -40,7 +40,7 @@ public sealed class Loc : ObservableObject
         ["RunIsolated"] = ("A node failed and was isolated; the remaining nodes keep running.", "有节点失败并已隔离，其余节点继续运行。"),
         ["SavedTo"] = ("Saved", "已保存"),
         ["LoadedFrom"] = ("Loaded", "已加载"),
-        ["NoWorkflowFile"] = ("workflow.json not found", "没有找到 workflow.json"),
+        ["NoWorkflowFile"] = ("workflow.rw not found", "没有找到 workflow.rw"),
         ["LoadFailed"] = ("Load failed", "加载失败"),
         ["NodesLoaded"] = ("Loaded {0} node types", "已加载 {0} 种节点"),
         ["ConnRejected"] = ("Connection rejected", "连接被拒绝"),
@@ -56,6 +56,8 @@ public sealed class Loc : ObservableObject
 
         ["SaveAs"] = ("Save As...", "另存为..."),
         ["OpenWorkflow"] = ("Open Workflow...", "打开工作流..."),
+        ["NewWorkflow"] = ("New Workflow", "新建工作流"),
+        ["UntitledWorkflow"] = ("Untitled workflow", "未命名工作流"),
         ["ClearCanvas"] = ("Clear Canvas", "清空画布"),
         ["ResetZoom"] = ("Reset Zoom", "重置缩放"),
         ["Login"] = ("Login", "登录"),

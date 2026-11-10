@@ -938,11 +938,11 @@ public sealed class TcpClientNode : BaseNode
 
         var binary = BinSample.CreateSample();
         binary.SetValue(bytes, OutputBinaryPin.Name);
-        OutputBinaryPin.SendSample(binary);
+        OutputBinaryPin.SendSampleWithDispatchLog(binary, "received binary from TCP client");
 
         var text = StringSample.CreateSample();
         text.SetValue(Encoding.UTF8.GetString(bytes), OutputStringPin.Name);
-        OutputStringPin.SendSample(text);
+        OutputStringPin.SendSampleWithDispatchLog(text, "received text from TCP client");
     }
 
     private void QueueSend(byte[] bytes, string pinName)

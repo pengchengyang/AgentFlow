@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="Program.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -13,16 +13,16 @@ using Hosting.Logging;
 
 // AgentFlow.Cli - headless runner entry point.
 // Usage:
-//   AgentFlow.Cli [workflow.json] [pluginDir]
-//   AgentFlow.Cli run.json --instances 5
+//   AgentFlow.Cli [workflow.rw] [pluginDir]
+//   AgentFlow.Cli run.rw --instances 5
 //   AgentFlow.Cli --plugin-dir plugins `
-//       --workflow a.workflow.json --instances 3 `
-//       --workflow b.workflow.json --instances 2
+//       --workflow a.workflow.rw --instances 3 `
+//       --workflow b.workflow.rw --instances 2
 //
 // --instances applies to the most recently declared workflow and defaults to 1.
 // Every configured instance is run independently in the same process.
 
-const string DefaultWorkflowPath = "sample.workflow.json";
+const string DefaultWorkflowPath = "sample.workflow.rw";
 
 if (!TryParseArguments(args, out var workflowSpecs, out var pluginDir, out var parseError, out var showHelp))
 {
@@ -41,7 +41,14 @@ if (showHelp)
 }
 
 if (workflowSpecs.Count == 0)
-    workflowSpecs.Add(new WorkflowSpec(DefaultWorkflowPath, 1));
+{
+    // Keep the bundled JSON sample runnable while the repository transitions to .rw files.
+    var legacyDefaultPath = Path.ChangeExtension(DefaultWorkflowPath, ".json");
+    var resolvedDefaultPath = File.Exists(DefaultWorkflowPath)
+        ? DefaultWorkflowPath
+        : File.Exists(legacyDefaultPath) ? legacyDefaultPath : DefaultWorkflowPath;
+    workflowSpecs.Add(new WorkflowSpec(resolvedDefaultPath, 1));
+}
 
 pluginDir ??= Path.Combine(AppContext.BaseDirectory, "plugins");
 
@@ -283,7 +290,7 @@ static bool TryParseArguments(
                     return false;
                 }
 
-                // Backward compatibility: AgentFlow.Cli <workflow.json> [pluginDir].
+                // Backward compatibility: AgentFlow.Cli <workflow.rw|workflow.json> [pluginDir].
                 if (workflowSpecs.Count == 0)
                 {
                     workflowSpecs.Add(new WorkflowSpec(arg, 1));
@@ -307,9 +314,9 @@ static bool TryParseArguments(
 static void PrintUsage()
 {
     Console.WriteLine("Usage:");
-    Console.WriteLine("  AgentFlow.Cli [workflow.json] [pluginDir]");
+    Console.WriteLine("  AgentFlow.Cli [workflow.rw] [pluginDir]");
     Console.WriteLine("  AgentFlow.Cli run.json --instances 5");
-    Console.WriteLine("  AgentFlow.Cli --plugin-dir plugins --workflow a.workflow.json --instances 3 --workflow b.workflow.json --instances 2");
+    Console.WriteLine("  AgentFlow.Cli --plugin-dir plugins --workflow a.workflow.rw --instances 3 --workflow b.workflow.rw --instances 2");
     Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  -w, --workflow <path>    Add a workflow file. May be specified multiple times.");

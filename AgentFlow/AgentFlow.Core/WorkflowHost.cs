@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="WorkflowHost.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -420,12 +420,25 @@ public sealed class WorkflowHost : IWorkflowEditorHost
         }
     }
 
+    /// <summary>Encrypt a workflow JSON string for the .rw storage format.</summary>
+    public static byte[] EncryptWorkflowJson(string json) => WorkflowFileCrypto.Encrypt(json);
+
+    /// <summary>Decrypt .rw workflow bytes into the original workflow JSON string.</summary>
+    public static string DecryptWorkflowJson(ReadOnlySpan<byte> encrypted) =>
+        WorkflowFileCrypto.Decrypt(encrypted);
+
+    /// <summary>Read a workflow file and return JSON, decrypting .rw content when needed.</summary>
+    public static string ReadWorkflowJsonFile(string path) =>
+        WorkflowFileCrypto.ReadWorkflowJsonFile(path);
+
+    /// <summary>Write workflow JSON to disk; .rw targets are encrypted and .json targets remain plain.</summary>
+    public static void SaveWorkflowFile(string path, string json) =>
+        WorkflowFileCrypto.WriteWorkflowFile(path, json);
+
     public void LoadWorkflowFile(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!File.Exists(path))
-            throw new FileNotFoundException("Workflow file not found.", path);
-        LoadWorkflowJson(File.ReadAllText(path));
+        LoadWorkflowJson(ReadWorkflowJsonFile(path));
     }
 
     private void LoadNode(JsonElement nodeElement)

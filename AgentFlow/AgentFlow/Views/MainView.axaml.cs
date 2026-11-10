@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="MainView.axaml.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -26,8 +26,8 @@ public partial class MainView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.DialogRequested -= OnDialogRequested;
-            _viewModel.ClearRequested -= OnClearRequested;
-            _viewModel.ConfirmRequested -= OnClearRequested;
+            _viewModel.NewWorkflowRequested -= OnNewWorkflowRequested;
+            _viewModel.ConfirmRequested -= OnNewWorkflowRequested;
             _viewModel.LoginRequested -= OnLoginRequested;
             _viewModel.SaveAsRequested -= OnSaveAsRequested;
             _viewModel.OpenRequested -= OnOpenRequested;
@@ -37,8 +37,8 @@ public partial class MainView : UserControl
         if (DataContext is MainViewModel vm)
         {
             vm.DialogRequested += OnDialogRequested;
-            vm.ClearRequested += OnClearRequested;
-            vm.ConfirmRequested += OnClearRequested;
+            vm.NewWorkflowRequested += OnNewWorkflowRequested;
+            vm.ConfirmRequested += OnNewWorkflowRequested;
             vm.LoginRequested += OnLoginRequested;
             vm.SaveAsRequested += OnSaveAsRequested;
             vm.OpenRequested += OnOpenRequested;
@@ -56,8 +56,8 @@ public partial class MainView : UserControl
             win.Show();
     }
 
-    /// <summary>Open the clear-canvas confirmation dialog (modal) above the top-level window. Presentation and window lifecycle only.</summary>
-    private async void OnClearRequested(object? sender, ConfirmDialogViewModel dialog)
+    /// <summary>Open the new-workflow confirmation dialog (modal) above the top-level window. Presentation and window lifecycle only.</summary>
+    private async void OnNewWorkflowRequested(object? sender, ConfirmDialogViewModel dialog)
     {
         var win = new ConfirmDialogWindow { DataContext = dialog };
         if (TopLevel.GetTopLevel(this) is Window owner)
@@ -90,10 +90,10 @@ public partial class MainView : UserControl
                 Title = "Save Workflow",
                 SuggestedStartLocation = startDir,
                 SuggestedFileName = suggestedFileName,
-                DefaultExtension = "json",
+                DefaultExtension = "rw",
                 FileTypeChoices = new[]
                 {
-                    new FilePickerFileType("JSON Workflow") { Patterns = new[] { "*.json" } }
+                    new FilePickerFileType("AgentFlow RW Workflow") { Patterns = new[] { "*.rw" } }
                 }
             });
 
@@ -126,7 +126,8 @@ public partial class MainView : UserControl
                 AllowMultiple = false,
                 FileTypeFilter = new[]
                 {
-                    new FilePickerFileType("JSON Workflow") { Patterns = new[] { "*.json" } }
+                    new FilePickerFileType("AgentFlow RW Workflow") { Patterns = new[] { "*.rw" } },
+                    new FilePickerFileType("Legacy JSON Workflow") { Patterns = new[] { "*.json" } }
                 }
             });
 

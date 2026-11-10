@@ -474,11 +474,11 @@ public sealed class TcpServerNode : BaseNode
 
         var binary = BinSample.CreateSample();
         binary.SetValue(bytes, OutputBinaryPin.Name);
-        OutputBinaryPin.SendSample(binary);
+        OutputBinaryPin.SendSampleWithDispatchLog(binary, $"received binary from client {clientId}");
 
         var text = StringSample.CreateSample();
         text.SetValue(Encoding.UTF8.GetString(bytes), OutputStringPin.Name);
-        OutputStringPin.SendSample(text);
+        OutputStringPin.SendSampleWithDispatchLog(text, $"received text from client {clientId}");
     }
 
     private async Task WriteToClientAsync(ClientSession session, byte[] bytes, CancellationToken ct)
