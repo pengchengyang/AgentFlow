@@ -5,6 +5,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Runtime.ExceptionServices;
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -67,8 +68,12 @@ public sealed class NodeInstanceManager
     private CancellationTokenSource? _runCts;
     private int _autoStopRequested;
     private Task? _healthMonitorTask;
-    // Instances that already completed a start; used to reject a second start of a non-reusable node.
-    private readonly HashSet<BaseNode> _everStarted = new();
+
+    // Validation and start are separate lifecycle phases. The initialized instance snapshot is
+    // used only to validate StartAsync; it is never used to filter nodes for lifecycle callbacks.
+    private long _initializationGeneration;
+    private long _initializedGeneration = -1;
+    private IReadOnlyList<BaseNode> _initializedInstances = Array.Empty<BaseNode>();
 
     public NodeInstanceManager(PluginLoader pluginLoader, ILogger? logger = null)
     {
@@ -84,18 +89,6 @@ public sealed class NodeInstanceManager
 
     /// <summary>All node instances currently managed by this manager.</summary>
     public IReadOnlyList<BaseNode> Instances => _instances ?? _pluginLoader!.Instances;
-
-    /// <summary>Reject a second start of a non-reusable instance (the host cannot rebuild it).</summary>
-    private void EnsureReusableNodes()
-    {
-        foreach (var node in Instances)
-        {
-            if (_everStarted.Contains(node) && !node.IsReusable)
-                throw new InvalidOperationException(
-                    $"Node '{NodeDisplayName(node)}' (#{node.InstanceId}) is not reusable; " +
-                    "recreate the node instance before starting the workflow again.");
-        }
-    }
 
     private static string NodeDisplayName(BaseNode node) =>
         string.IsNullOrWhiteSpace(node.DisplayName) ? node.Name : node.DisplayName!;
@@ -131,35 +124,279 @@ public sealed class NodeInstanceManager
             .ConfigureAwait(false);
     }
 
-    /// <summary>Initialize every node instance, in load order.</summary>
+    /// <summary>Whether the current node set has completed initialization and has not been invalidated.</summary>
+    public bool IsInitialized =>
+        Volatile.Read(ref _initializedGeneration) == Volatile.Read(ref _initializationGeneration) &&
+        AreCurrentInstancesInitialized();
+
+    /// <summary>Invalidate any prepared node state after workflow structure or parameters change.</summary>
+    public void InvalidateInitialization()
+    {
+        Interlocked.Increment(ref _initializationGeneration);
+        Interlocked.Exchange(ref _initializedGeneration, -1);
+    }
+
+    /// <summary>
+    /// Compute the validated DependsOn graph, forward topological layers, and reverse shutdown order.
+    /// A dependency must appear in an earlier layer than the node that depends on it.
+    /// </summary>
+    private DependencyPlan BuildDependencyPlan()
+    {
+        var nodes = Instances.ToList();
+        var byId = new Dictionary<int, BaseNode>();
+        foreach (var node in nodes)
+        {
+            if (!byId.TryAdd(node.InstanceId, node))
+                throw new InvalidOperationException(
+                    $"Duplicate node instance id #{node.InstanceId} prevents dependency ordering.");
+        }
+
+        var dependencies = new Dictionary<BaseNode, List<BaseNode>>();
+        var dependents = new Dictionary<int, List<BaseNode>>();
+        var indegree = new Dictionary<BaseNode, int>();
+        foreach (var node in nodes)
+        {
+            var nodeDependencies = new List<BaseNode>();
+            foreach (var dependencyId in BaseNode.NormalizeDependsOn(node.DependsOn))
+            {
+                if (dependencyId == node.InstanceId)
+                    throw new InvalidOperationException(
+                        $"Node '{NodeDisplayName(node)}' (#{node.InstanceId}) cannot depend on itself.");
+                if (!byId.TryGetValue(dependencyId, out var dependency))
+                    throw new InvalidOperationException(
+                        $"Node '{NodeDisplayName(node)}' (#{node.InstanceId}) depends on missing node instance #{dependencyId}.");
+
+                nodeDependencies.Add(dependency);
+            }
+
+            dependencies[node] = nodeDependencies;
+            indegree[node] = nodeDependencies.Count;
+            foreach (var dependency in nodeDependencies)
+            {
+                if (!dependents.TryGetValue(dependency.InstanceId, out var dependentList))
+                {
+                    dependentList = new List<BaseNode>();
+                    dependents[dependency.InstanceId] = dependentList;
+                }
+                dependentList.Add(node);
+            }
+        }
+
+        var levels = new List<IReadOnlyList<BaseNode>>();
+        var pendingIndegree = indegree.ToDictionary(pair => pair.Key, pair => pair.Value);
+        var current = nodes.Where(node => pendingIndegree[node] == 0).ToList();
+        var visited = 0;
+        while (current.Count > 0)
+        {
+            levels.Add(current.ToArray());
+            visited += current.Count;
+            var next = new List<BaseNode>();
+            foreach (var node in current)
+            {
+                if (!dependents.TryGetValue(node.InstanceId, out var dependentNodes))
+                    continue;
+
+                foreach (var dependent in dependentNodes)
+                {
+                    pendingIndegree[dependent]--;
+                    if (pendingIndegree[dependent] == 0)
+                        next.Add(dependent);
+                }
+            }
+            current = next;
+        }
+
+        if (visited != nodes.Count)
+            throw new InvalidOperationException(
+                "The DependsOn graph contains a cycle; no nodes were initialized or started.");
+
+        var forwardOrder = levels.SelectMany(level => level).ToArray();
+        var reverseOrder = levels
+            .AsEnumerable()
+            .Reverse()
+            .SelectMany(level => level.AsEnumerable().Reverse())
+            .ToArray();
+        return new DependencyPlan(nodes, dependencies, dependents, levels, forwardOrder, reverseOrder);
+    }
+
+    private void LogDependencyPlan(
+        string phase,
+        DependencyPlan? plan,
+        IReadOnlyList<BaseNode>? executionOrder = null)
+    {
+        if (plan is null)
+            return;
+
+        var orderedNodes = executionOrder ?? plan.Nodes;
+        _logger.LogInformation(
+            "{Phase}:{NewLine}{Plan}",
+            phase,
+            Environment.NewLine,
+            string.Join(
+                Environment.NewLine,
+                orderedNodes.Select(node =>
+                {
+                    var nodeDependencies = plan.Dependencies[node];
+                    return nodeDependencies.Count == 0
+                        ? $"  #{node.InstanceId} \"{NodeDisplayName(node)}\" -> independent, same-level work may run concurrently"
+                        : $"  #{node.InstanceId} \"{NodeDisplayName(node)}\" -> waits for {string.Join(", ", nodeDependencies.Select(dependency => $"#{dependency.InstanceId} \"{NodeDisplayName(dependency)}\""))}";
+                })));
+    }
+
+    private bool AreCurrentInstancesInitialized()
+    {
+        if (_initializedInstances.Count == 0)
+            return Instances.Count == 0;
+
+        var current = Instances;
+        return current.Count == _initializedInstances.Count &&
+               current.Zip(_initializedInstances, ReferenceEquals).All(equal => equal);
+    }
+
+    private void EnsureInitialized()
+    {
+        if (!IsInitialized)
+            throw new InvalidOperationException(
+                "Workflow is not initialized for the current node set. Call InitializeAsync before StartAsync.");
+
+        if (Instances.Any(node => node.State != NodeState.Idle))
+            throw new InvalidOperationException(
+                "Workflow nodes are not idle. Stop the current run before starting a new one.");
+    }
+
+    private sealed record DependencyPlan(
+        IReadOnlyList<BaseNode> Nodes,
+        IReadOnlyDictionary<BaseNode, List<BaseNode>> Dependencies,
+        IReadOnlyDictionary<int, List<BaseNode>> Dependents,
+        IReadOnlyList<IReadOnlyList<BaseNode>> Levels,
+        IReadOnlyList<BaseNode> ForwardOrder,
+        IReadOnlyList<BaseNode> ReverseOrder);
+
+    private sealed record NodeInitializationResult(BaseNode Node, Exception? Error);
+
+    private async Task<NodeInitializationResult> InitializeNodeBestEffortAsync(
+        BaseNode node,
+        Func<BaseNode, INodeContext> contextFactory,
+        CancellationToken ct)
+    {
+        try
+        {
+            var initialize = node.Initialize(contextFactory(node), ct);
+            if (await Task.WhenAny(
+                    initialize,
+                    Task.Delay(InitializeTimeout, CancellationToken.None)).ConfigureAwait(false) != initialize)
+            {
+                ObserveOrphaned(initialize);
+                return new NodeInitializationResult(
+                    node,
+                    new TimeoutException(
+                        $"Node '{NodeDisplayName(node)}' did not initialize within {InitializeTimeout}."));
+            }
+
+            await initialize.ConfigureAwait(false);
+            return new NodeInitializationResult(node, null);
+        }
+        catch (Exception ex)
+        {
+            return new NodeInitializationResult(node, ex);
+        }
+    }
+
+    /// <summary>
+    /// Initialize every node in DependsOn topological order. Nodes in the same dependency layer may
+    /// initialize concurrently; the next layer waits until every dependency in the previous layer
+    /// initialized successfully. Initialization does not call Run and leaves nodes Idle.
+    /// </summary>
     public async Task InitializeAsync(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(contextFactory);
+
         await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            await StopPreviousRunAsync(contextFactory, ct).ConfigureAwait(false);
-            EnsureReusableNodes();
-            ClearRuntimeValues();
-            var initialized = new List<BaseNode>();
-            BaseNode? failedNode = null;
-            try
+            if (IsInitialized)
             {
+                _logger.LogTrace(
+                    "Workflow initialization is already valid for {NodeCount} nodes; skipping duplicate initialization.",
+                    Instances.Count);
+                return;
+            }
+
+            await StopPreviousRunAsync(contextFactory, ct).ConfigureAwait(false);
+            foreach (var node in Instances)
+                node.ResetState();
+            Interlocked.Exchange(ref _initializedGeneration, -1);
+            ClearRuntimeValues();
+
+            var plan = BuildDependencyPlan();
+            LogDependencyPlan("Initialization plan", plan);
+            var initialized = new HashSet<BaseNode>();
+            var failed = new HashSet<BaseNode>();
+            var failures = new List<Exception>();
+            var generation = Volatile.Read(ref _initializationGeneration);
+
+            foreach (var level in plan.Levels)
+            {
+                ct.ThrowIfCancellationRequested();
+                var results = await Task.WhenAll(
+                    level.Select(node => InitializeNodeBestEffortAsync(node, contextFactory, ct)))
+                    .ConfigureAwait(false);
+
+                foreach (var result in results)
+                {
+                    if (result.Error is null)
+                    {
+                        initialized.Add(result.Node);
+                        continue;
+                    }
+
+                    failed.Add(result.Node);
+                    failures.Add(result.Error);
+                    _logger.LogError(
+                        result.Error,
+                        "Node '{Node}' (#{InstanceId}) failed to initialize: {Message}",
+                        NodeDisplayName(result.Node),
+                        result.Node.InstanceId,
+                        result.Error.Message);
+                }
+
+                if (failed.Count > 0)
+                    break;
+            }
+
+            if (failures.Count > 0)
+            {
+                await StopNodesBestEffortAsync(
+                    plan.ReverseOrder,
+                    contextFactory,
+                    CancellationToken.None).ConfigureAwait(false);
+
                 foreach (var node in Instances)
                 {
-                    failedNode = node;
-                    await node.Initialize(contextFactory(node), ct).ConfigureAwait(false);
-                    initialized.Add(node);
-                    failedNode = null;
+                    if (failed.Contains(node))
+                        node.SetFailed();
+                    else
+                        node.ResetState();
                 }
+
+                InvalidateInitialization();
+                _initializedInstances = Array.Empty<BaseNode>();
+                if (failures.Count == 1)
+                    ExceptionDispatchInfo.Capture(failures[0]).Throw();
+
+                throw new AggregateException("One or more nodes failed to initialize.", failures);
             }
-            catch
-            {
-                var nodesToStop = new List<BaseNode>(initialized);
-                if (failedNode is not null) nodesToStop.Add(failedNode);
-                await StopNodesBestEffortAsync(nodesToStop.AsEnumerable().Reverse(), contextFactory,
-                    CancellationToken.None).ConfigureAwait(false);
-                throw;
-            }
+
+            if (Volatile.Read(ref _initializationGeneration) != generation)
+                throw new InvalidOperationException(
+                    "Workflow structure changed during initialization; initialize again before starting.");
+
+            _initializedInstances = plan.Nodes.ToArray();
+            Interlocked.Exchange(ref _initializedGeneration, generation);
+            _logger.LogInformation(
+                "Workflow initialized {NodeCount} nodes in {LayerCount} dependency layer(s).",
+                plan.Nodes.Count,
+                plan.Levels.Count);
         }
         finally
         {
@@ -184,7 +421,10 @@ public sealed class NodeInstanceManager
     /// is disposing the old one.
     /// </para>
     /// </summary>
-    private Task Launch(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
+    private Task Launch(
+        Func<BaseNode, INodeContext> contextFactory,
+        CancellationToken ct = default,
+        DependencyPlan? suppliedPlan = null)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ct.ThrowIfCancellationRequested();
@@ -197,82 +437,19 @@ public sealed class NodeInstanceManager
         _runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = _runCts.Token;
 
-        var nodes = Instances.ToList();
-        var byId = new Dictionary<int, BaseNode>();
-        foreach (var node in nodes)
-        {
-            if (!byId.TryAdd(node.InstanceId, node))
-                throw new InvalidOperationException($"Duplicate node instance id #{node.InstanceId} prevents dependency startup.");
-        }
-
-        var dependencies = new Dictionary<BaseNode, List<BaseNode>>();
-        var dependents = new Dictionary<int, List<BaseNode>>();
-        var pendingDependencyCount = new Dictionary<BaseNode, int>();
-        foreach (var node in nodes)
-        {
-            var nodeDependencies = new List<BaseNode>();
-            foreach (var dependencyId in BaseNode.NormalizeDependsOn(node.DependsOn))
-            {
-                if (dependencyId == node.InstanceId)
-                    throw new InvalidOperationException(
-                        $"Node '{NodeDisplayName(node)}' (#{node.InstanceId}) cannot depend on itself.");
-                if (!byId.TryGetValue(dependencyId, out var dependency))
-                    throw new InvalidOperationException(
-                        $"Node '{NodeDisplayName(node)}' (#{node.InstanceId}) depends on missing node instance #{dependencyId}.");
-
-                nodeDependencies.Add(dependency);
-            }
-
-            dependencies[node] = nodeDependencies;
-            pendingDependencyCount[node] = nodeDependencies.Count;
-            foreach (var dependency in nodeDependencies)
-            {
-                if (!dependents.TryGetValue(dependency.InstanceId, out var dependentList))
-                {
-                    dependentList = new List<BaseNode>();
-                    dependents[dependency.InstanceId] = dependentList;
-                }
-                dependentList.Add(node);
-            }
-        }
-
-        // Detect a dependency cycle before any node starts. Otherwise the scheduler would wait for
-        // nodes that can never become ready and the workflow would appear to start forever.
-        var cycleCheckCount = 0;
-        var cycleCheckQueue = new Queue<BaseNode>(nodes.Where(n => pendingDependencyCount[n] == 0));
-        var cycleCheckIndegree = pendingDependencyCount.ToDictionary(kv => kv.Key, kv => kv.Value);
-        while (cycleCheckQueue.Count > 0)
-        {
-            var node = cycleCheckQueue.Dequeue();
-            cycleCheckCount++;
-            if (!dependents.TryGetValue(node.InstanceId, out var next))
-                continue;
-            foreach (var dependent in next)
-            {
-                cycleCheckIndegree[dependent]--;
-                if (cycleCheckIndegree[dependent] == 0)
-                    cycleCheckQueue.Enqueue(dependent);
-            }
-        }
-        if (cycleCheckCount != nodes.Count)
-            throw new InvalidOperationException("The DependsOn graph contains a cycle; no nodes were started.");
-
-        _logger.LogInformation(
-            "Launch plan:{NewLine}{LaunchPlan}",
-            Environment.NewLine,
-            string.Join(
-                Environment.NewLine,
-                nodes.Select(node =>
-                {
-                    var nodeDependencies = dependencies[node];
-                    return nodeDependencies.Count == 0
-                        ? $"  #{node.InstanceId} \"{NodeDisplayName(node)}\" -> independent, asynchronous start"
-                        : $"  #{node.InstanceId} \"{NodeDisplayName(node)}\" -> waits for {string.Join(", ", nodeDependencies.Select(dependency => $"#{dependency.InstanceId} \"{NodeDisplayName(dependency)}\""))}";
-                })));
+        var plan = suppliedPlan ?? BuildDependencyPlan();
+        var nodes = plan.Nodes;
+        var dependencies = plan.Dependencies;
+        var dependents = plan.Dependents;
+        var pendingDependencyCount = dependencies.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.Count);
 
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var pendingLaunches = new HashSet<BaseNode>(nodes);
+        var startedNodeLaunches = new HashSet<BaseNode>();
         var launchGate = new object();
+        var startedLaunchGate = new object();
         var pendingDependencyGate = new object();
 
         void CompleteNodeLaunch(BaseNode node)
@@ -298,6 +475,17 @@ public sealed class NodeInstanceManager
 
         void StartNode(BaseNode node)
         {
+            lock (startedLaunchGate)
+            {
+                if (!startedNodeLaunches.Add(node))
+                {
+                    _logger.LogWarning(
+                        "Duplicate launch request for node '{Node}' (#{InstanceId}) was ignored.",
+                        NodeDisplayName(node), node.InstanceId);
+                    return;
+                }
+            }
+
             if (token.IsCancellationRequested)
             {
                 CompleteNodeLaunch(node);
@@ -309,7 +497,11 @@ public sealed class NodeInstanceManager
             lock (_runTasksGate) _runTasks.Add((node, task));
         }
 
-        foreach (var node in nodes.Where(n => pendingDependencyCount[n] == 0))
+        // Snapshot roots before starting any task. Dependency counters are mutated by the
+        // asynchronous launch tasks, so enumerating a live predicate could misclassify a
+        // dependent node as a root while the loop is still running.
+        var rootNodes = nodes.Where(n => pendingDependencyCount[n] == 0).ToArray();
+        foreach (var node in rootNodes)
             StartNode(node);
 
         _healthMonitorTask = MonitorRunningNodesAsync(contextFactory, token);
@@ -396,7 +588,15 @@ public sealed class NodeInstanceManager
                 int remainingAfterSatisfaction;
                 lock (pendingDependencyGate)
                 {
-                    pendingDependencyCount.TryGetValue(dependent, out var remaining);
+                    if (!pendingDependencyCount.TryGetValue(dependent, out var remaining) ||
+                        remaining <= 0)
+                    {
+                        _logger.LogWarning(
+                            "Ignored duplicate dependency satisfaction for node #{DependentId} '{Dependent}' from dependency #{DependencyId} '{Dependency}'.",
+                            dependent.InstanceId, NodeDisplayName(dependent), node.InstanceId, NodeDisplayName(node));
+                        continue;
+                    }
+
                     remaining--;
                     pendingDependencyCount[dependent] = remaining;
                     remainingAfterSatisfaction = remaining;
@@ -441,12 +641,12 @@ public sealed class NodeInstanceManager
             // A second Run on the same manager must not inherit the previous session's token or
             // run tasks. Stop it first (serialized by the lifecycle gate) before creating a new one.
             await StopPreviousRunAsync(contextFactory, ct).ConfigureAwait(false);
-            EnsureReusableNodes();
+            EnsureInitialized();
+            var plan = BuildDependencyPlan();
+            LogDependencyPlan("Run plan", plan);
             try
             {
-                var launchTask = Launch(contextFactory, ct);
-                foreach (var node in Instances)
-                    _everStarted.Add(node);
+                var launchTask = Launch(contextFactory, ct, plan);
 
                 if (await Task.WhenAny(launchTask, Task.Delay(RunTimeout, CancellationToken.None))
                         .ConfigureAwait(false) != launchTask)
@@ -460,6 +660,8 @@ public sealed class NodeInstanceManager
                 if (Instances.FirstOrDefault(n => n.Failed) is { } failed)
                     throw new InvalidOperationException(
                         $"Node '{failed.DisplayName}' failed to run (state: {failed.State}).");
+
+                InvalidateInitialization();
             }
             catch
             {
@@ -475,89 +677,35 @@ public sealed class NodeInstanceManager
     }
 
     /// <summary>
-    /// Start a persistent workflow: initialize every instance, then launch them concurrently.
-    /// This does NOT wait for the nodes to finish; the workflow stays "running" until
-    /// <see cref="StopAsync"/> (GUI Stop button, CLI Ctrl+C, or the automatic stop on failure).
-    /// When initialization fails, the nodes that already initialized are stopped again (best
-    /// effort, as required by the <see cref="BaseNode.Stop"/> contract for a failed start), the
-    /// failing node is marked <see cref="NodeState.Failed"/>, and the original exception is
-    /// rethrown so the caller still sees the failure.
+    /// Start a persistent workflow after <see cref="InitializeAsync"/> has successfully prepared
+    /// the current node set. Start never performs initialization itself: stale or uninitialized
+    /// node state is rejected so callers cannot accidentally run resources that were prepared for
+    /// a different workflow structure. Dependencies are launched in forward topological order and
+    /// a dependent node starts only after every dependency reports Running = true.
+    /// This method does not wait for nodes to finish; <see cref="StopAsync"/> ends the session.
     /// </summary>
     public async Task StartAsync(Func<BaseNode, INodeContext> contextFactory, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(contextFactory);
+
         await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            // Starting a second session on the same manager must first stop the previous runs so
-            // Launch can never dispose a token source that is still in use and two runs cannot
-            // execute concurrently.
-            await StopPreviousRunAsync(contextFactory, ct).ConfigureAwait(false);
+            EnsureInitialized();
 
-            // A reused node must not see the previous run's last input sample: HasInput/WaitForInput
-            // would otherwise return stale data immediately. Wiring is left untouched.
-            ClearRuntimeValues();
+            var plan = BuildDependencyPlan();
+            LogDependencyPlan("Launch plan", plan);
 
-            // A node that cannot rebuild its resources cannot be started twice on the same instance.
-            // The editor/CLI must recreate such a node before the next run; failing loudly is better
-            // than silently reusing a disposed socket / completed channel.
-            EnsureReusableNodes();
-
-            // Remember which nodes initialized successfully: they already acquired resources (ports,
-            // sockets, files) and must be torn down again when a later node fails to initialize.
-            var initialized = new List<BaseNode>();
-            BaseNode? failedNode = null;
             try
             {
-                foreach (var node in Instances)
-                {
-                    failedNode = node;
-                    // Bound each initialization: a plugin that hangs in Initialize (e.g. an
-                    // unreachable dependency with no timeout of its own) would otherwise block the
-                    // whole start, and the user's Stop behind this gate, forever.
-                    var init = node.Initialize(contextFactory(node), ct);
-                    if (await Task.WhenAny(init, Task.Delay(InitializeTimeout, CancellationToken.None))
-                            .ConfigureAwait(false) != init)
-                        throw new TimeoutException(
-                            $"Node '{node.DisplayName}' did not initialize within {InitializeTimeout}.");
-                    await init.ConfigureAwait(false);
-                    initialized.Add(node);
-                    failedNode = null;
-                }
+                _ = Launch(contextFactory, ct, plan);
+
+                // Initialization is a one-shot preparation phase. Stop and Shutdown still call
+                // every current node, while a later Start must initialize the current node set again.
+                InvalidateInitialization();
             }
             catch
             {
-                // Stop everything that was initialized (plus the failing node, which may have acquired
-                // part of its resources before throwing), in reverse order. Stop failures are logged by
-                // the helper and never hide the original initialization error.
-                var nodesToStop = new List<BaseNode>(initialized);
-                if (failedNode is not null) nodesToStop.Add(failedNode);
-                await StopNodesBestEffortAsync(nodesToStop.AsEnumerable().Reverse(), contextFactory,
-                    CancellationToken.None).ConfigureAwait(false);
-
-                foreach (var node in Instances)
-                {
-                    if (ReferenceEquals(node, failedNode))
-                        node.SetFailed();
-                    else
-                        node.ResetState();
-                }
-
-                if (failedNode is not null)
-                    _logger.LogError("Node '{Node}' (#{InstanceId}) failed to initialize; the workflow was not started.",
-                        failedNode.Name, failedNode.InstanceId);
-
-                throw;
-            }
-            try
-            {
-                _ = Launch(contextFactory, ct);
-                foreach (var node in Instances)
-                    _everStarted.Add(node);
-            }
-            catch
-            {
-                // Initialization succeeded for every node, so a launch failure (context factory,
-                // cancellation, dictionary lookup) must stop them again before propagating.
                 await StopCoreAsync(contextFactory, CancellationToken.None, preserveFailure: false)
                     .ConfigureAwait(false);
                 throw;
@@ -570,7 +718,8 @@ public sealed class NodeInstanceManager
     }
 
     /// <summary>
-    /// Stop every node instance (reverse load order), wait for the launched runs to unwind, then
+    /// Stop every current node instance in reverse DependsOn topological order, wait for the
+    /// launched runs to unwind, then
     /// reset every node's lifecycle state to <see cref="NodeState.Idle"/>. Waiting happens BEFORE
     /// the reset so a node that unwinds badly during teardown (e.g. it was disposed mid-connect)
     /// cannot leave a stale Failed / Running state behind in the editor.
@@ -613,11 +762,12 @@ public sealed class NodeInstanceManager
     }
 
     /// <summary>
-    /// Invoke every node's final application-exit callback in reverse load order. This is separate
-    /// from <see cref="StopAsync"/>: Stop releases runtime resources and keeps workflows restartable,
-    /// while Shutdown is the last-chance callback before the process terminates. Each node is bounded
-    /// by <see cref="ShutdownTimeout"/> and failures are logged best-effort so one broken plugin cannot
-    /// prevent the remaining nodes from shutting down. This method never throws.
+    /// Invoke every node's final application-exit callback in reverse DependsOn topological order.
+    /// This is separate from <see cref="StopAsync"/>: Stop releases runtime resources and keeps
+    /// workflows restartable, while Shutdown is the last-chance callback before the process
+    /// terminates. Each node is bounded by <see cref="ShutdownTimeout"/> and failures are logged
+    /// best-effort so one broken plugin cannot prevent the remaining nodes from shutting down.
+    /// This method never throws.
     /// </summary>
     public async Task ShutdownAsync(
         Func<BaseNode, INodeContext> contextFactory,
@@ -628,8 +778,13 @@ public sealed class NodeInstanceManager
         await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            await ShutdownNodesBestEffortAsync(Instances.Reverse(), contextFactory, ct)
+            var plan = TryBuildDependencyPlan("Shutdown plan");
+            var nodes = plan?.ReverseOrder ?? Instances.Reverse().ToArray();
+            LogDependencyPlan("Shutdown plan", plan, nodes);
+            await ShutdownNodesBestEffortAsync(nodes, contextFactory, ct)
                 .ConfigureAwait(false);
+            InvalidateInitialization();
+            _initializedInstances = Array.Empty<BaseNode>();
         }
         finally
         {
@@ -657,7 +812,10 @@ public sealed class NodeInstanceManager
         cts?.Cancel();
         try
         {
-            await StopNodesBestEffortAsync(Instances.Reverse(), contextFactory, ct).ConfigureAwait(false);
+            var plan = TryBuildDependencyPlan("Stop plan");
+            var nodesToStop = plan?.ReverseOrder ?? Instances.Reverse().ToArray();
+            LogDependencyPlan("Stop plan", plan, nodesToStop);
+            await StopNodesBestEffortAsync(nodesToStop, contextFactory, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -693,6 +851,8 @@ public sealed class NodeInstanceManager
             }
 
             Interlocked.Exchange(ref _autoStopRequested, 0);
+            InvalidateInitialization();
+            _initializedInstances = Array.Empty<BaseNode>();
             if (ReferenceEquals(_runCts, cts)) _runCts = null;
             if (completed || cts is null)
             {
@@ -761,6 +921,22 @@ public sealed class NodeInstanceManager
         }
 
         return failedCount;
+    }
+
+    private DependencyPlan? TryBuildDependencyPlan(string phase)
+    {
+        try
+        {
+            return BuildDependencyPlan();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Could not build the DependsOn reverse order for {Phase}; cleanup will use reverse instance load order for all nodes.",
+                phase);
+            return null;
+        }
     }
 
     /// <summary>

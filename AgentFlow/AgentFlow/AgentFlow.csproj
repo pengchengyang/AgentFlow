@@ -29,7 +29,7 @@
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
     <ProjectReference Include="..\BroadcastKit\BroadcastKit.csproj" />
     <ProjectReference Include="..\BroadcastKit.Contracts\BroadcastKit.Contracts.csproj" />
-    <ProjectReference Include="..\FACT.Shared\FACT.Shared.csproj" />
+    <ProjectReference Include="..\AgentFlow.Shared\AgentFlow.Shared.csproj" />
     <ProjectReference Include="..\Hosting.Logging\Hosting.Logging.csproj" />
   </ItemGroup>
 

@@ -101,9 +101,9 @@ public sealed class WorkflowEngine
         }
     }
     /// <summary>
-    /// Start a persistent workflow: initialize every node, then run them (uses
-    /// <see cref="NodeInstanceManager"/>). Does NOT stop automatically; the caller (desktop host Stop
-    /// button or another persistent host) is responsible for calling <see cref="StopAsync"/>.
+    /// Start a persistent workflow that was prepared by <see cref="InitializeAsync"/>. Start does
+    /// not initialize nodes itself and rejects stale prepared state. It does NOT stop automatically;
+    /// the caller is responsible for calling <see cref="StopAsync"/>.
     /// </summary>
     public async Task StartAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
@@ -113,7 +113,9 @@ public sealed class WorkflowEngine
     }
 
 
-    /// <summary>Stop every node in the workflow, reverse order (uses <see cref="NodeInstanceManager"/>).</summary>
+    /// <summary>
+    /// Stop every node in reverse DependsOn topological order (uses <see cref="NodeInstanceManager"/>).
+    /// </summary>
     public async Task StopAsync(WorkflowGraph graph, CancellationToken ct = default)
     {
         _logger.LogTrace("WorkflowEngine: stop.");

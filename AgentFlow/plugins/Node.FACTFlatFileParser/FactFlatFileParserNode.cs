@@ -83,24 +83,26 @@ public sealed class FactFlatFileParserNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, _pathInputPin) ||
-            value is not StringSample { StringValue: { } inputPath } ||
-            string.IsNullOrWhiteSpace(inputPath))
+        if (ReferenceEquals(pin, _pathInputPin))
         {
-            return;
-        }
+            if (value is not StringSample { StringValue: { } inputPath } ||
+                string.IsNullOrWhiteSpace(inputPath))
+            {
+                return;
+            }
 
-        try
-        {
-            ParseAndPublish(inputPath.Trim());
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(
-                ex,
-                "FACT Flat File Parser failed for input {InputPath}: {Message}",
-                inputPath,
-                ex.Message);
+            try
+            {
+                ParseAndPublish(inputPath.Trim());
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(
+                    ex,
+                    "FACT Flat File Parser failed for input {InputPath}: {Message}",
+                    inputPath,
+                    ex.Message);
+            }
         }
     }
 

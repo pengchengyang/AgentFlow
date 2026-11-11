@@ -93,7 +93,7 @@ for %%S in (
     AgentFlow.Core
     BroadcastKit
     BroadcastKit.Contracts
-    FACT.Shared
+    AgentFlow.Shared
     Hosting.Logging
 ) do (
     call :CopySource "%ROOT%\%%S" "%DEST%\%%S"

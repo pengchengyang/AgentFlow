@@ -40,6 +40,7 @@ public sealed class PluginLoader
     private static readonly HashSet<string> SharedAssemblyNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "AgentFlow.Contracts",
+        "AgentFlow.Shared",
         "BroadcastKit",
         "BroadcastKit.Contracts"
     };

@@ -16,9 +16,9 @@ desktop, CLI, headless, or future web hosts.
 | `AgentFlow.Desktop` | Desktop entry point and host logging setup. |
 | `AgentFlow.Cli` | Headless workflow entry point. |
 | `Hosting.Logging` | Shared Serilog-compatible logging integration. |
-| `FACT.Shared` | GUI-neutral FACT declarations, including shared error/result contracts and broadcast subscription names. |
+| `AgentFlow.Shared` | GUI-neutral shared declarations grouped per concrete project (for example `FlashForgeHMI/Broadcasts`, `Errors`, `Results`), including error/result contracts and broadcast subscription names. |
 | `plugins/*` | Dynamically loaded node implementations and demo nodes. |
-| `BroadcastKit*` | Optional process-local broadcast transport and shared topic/message contracts, including ordered sample batches and correlated request/reply. |
+| `BroadcastKit*` | Optional process-local broadcast transport and shared topic/message contracts, including ordered sample batches, keyed Sample dictionaries, keyed Sample-list dictionaries, and correlated request/reply. |
 
 ## Dependency Direction
 
@@ -40,7 +40,9 @@ reference Core and Contracts.
 `WorkflowHost` is the shared facade for workflow consumption and runtime control:
 
 - `IWorkflowReadOnlyHost`: load a workflow, inspect immutable snapshots, validate,
-  start/stop execution, execute node commands, and read per-node health.
+  initialize/start/stop execution, execute node commands, and read per-node health.
+  `InitializeAsync` prepares node resources; `StartAsync` only launches a node set
+  that is currently initialized.
 - `IWorkflowEditorHost`: adds graph mutation operations used only by the AgentFlow
   editor, such as create/remove node, connect/disconnect, update node state, and clear.
 
@@ -63,7 +65,13 @@ publishers:
   the original correlation id.
 - The default request timeout is five seconds. Timeout, cancellation, and disposal
   always remove the temporary subscription and pending request.
-- The bus does not inspect payloads; business meaning remains defined by topic contracts.
+
+`BroadcastTopicMessage` also supports `SamplesByKey` for one Sample per string key and
+`SampleListsByKey` for an ordered Sample list per string key. TopicBus transports both
+representations without interpreting key names, Sample types, ordering, or precedence.
+Publishers and subscribers own the topic contract and malformed-payload handling. Both
+dictionaries and nested lists are copied to read-only snapshots when the envelope is created.
+The bus does not inspect payloads; business meaning remains defined by topic contracts.
 
 ## CLI Multi-Instance Execution
 
@@ -98,7 +106,28 @@ supported.
 `Running = true` before `Run()` returns normally. Keeping the flag true means
 the node can still accept or process work until `Stop()` is called.
 
-`NodeInstanceManager` enforces the contract in two places:
+`NodeInstanceManager` separates lifecycle preparation from execution. Each lifecycle method
+always covers every node in the current loaded workflow; state checks are preconditions for the
+whole call and never select a subset of nodes:
+
+- `InitializeAsync` initializes nodes in `DependsOn` forward topological layers.
+  Nodes in the same layer may initialize concurrently. A later layer starts only
+  after every dependency in the earlier layer initialized successfully.
+  Initialization never calls `Run()` and leaves nodes `Idle`.
+- `StartAsync` requires valid initialization for the exact current node set. It
+  rejects stale, missing, or changed initialization instead of silently preparing
+  again. It then launches every current node in dependency order, and a dependent
+  node starts only after every dependency has reached `State == Running` and
+  `Running = true`.
+- `StopAsync` calls `Stop` for every current node in reverse `DependsOn` topological
+  order, so dependents stop before their dependencies. Node state is not used to
+  skip callbacks; `preserveFailure` only controls post-stop state retention.
+- `ShutdownAsync` calls `Shutdown` for every current node in reverse `DependsOn`
+  topological order.
+- Workflow structure, parameters, bindings, and loaded documents invalidate the
+  prepared initialization state. The next run must call `InitializeAsync` again.
+
+`NodeInstanceManager` additionally enforces the runtime contract:
 
 1. It rejects a normal `Run()` return when `Running` is still false and marks
    the node as failed.
@@ -118,8 +147,9 @@ not merely a call-order preference:
 - Pin connections are runtime data-flow edges and may form legitimate feedback cycles such as
   A -> B -> A; they are not used to calculate startup order.
 - `DependsOn` is the only startup-ordering graph and must remain acyclic.
-- Root nodes without dependencies start concurrently.
-- Multi-dependency nodes start once, after the final dependency becomes ready.
+- Root nodes in the same initialization layer may initialize and start concurrently.
+- Multi-dependency nodes initialize only after all dependencies initialized, and start
+  once after the final dependency reaches `Running = true`.
 - If any dependency fails, the dependent node does not call `Run()` and Core
   stops the workflow.
 - Missing, self-referencing, duplicate instance-id, and cyclic dependency graphs
@@ -263,17 +293,19 @@ and receive hooks without implementing final business behavior yet:
 
 | Plugin | Role | Default pins |
 | --- | --- | --- |
-| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, pin-based user-settings coordination, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host` and `output_string_cmd` outputs |
-| `Node.UserSettings` | Standalone INI settings reader that returns section values as JSON for configuration consumers | `input_string_ready` string input; `output_string_slotA/B/C/D/F` string outputs |
+| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, RET-to-JSON publication, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host` and `output_string_cmd` outputs |
+| `Node.UserSettings` | Standalone INI settings reader that loads during initialization, broadcasts the complete keyed snapshot to GUI consumers, and publishes runtime endpoint/SLOT outputs during Run | `input_string_ready` string input; `output_string_slotA/B/C/D/F` and `output_string_endpoint` string outputs |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
 | `Node.FACTFlatFileParser` | Parses FACT XML logs and publishes original XML plus normalized JSON with the legacy FlatFile row split into indexed fields | `input_string_path` string input; `output_string_raw_xml` and `output_string_json` string outputs |
+| `Node.PriFileParser` | Parses PRI configuration files into a JSON dictionary, publishes it through `output_string_json` when connected, and broadcasts the keyed dictionary on `Pri.File.Settings` | `input_string_path` string input; `output_string_json` string output |
+| `Node.PassFailTotalYield` | Maintains per-slot pass/fail/yield counters in `C:\AC710\UserSettings\Yield.ini` and broadcasts keyed slot and aggregate calculations | `input_string_slotA/B/C/D/F` string inputs; no output pins |
 | `Node.WorkflowFileConverter` | Developer-only conversion between encrypted `.rw` workflows and readable JSON files | `input_string_rw` and `input_string_json` string inputs; `output_string_json` and `output_string_rw` string outputs |
 | `Node.AutoStart` | Workflow start trigger and SLOT router; validates input and routes valid groups to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
 | `Node.AutoStop` | Workflow stop trigger with input validation and launcher-stop publication | `input_string_stop` string input; no output pins |
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
 | `Node.ProcessRunner` | Windows command runner using the already-elevated AgentFlow host token; streams stdout/stderr lines to the log panel in real time and publishes the final combined output | `input_string_cmd` string input; `output_string_ret` string output and `output_int64_ret` int64 output |
 
-`Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
+`Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. It loads and caches settings during `Initialize`, publishes a complete keyed `SampleListsByKey` snapshot to GUI consumers, and publishes runtime endpoint/SLOT Pin values during `Run`. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
 
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.

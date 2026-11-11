@@ -1,4 +1,4 @@
-﻿# Node.FACTLauncher
+# Node.FACTLauncher
 
 ## Purpose
 
@@ -64,6 +64,19 @@ When the group matches the instance letter, the launcher stores the latest FSN/I
 Invalid JSON, missing fields, invalid SLOT values, or a SLOT belonging to another launcher
 group do not overwrite cached values.
 
+## RET Output Contract
+
+When `input_int64_ret` receives an `Int64Sample` with a non-null `Int64Value`, the launcher
+serializes the value as compact JSON and publishes it through `output_string_host`:
+
+```json
+{"RET":42}
+```
+
+`RET` remains a JSON number. Invalid or null input on this pin is ignored with a warning.
+If `output_string_host` is not connected, dispatch logging records the disconnected output
+without blocking other launcher inputs.
+
 ## User Settings Integration
 
 Connect the pins as follows:
@@ -90,7 +103,7 @@ produce no settings broadcast.
 
 ## Launcher Settings Broadcast
 
-The launcher publishes `FactBroadcastSubscriptions.LauncherSettings` using
+The launcher publishes `FlashForgeHmiBroadcastSubscriptions.LauncherSettings` using
 `BroadcastTopicMessage.FromSamples(...)` with samples in this order:
 
 | Index | Sample key | Value |
@@ -100,7 +113,7 @@ The launcher publishes `FactBroadcastSubscriptions.LauncherSettings` using
 | `2` | `SLOT` | `_slot` |
 | `3` | `PORTHUB` | `_porthub` |
 
-`Node.AutoStop` owns the `FactBroadcastSubscriptions.LauncherStop` broadcast.
+`Node.AutoStop` owns the `FlashForgeHmiBroadcastSubscriptions.LauncherStop` broadcast.
 
 ## JSON Key/Value Parsing
 

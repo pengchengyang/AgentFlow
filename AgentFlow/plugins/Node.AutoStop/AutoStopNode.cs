@@ -7,7 +7,7 @@
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
-using FACT.Shared.Broadcast;
+using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.AutoStop;
@@ -174,20 +174,20 @@ public sealed class AutoStopNode : BaseNode
             sample.SetValue("Stop");
 
             await TopicBus.Instance.PublishAsync(
-                FactBroadcastSubscriptions.LauncherStop,
+                FlashForgeHmiBroadcastSubscriptions.LauncherStop,
                 BroadcastTopicMessage.FromSample(sample),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
             _logger?.LogTrace(
                 "AutoStop broadcast launcher stop signal on {Topic}.",
-                FactBroadcastSubscriptions.LauncherStop);
+                FlashForgeHmiBroadcastSubscriptions.LauncherStop);
         }
         catch (Exception ex)
         {
             _logger?.LogError(
                 ex,
                 "AutoStop failed to broadcast launcher stop signal on {Topic}.",
-                FactBroadcastSubscriptions.LauncherStop);
+                FlashForgeHmiBroadcastSubscriptions.LauncherStop);
         }
     }
 

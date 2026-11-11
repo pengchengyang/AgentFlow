@@ -28,7 +28,7 @@ any leading slash.
 ## Stop Request
 
 When a group is parsed successfully, the node broadcasts a single `STRING` sample with value
-`Stop` on `FactBroadcastSubscriptions.LauncherStop` and sends the original validated JSON
+`Stop` on `FlashForgeHmiBroadcastSubscriptions.LauncherStop` and sends the original validated JSON
 group to `IWorkflowStopRequestSink.RequestStop`. It does not dispatch the group to output pins.
 
 ## Contract Surface

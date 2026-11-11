@@ -4,10 +4,11 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Text.Json;
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
-using FACT.Shared.Broadcast;
+using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.FACTLauncher;
@@ -163,42 +164,79 @@ public sealed class FACTLauncherNode : BaseNode
             return;
         }
 
-        if (!ReferenceEquals(pin, _slotFsnImeiInputPin))
-            return;
-
-        if (value is not StringSample input ||
-            input.StringValue is not { } inputText)
+        if (ReferenceEquals(pin, _retInputPin))
         {
-            _logger?.LogError(
-                "FACTLauncher ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
-                pin.Name,
+            HandleRetInput(value);
+            return;
+        }
+
+        if (ReferenceEquals(pin, _slotFsnImeiInputPin))
+        {
+            if (value is not StringSample input ||
+                input.StringValue is not { } inputText)
+            {
+                _logger?.LogError(
+                    "FACTLauncher ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
+            }
+
+            lock (_inputGate)
+                _lastInput = inputText;
+
+            _logger?.LogTrace("FACTLauncher received FSN/IMEI input for FACT key {FactKey}: {Input}",
+                Param("FactKey").Value, inputText);
+
+            if (!ProcessRunInput(inputText))
+                return;
+
+            if (HasCompleteCachedSettings())
+            {
+                SendCommand();
+            }
+            else
+            {
+                int? cachedSlot;
+                lock (_inputGate)
+                    cachedSlot = _fsnImeiSlot;
+
+                _logger?.LogTrace(
+                    "FACTLauncher cached FSN/IMEI data for SLOT {Slot} and waits for user settings on {Pin}.",
+                    cachedSlot,
+                    _settingsInputPin.Name);
+            }
+        }
+    }
+
+    private void HandleRetInput(Sample? value)
+    {
+        if (value is not Int64Sample { Int64Value: { } ret })
+        {
+            _logger?.LogWarning(
+                "FACTLauncher ignored invalid input on {Pin}: expected Int64Sample with non-null Int64Value, got {Type}.",
+                _retInputPin.Name,
                 value?.Type.ToString() ?? "null");
             return;
         }
 
-        lock (_inputGate)
-            _lastInput = inputText;
-
-        _logger?.LogTrace("FACTLauncher received FSN/IMEI input for FACT key {FactKey}: {Input}",
-            Param("FactKey").Value, inputText);
-
-        if (!ProcessRunInput(inputText))
-            return;
-
-        if (HasCompleteCachedSettings())
+        try
         {
-            SendCommand();
+            var json = JsonSerializer.Serialize(new { RET = ret });
+            var output = StringSample.CreateSample();
+            output.SetValue(json, _outputPin.Name);
+            _outputPin.SendSampleWithDispatchLog(
+                output,
+                $"RET {ret}",
+                LogLevel.Information);
         }
-        else
+        catch (Exception ex)
         {
-            int? cachedSlot;
-            lock (_inputGate)
-                cachedSlot = _fsnImeiSlot;
-
-            _logger?.LogTrace(
-                "FACTLauncher cached FSN/IMEI data for SLOT {Slot} and waits for user settings on {Pin}.",
-                cachedSlot,
-                _settingsInputPin.Name);
+            _logger?.LogError(
+                ex,
+                "FACTLauncher failed to convert or publish RET value {Ret}: {Message}",
+                ret,
+                ex.Message);
         }
     }
 
@@ -305,7 +343,7 @@ public sealed class FACTLauncherNode : BaseNode
         try
         {
             await TopicBus.Instance.PublishAsync(
-                FactBroadcastSubscriptions.LauncherSettings,
+                FlashForgeHmiBroadcastSubscriptions.LauncherSettings,
                 BroadcastTopicMessage.FromSamples(samples),
                 ct: CancellationToken.None).ConfigureAwait(false);
 

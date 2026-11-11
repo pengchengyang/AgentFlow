@@ -6,13 +6,16 @@
 
 using System.Text.Json;
 using AgentFlow.Contracts;
+using BroadcastKit;
+using BroadcastKit.Contracts;
+using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.UserSettings;
 
 /// <summary>
-/// Publishes user settings from a fixed INI path as JSON whenever the ready input pin
-/// receives a string sample.
+/// Loads the fixed INI file during initialization, broadcasts the complete keyed settings
+/// snapshot for GUI consumers, and publishes runtime endpoint and SLOT outputs during Run.
 /// </summary>
 public sealed class UserSettingsNode : BaseNode
 {
@@ -45,6 +48,7 @@ public sealed class UserSettingsNode : BaseNode
     private const string SettingsFilePath = @"C:\AC710\UserSettings\UserSettings.ini";
 
     private ILogger? _logger;
+    private IReadOnlyDictionary<string, IReadOnlyList<string>>? _settings;
 
     public UserSettingsNode()
     {
@@ -93,29 +97,39 @@ public sealed class UserSettingsNode : BaseNode
             Param("SettingsJson").Value = ParameterValues.GetString(settings, "{}") ?? "{}";
     }
 
-    public override Task Initialize(INodeContext context, CancellationToken ct = default)
-    {
-        _logger = context.Logger;
-        return Task.CompletedTask;
-    }
-
-    public override Task Run(INodeContext context, CancellationToken ct = default)
+    public override async Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
 
         var parser = new UserSettingsParser(_logger, SettingsDirectory, SettingsFilePath);
         if (!parser.TryLoad(out var settings))
         {
+            _settings = null;
             Running = false;
             throw new InvalidOperationException(
                 $"UserSettings could not load the required settings file '{SettingsFilePath}'.");
+        }
+
+        _settings = settings;
+        await PublishInitializationSnapshotAsync(settings, ct).ConfigureAwait(false);
+    }
+
+    public override Task Run(INodeContext context, CancellationToken ct = default)
+    {
+        _logger = context.Logger;
+
+        if (_settings is not { } settings)
+        {
+            Running = false;
+            throw new InvalidOperationException(
+                $"UserSettings has no initialized settings for '{SettingsFilePath}'.");
         }
 
         Running = true;
         PublishEndpoint(settings);
         PublishSettingsBySlot(settings);
         _logger?.LogTrace(
-            "UserSettings is running with profile {Profile} and loaded settings from {FilePath}.",
+            "UserSettings is running with profile {Profile} and cached settings from {FilePath}.",
             Param("Profile").Value,
             SettingsFilePath);
         return Task.CompletedTask;
@@ -124,24 +138,27 @@ public sealed class UserSettingsNode : BaseNode
     public override Task Stop(INodeContext context, CancellationToken ct = default)
     {
         Running = false;
+        _settings = null;
         _logger = null;
         return Task.CompletedTask;
     }
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!ReferenceEquals(pin, _readyInputPin) ||
-            value is not StringSample { StringValue: { } inputText })
+        if (ReferenceEquals(pin, _readyInputPin))
         {
-            return;
-        }
+            if (value is not StringSample { StringValue: { } inputText })
+            {
+                return;
+            }
 
-        _logger?.LogTrace(
-            "UserSettings received readiness input through {Pin} for profile {Profile}: {Input}. " +
-            "Settings are published only during Run.",
-            pin.Name,
-            Param("Profile").Value,
-            inputText);
+            _logger?.LogTrace(
+                "UserSettings received readiness input through {Pin} for profile {Profile}: {Input}. " +
+                "Initialization settings are broadcast during Initialize; output pins are published during Run.",
+                pin.Name,
+                Param("Profile").Value,
+                inputText);
+        }
     }
 
     private void PublishEndpoint(
@@ -211,6 +228,46 @@ public sealed class UserSettingsNode : BaseNode
         {
             _logger?.LogWarning(
                 "UserSettings found valid SLOT values but no matching SLOT output pin is connected; settings JSON was not sent.");
+        }
+    }
+
+    private async Task PublishInitializationSnapshotAsync(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
+        CancellationToken ct)
+    {
+        var sampleLists = new Dictionary<string, IReadOnlyList<Sample>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in settings)
+        {
+            var samples = new List<Sample>(pair.Value.Count);
+            foreach (var value in pair.Value)
+            {
+                var sample = StringSample.CreateSample();
+                sample.SetValue(value, pair.Key);
+                samples.Add(sample);
+            }
+
+            sampleLists[pair.Key] = samples.ToArray();
+        }
+
+        try
+        {
+            await TopicBus.Instance.PublishAsync(
+                FlashForgeHmiBroadcastSubscriptions.LauncherSettings,
+                BroadcastTopicMessage.FromSampleListDictionary(sampleLists),
+                ct: ct).ConfigureAwait(false);
+
+            var broadcastJson = JsonSerializer.Serialize(settings);
+            _logger?.LogInformation(
+                "UserSettings published initialization settings JSON to launcher settings broadcast: {Json}",
+                broadcastJson);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _logger?.LogDebug("UserSettings initialization settings broadcast was canceled.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "UserSettings failed to publish initialization settings to launcher settings broadcast.");
         }
     }
 

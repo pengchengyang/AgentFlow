@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="MainViewModel.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -1391,9 +1391,14 @@ public partial class MainViewModel : ViewModelBase
         _runInProgress = true;
         try
         {
-            // WorkflowHost owns the shared Core start sequence: stop any previous session,
-            // pre-create pin contexts, and launch every node concurrently.
-            await Task.Run(() => _workflowHost.StartAsync(_runCts.Token));
+            // WorkflowHost keeps initialization and launch as separate lifecycle phases. The
+            // prepared node set must be initialized before Start can launch dependency-aware runs.
+            var runToken = _runCts.Token;
+            await Task.Run(async () =>
+            {
+                await _workflowHost.InitializeAsync(runToken);
+                await _workflowHost.StartAsync(runToken);
+            }, runToken);
             RefreshRunState();
             StatusText = IsRunning ? L["Running"]
                 : IsStarting ? L["RunStateStarting"]

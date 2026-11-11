@@ -1,10 +1,10 @@
-namespace FACT.Shared.Errors;
+namespace AgentFlow.Shared.FlashForgeHmi.Errors;
 
 /// <summary>
-/// Shared FACT business error codes. Zero always means success; positive values identify failures.
+/// Shared FlashForgeHMI business error codes. Zero always means success; positive values identify failures.
 /// Node-specific ranges keep independently owned errors from colliding.
 /// </summary>
-public enum FactErrorCode
+public enum FlashForgeHmiErrorCode
 {
     Success = 0,
 
@@ -17,7 +17,7 @@ public enum FactErrorCode
     Timeout = 7,
     ExternalServiceError = 8,
 
-    // 1000-1999: FACTLauncher
+    // 1000-1999: Launcher
     LauncherInvalidInput = 1001,
     LauncherInvalidJson = 1002,
     LauncherInvalidSlot = 1003,
@@ -26,7 +26,7 @@ public enum FactErrorCode
     LauncherSettingsIncomplete = 1006,
     LauncherSendCommandFailed = 1007,
 
-    // 2000-2999: FACTLogCollector
+    // 2000-2999: LogCollector
     LogCollectorInvalidInput = 2001,
     LogCollectorDataSourceUnavailable = 2002,
     LogCollectorQueryFailed = 2003,

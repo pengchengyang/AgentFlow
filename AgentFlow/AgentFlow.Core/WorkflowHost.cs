@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="WorkflowHost.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -40,10 +40,19 @@ public interface IWorkflowReadOnlyHost
     /// <summary>Load a workflow document from a file.</summary>
     void LoadWorkflowFile(string path);
 
-    /// <summary>Validate the current workflow before it is started.</summary>
+    /// <summary>Validate the current workflow before it is initialized or started.</summary>
     IReadOnlyList<string> Validate();
 
-    /// <summary>Start the current workflow and keep it running until stopped or failed.</summary>
+    /// <summary>
+    /// Prepare every node resource in DependsOn forward topological order without calling Run.
+    /// Product GUIs must call this before <see cref="StartAsync"/>.
+    /// </summary>
+    Task InitializeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Start the prepared current workflow and keep it running until stopped or failed.
+    /// Start rejects an uninitialized or stale node set.
+    /// </summary>
     Task StartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Stop the current workflow.</summary>
@@ -231,6 +240,7 @@ public sealed class WorkflowHost : IWorkflowEditorHost
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginDirectory);
         _registry.Clear();
         _pluginLoader.LoadFromDirectory(pluginDirectory, _registry);
+        _nodeManager.InvalidateInitialization();
     }
 
     public IReadOnlyList<WorkflowNodeTypeInfo> GetNodeTypes() =>
@@ -280,6 +290,19 @@ public sealed class WorkflowHost : IWorkflowEditorHost
     public IReadOnlyList<string> Validate() =>
         WorkflowValidation.Validate(_registry, _graph.ToWorkflowGraph());
 
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        var errors = Validate();
+        if (errors.Count > 0)
+            throw new InvalidOperationException(
+                $"Workflow validation failed:{Environment.NewLine}{string.Join(Environment.NewLine, errors)}");
+
+        await _nodeManager
+            .InitializeAsync(_graph.CreateContext, cancellationToken)
+            .ConfigureAwait(false);
+        _logger.LogTrace("WorkflowHost initialized {NodeCount} nodes.", _pluginLoader.Instances.Count);
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         var errors = Validate();
@@ -287,13 +310,10 @@ public sealed class WorkflowHost : IWorkflowEditorHost
             throw new InvalidOperationException(
                 $"Workflow validation failed:{Environment.NewLine}{string.Join(Environment.NewLine, errors)}");
 
-        if (_pluginLoader.Instances.Any(n => n.State != NodeState.Idle))
-            await StopAsync(cancellationToken).ConfigureAwait(false);
-
-        var contexts = _pluginLoader.Instances
-            .ToDictionary(node => node, node => _graph.CreateContext(node));
-        await _nodeManager.StartAsync(node => contexts[node], cancellationToken).ConfigureAwait(false);
-        _logger.LogTrace("WorkflowHost started {NodeCount} nodes.", contexts.Count);
+        await _nodeManager
+            .StartAsync(_graph.CreateContext, cancellationToken)
+            .ConfigureAwait(false);
+        _logger.LogTrace("WorkflowHost started {NodeCount} nodes.", _pluginLoader.Instances.Count);
     }
 
     public async Task StopAsync(
@@ -329,6 +349,7 @@ public sealed class WorkflowHost : IWorkflowEditorHost
     {
         var instance = _pluginLoader.CreateNodeInstance(typeName);
         var node = _graph.AddNode(instance, x, y, parameters, id, displayName, priority);
+        _nodeManager.InvalidateInitialization();
         _logger.LogTrace("WorkflowHost created node {NodeId} ({TypeName}).", node.Id, typeName);
         return node;
     }
@@ -339,6 +360,7 @@ public sealed class WorkflowHost : IWorkflowEditorHost
         if (node is null)
             return false;
         _graph.RemoveNode(node);
+        _nodeManager.InvalidateInitialization();
         return true;
     }
 
@@ -353,6 +375,7 @@ public sealed class WorkflowHost : IWorkflowEditorHost
         var node = _graph.Nodes.FirstOrDefault(n => n.Id == editorNodeId)
             ?? throw new InvalidOperationException($"Editor node '{editorNodeId}' was not found.");
         _graph.UpdateNode(node, displayName, priority, x, y, parameters);
+        _nodeManager.InvalidateInitialization();
     }
 
     public bool Connect(string fromNodeId, string fromPinName, string toNodeId, string toPinName)
@@ -361,7 +384,10 @@ public sealed class WorkflowHost : IWorkflowEditorHost
             ?? throw new InvalidOperationException($"Editor node '{fromNodeId}' was not found.");
         var to = _graph.Nodes.FirstOrDefault(n => n.Id == toNodeId)
             ?? throw new InvalidOperationException($"Editor node '{toNodeId}' was not found.");
-        return _graph.Connect(from, fromPinName, to, toPinName);
+        var connected = _graph.Connect(from, fromPinName, to, toPinName);
+        if (connected)
+            _nodeManager.InvalidateInitialization();
+        return connected;
     }
 
     public bool DisconnectInput(string nodeId, string inputPinName)
@@ -374,18 +400,21 @@ public sealed class WorkflowHost : IWorkflowEditorHost
         if (connection is null)
             return false;
         _graph.Disconnect(connection);
+        _nodeManager.InvalidateInitialization();
         return true;
     }
 
     public void Clear()
     {
         _graph.Clear();
+        _nodeManager.InvalidateInitialization();
         _logger.LogTrace("WorkflowHost cleared the graph.");
     }
 
     public void LoadWorkflowJson(string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
+        _nodeManager.InvalidateInitialization();
         _graph.Clear();
         try
         {
@@ -417,6 +446,10 @@ public sealed class WorkflowHost : IWorkflowEditorHost
         {
             _graph.Clear();
             throw;
+        }
+        finally
+        {
+            _nodeManager.InvalidateInitialization();
         }
     }
 
