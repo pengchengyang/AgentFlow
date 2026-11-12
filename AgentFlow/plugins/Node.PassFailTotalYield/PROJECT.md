@@ -3,45 +3,67 @@
 ## Purpose
 
 `Node.PassFailTotalYield` maintains per-slot pass, fail, total, and yield counters in
-`C:\AC710\UserSettings\Yield.ini`. It is a GUI-neutral plugin: operators send compact
-JSON commands through pins, and GUI or product hosts read the latest state through a
-shared broadcast topic.
+`C:\AC710\UserSettings\Yield.ini`. It is a GUI-neutral plugin: nodes forward Int64 RET results through pins, GUI hosts
+read the latest state through a shared broadcast topic, and reset commands are sent back
+through a dedicated broadcast topic.
 
 ## Contract Surface
 
 - Display name: `Pass Fail Total Yield`
 - Category: `Data`
-- Input pins (all STRING, optional):
-  - `input_string_slotA`
-  - `input_string_slotB`
-  - `input_string_slotC`
-  - `input_string_slotD`
-  - `input_string_slotF`
+- Input pins (all INT64, optional):
+  - `input_int64_retA`
+  - `input_int64_retB`
+  - `input_int64_retC`
+  - `input_int64_retD`
+  - `input_int64_retF`
 - Output pins: none
 - Parameters: none
 
-## Input Commands
+## Input Semantics
 
-Each input pin accepts one of these commands:
+Each input Pin accepts one `Int64Sample`:
 
-```json
-{"Pass":1}
-```
+- `0`: records one Pass for that Slot.
+- Any non-zero value: records one Fail for that Slot.
+- Non-INT64 or null input is logged and ignored.
+- Input Pins do not accept JSON commands or string-based Reset commands.
 
-```json
-{"Fail":1}
-```
+Each received sample increments exactly one counter on the matching Slot.
+
+## Reset Command
+
+GUI hosts request a selective reset by publishing to:
+
+`PassFailTotalYieldBroadcasts.Reset` (`Pass.Fail.Total.Yield.Reset`)
+
+The payload must be a `BroadcastTopicMessage.FromSampleDictionary(...)` containing one
+`StringSample` per requested slot. Keys are `A`, `B`, `C`, `D`, or `F`, and every value
+must be exactly `"Reset"`:
 
 ```text
-Reset
+B -> "Reset"
+D -> "Reset"
 ```
 
-`"Reset"` is also accepted. The JSON object must contain exactly one of `Pass` or
-`Fail`, and the value must be a positive 64-bit integer. Invalid input is logged and
-does not change the file or in-memory counters.
+Validation is all-or-nothing:
 
-A pass or fail command increments only the counter represented by the receiving pin.
-A reset command received on any slot pin resets all five slots and rewrites `Yield.ini`.
+- The dictionary must not be empty.
+- Keys are normalized to uppercase and must be one of `A`, `B`, `C`, `D`, or `F`.
+- Duplicate normalized keys are rejected.
+- Values must be `StringSample` with the exact value `"Reset"`.
+- Any invalid key or value rejects the entire request without modifying counters.
+
+After a valid request, the node:
+
+- Clears Pass/Fail only for the requested slots; other slots remain unchanged.
+- Recalculates per-slot Yield and aggregate `P`, `F`, `T`, and `Y`.
+- Atomically rewrites `Yield.ini`.
+- Updates in-memory state only after the file save succeeds.
+- Publishes the complete latest snapshot on `Pass.Fail.Total.Yield`.
+
+The Reset subscription is created during `Initialize` and remains active until `Shutdown`,
+independent of `Run` and `Stop`.
 
 ## Persistence
 
@@ -100,7 +122,8 @@ using midpoint-away-from-zero rounding. A zero denominator produces `0.0`.
 
 ## Broadcast
 
-- Topic: `FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield` (`Pass.Fail.Total.Yield`)
+- Output topic: `FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield` (`Pass.Fail.Total.Yield`)
+- Reset input topic: `PassFailTotalYieldBroadcasts.Reset` (`Pass.Fail.Total.Yield.Reset`)
 - Payload: `BroadcastTopicMessage.FromSampleDictionary`
 - Keys:
   - `slotA_Pass`, `slotA_Fail`: `Int64Sample`
@@ -114,10 +137,10 @@ snapshot after each successful update or reset.
 
 ## Lifecycle
 
-- `Initialize`: create/load `Yield.ini`, cache counters, and broadcast the initial snapshot.
-- `Run`: mark the node as running.
-- `Stop`: clear the runtime-running state and logger reference.
-- `Shutdown`: no additional resource cleanup is required.
+- `Initialize`: create/load `Yield.ini`, broadcast the initial snapshot, and subscribe to the reset topic.
+- `Run`: mark the node as running; it does not change the reset subscription.
+- `Stop`: mark the node as stopped; the reset subscription remains active between runs.
+- `Shutdown`: dispose the reset subscription and release the logger reference.
 
 ## Build
 

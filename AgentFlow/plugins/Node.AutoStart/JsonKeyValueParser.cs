@@ -170,6 +170,3 @@ public static class JsonKeyValueParser
     private static IReadOnlyDictionary<string, IReadOnlyList<string>> EmptySettings()
         => new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 }
-
-
-

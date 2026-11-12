@@ -6,9 +6,9 @@
 
 using System.Text.Json;
 using AgentFlow.Contracts;
+using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
-using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.FACTLauncher;
@@ -36,6 +36,9 @@ public sealed class FACTLauncherNode : BaseNode
 
     private readonly BasePin _cmdOutputPin =
         new("output_string_cmd", DataType.STRING, PinDirection.Output);
+
+    private readonly BasePin _retOutputPin =
+        new("output_int64_ret", DataType.INT64, PinDirection.Output);
 
     private readonly object _inputGate = new();
     private ILogger? _logger;
@@ -77,6 +80,7 @@ public sealed class FACTLauncherNode : BaseNode
         AddInputPin(_retInputPin);
         AddOutputPin(_outputPin);
         AddOutputPin(_cmdOutputPin);
+        AddOutputPin(_retOutputPin);
     }
 
     protected override void AddParam()
@@ -222,7 +226,26 @@ public sealed class FACTLauncherNode : BaseNode
 
         try
         {
-            var json = JsonSerializer.Serialize(new { RET = ret });
+            var retOutput = Int64Sample.CreateSample();
+            retOutput.SetValue(ret, _retOutputPin.Name);
+            _retOutputPin.SendSampleWithDispatchLog(
+                retOutput,
+                $"RET {ret}",
+                LogLevel.Information);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "FACTLauncher failed to publish RET value {Ret} through {Pin}: {Message}",
+                ret,
+                _retOutputPin.Name,
+                ex.Message);
+        }
+
+        try
+        {
+            var json = JsonSerializer.Serialize(new { RET = ret }) + ";";
             var output = StringSample.CreateSample();
             output.SetValue(json, _outputPin.Name);
             _outputPin.SendSampleWithDispatchLog(
@@ -234,8 +257,9 @@ public sealed class FACTLauncherNode : BaseNode
         {
             _logger?.LogError(
                 ex,
-                "FACTLauncher failed to convert or publish RET value {Ret}: {Message}",
+                "FACTLauncher failed to convert or publish RET value {Ret} through {Pin}: {Message}",
                 ret,
+                _outputPin.Name,
                 ex.Message);
         }
     }
@@ -411,10 +435,12 @@ public sealed class FACTLauncherNode : BaseNode
         {
             var output = StringSample.CreateSample();
             output.StringValue = command;
-            _cmdOutputPin.SendSampleWithDispatchLog(
+            var sent = _cmdOutputPin.SendSampleWithDispatchLog(
                 output,
                 "FACT launch command",
                 LogLevel.Information);
+            if (sent)
+                _ = BroadcastLauncherCommandAsync(_position, output);
         }
         catch (Exception ex)
         {
@@ -422,6 +448,39 @@ public sealed class FACTLauncherNode : BaseNode
                 ex,
                 "FACTLauncher failed to send command through {Pin}.",
                 _cmdOutputPin.Name);
+        }
+    }
+
+    private async Task BroadcastLauncherCommandAsync(string position, StringSample commandSample)
+    {
+        var commandSamples = new Dictionary<string, Sample>(StringComparer.Ordinal)
+        {
+            [position] = commandSample,
+        };
+
+        try
+        {
+            await TopicBus.Instance.PublishAsync(
+                FlashForgeHmiBroadcastSubscriptions.LauncherCommand,
+                BroadcastTopicMessage.FromSampleDictionary(commandSamples),
+                ct: CancellationToken.None).ConfigureAwait(false);
+
+            _logger?.LogInformation(
+                "FACTLauncher {DisplayName} broadcast command for position {Position} on {Topic}: {Command}",
+                DisplayName,
+                position,
+                FlashForgeHmiBroadcastSubscriptions.LauncherCommand,
+                commandSample.StringValue);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "FACTLauncher {DisplayName} failed to broadcast command for position {Position} on {Topic}: {Message}",
+                DisplayName,
+                position,
+                FlashForgeHmiBroadcastSubscriptions.LauncherCommand,
+                ex.Message);
         }
     }
 
@@ -568,4 +627,3 @@ public sealed class FACTLauncherNode : BaseNode
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
 }
-

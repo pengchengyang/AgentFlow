@@ -12,15 +12,16 @@ are provided by the workspace libraries.
 - Display name: `User Settings`
 - Category: `Configuration`
 - Input pin: `input_string_ready` (`STRING`, optional)
-- Output pins: `output_string_slotA`, `output_string_slotB`, `output_string_slotC`, `output_string_slotD`, `output_string_slotF`, `output_string_endpoint` (`STRING`)
+- Output pins: `output_string_slotA`, `output_string_slotB`, `output_string_slotC`, `output_string_slotD`, `output_string_slotF`, `output_string_endpoint`, `output_string_settings` (`STRING`)
 - Parameters: `Profile`, `SettingsJson`
 - Broadcast topic: `fact.launcher.settings`
 
 ## Lifecycle
 
 `Initialize` captures the node logger, loads and parses the fixed INI file, caches the
-parsed sections on the node instance, and publishes a complete initialization snapshot to
-`fact.launcher.settings`. The snapshot is a `SampleListsByKey` dictionary whose outer keys
+parsed sections on the node instance, publishes the parsed settings JSON through
+`output_string_settings` when connected, and publishes a complete initialization snapshot to
+`FACT.Launcher.Settings`. The snapshot is a `SampleListsByKey` dictionary whose outer keys
 are INI section names and whose values are ordered `StringSample` lists. A GUI must subscribe
 before workflow startup to receive this one-shot initialization broadcast.
 
@@ -98,6 +99,14 @@ PORTHUB -> [StringSample("5:1,23:1,7:2,8:2,9:2")]
 Consumers select sections by key and validate `Sample` types and value counts according to
 their own topic contract. TopicBus does not parse, merge, or normalize the payload.
 
+## Settings JSON Output
+
+During `Initialize`, the node serializes the parsed section dictionary and sends it
+through `output_string_settings` as one `StringSample`. The JSON uses section names as
+keys and string arrays as values, matching the existing `SettingsJson` representation.
+
+The output is sent once per initialization. If the pin is not connected, the node logs a
+warning and continues initialization and the existing launcher-settings broadcast.
 ## JSON Transport
 
 `UserSettingsParser` supports:

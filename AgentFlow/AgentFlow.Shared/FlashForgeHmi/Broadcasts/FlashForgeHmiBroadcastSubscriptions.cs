@@ -24,6 +24,9 @@ public static class FlashForgeHmiBroadcastSubscriptions
     /// <summary>Subscription used to broadcast a launcher stop request or signal.</summary>
     public const string LauncherStop = "FACT.Launcher.Stop";
 
+    /// <summary>Subscription used to broadcast a successfully dispatched FACT command.</summary>
+    public const string LauncherCommand = "FACT.Launcher.Command";
+
     /// <summary>Subscription used to publish parsed PRI file settings as a keyed Sample dictionary.</summary>
     public const string PriFileSettings = "Pri.File.Settings";
 

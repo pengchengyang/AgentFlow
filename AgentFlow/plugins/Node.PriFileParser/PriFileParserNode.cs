@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------
 
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using AgentFlow.Contracts;
 using BroadcastKit;
@@ -105,11 +106,12 @@ public sealed class PriFileParserNode : BaseNode
         }
     }
 
+    private static readonly Regex PriPathOptionPattern = new(
+        @"(?i)(?:^|\s)/P(?::)?\s*(?<path>""[^""]+""|'[^']+'|\S+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private PriFileParseResult ParseFile(string inputPath)
     {
-        var fullPath = Path.GetFullPath(inputPath);
-        if (!File.Exists(fullPath))
-            throw new FileNotFoundException("PRI file was not found.", fullPath);
+        var fullPath = ResolveInputPath(inputPath);
 
         var settings = new Dictionary<string, string>(StringComparer.Ordinal);
         using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -184,6 +186,47 @@ public sealed class PriFileParserNode : BaseNode
         return new PriFileParseResult(settings, json);
     }
 
+    private string ResolveInputPath(string input)
+    {
+        var inputText = input.Trim();
+        var matches = PriPathOptionPattern.Matches(inputText);
+        if (matches.Count > 1)
+            throw new InvalidOperationException(
+                "PRI File Parser rejected input because it contains multiple /P path options.");
+
+        var candidate = matches.Count == 1
+            ? matches[0].Groups["path"].Value
+            : inputText;
+        candidate = TrimMatchingQuotes(candidate.Trim());
+        if (candidate.Length == 0)
+            throw new ArgumentException("PRI File Parser requires a non-empty /P file path.", nameof(input));
+
+        var fullPath = Path.GetFullPath(candidate);
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException("PRI file was not found.", fullPath);
+
+        if (matches.Count == 1)
+        {
+            _logger?.LogTrace(
+                "PRI File Parser resolved /P path {FilePath} from input {Input}.",
+                fullPath,
+                inputText);
+        }
+
+        return fullPath;
+    }
+
+    private static string TrimMatchingQuotes(string value)
+    {
+        if (value.Length >= 2 &&
+            ((value[0] == '"' && value[^1] == '"') ||
+             (value[0] == '\'' && value[^1] == '\'')))
+        {
+            return value[1..^1].Trim();
+        }
+
+        return value;
+    }
     private async Task BroadcastPriFileSettingsAsync(
         IReadOnlyDictionary<string, string> settings)
     {

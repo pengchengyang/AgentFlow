@@ -10,11 +10,19 @@ key/value information as a JSON string.
 - Display name: `PRI File Parser`
 - Category: `Parsing`
 - Input pins:
-  - `input_string_path`: path to the PRI file
+  - `input_string_path`: a direct PRI file path or a FACT command containing a `/P` path option
 - Output pins:
   - `output_string_json`: JSON string containing the parsed key/value pairs
 - Parameters: none
 
+## Input Path Resolution
+
+- A direct file path is still accepted for backward compatibility.
+- Command-line input accepts `/P` followed by the file path, including `/PC:\path`,
+  `/P:C:\path`, `/P C:\path`, and quoted path forms.
+- Exactly one `/P` option is allowed. Multiple `/P` options are rejected with an error.
+- The selected value is normalized to an absolute path and must satisfy `File.Exists`.
+- Invalid or missing paths produce no JSON output and no settings broadcast.
 ## Parsing Rules
 
 - Empty lines are ignored.

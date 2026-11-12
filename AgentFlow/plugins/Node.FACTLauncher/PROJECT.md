@@ -16,6 +16,7 @@ and launcher-settings broadcasts.
 - Output pins:
   - `output_string_host` (`STRING`)
   - `output_string_cmd` (`STRING`)
+  - `output_int64_ret` (`INT64`, aligned with `input_int64_ret`)
 - Parameters: `TimeoutSeconds`, `FactKey`, `Position` (`A`, `B`, `C`, `D`, `F`)
 
 ## Lifecycle
@@ -66,16 +67,22 @@ group do not overwrite cached values.
 
 ## RET Output Contract
 
-When `input_int64_ret` receives an `Int64Sample` with a non-null `Int64Value`, the launcher
-serializes the value as compact JSON and publishes it through `output_string_host`:
+When `input_int64_ret` receives an `Int64Sample` with a non-null `Int64Value`, the launcher:
 
-```json
-{"RET":42}
+- forwards the original integer through `output_int64_ret`; and
+- serializes the value as compact JSON for `output_string_host` and appends `;` as the
+  message delimiter:
+
+```text
+{"RET":42};
 ```
 
-`RET` remains a JSON number. Invalid or null input on this pin is ignored with a warning.
-If `output_string_host` is not connected, dispatch logging records the disconnected output
-without blocking other launcher inputs.
+`RET` remains a JSON number. Every message from `output_string_host` ends with `;`, so
+downstream consumers can use it as a stream boundary. Invalid or null input on this pin is
+ignored with a warning.
+The raw `output_int64_ret` value preserves the original Int64 result for downstream
+calculations such as `PassFailTotalYield`. Disconnected outputs only produce dispatch
+warnings and do not block other launcher inputs.
 
 ## User Settings Integration
 
@@ -114,6 +121,29 @@ The launcher publishes `FlashForgeHmiBroadcastSubscriptions.LauncherSettings` us
 | `3` | `PORTHUB` | `_porthub` |
 
 `Node.AutoStop` owns the `FlashForgeHmiBroadcastSubscriptions.LauncherStop` broadcast.
+
+## Launcher Command Broadcast
+
+When `SendCommand` successfully dispatches the full FACT command to
+`output_string_cmd`, the launcher publishes a keyed Sample dictionary to:
+
+`FlashForgeHmiBroadcastSubscriptions.LauncherCommand` (`FACT.Launcher.Command`)
+
+The payload is:
+
+```text
+BroadcastTopicMessage.SamplesByKey[Position] -> StringSample
+StringValue -> complete command
+```
+
+`Position` is the launcher's current `A`, `B`, `C`, `D`, or `F` value. The dictionary
+contains one entry for the sending launcher, so GUI consumers can identify the module
+position without relying on subscription order.
+
+The broadcast is sent only when `SendSampleWithDispatchLog(...)` returns `true`. If the
+command output pin is disconnected or dispatch fails, GUI consumers receive no command
+broadcast. GUI handlers should subscribe to `FACT.Launcher.Command` and read
+`BroadcastTopicMessage.SamplesByKey`.
 
 ## JSON Key/Value Parsing
 

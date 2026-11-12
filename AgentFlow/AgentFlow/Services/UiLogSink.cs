@@ -51,6 +51,8 @@ public sealed class UiLogEntry
 /// </summary>
 public static class UiLogStore
 {
+    private const int MaxEntries = 2000;
+
     public static ObservableCollection<UiLogEntry> Entries { get; } = new();
 
     public static void Add(UiLogEntry entry)
@@ -58,7 +60,8 @@ public static class UiLogStore
         Dispatcher.UIThread.Post(() =>
         {
             Entries.Add(entry);
-            if (Entries.Count > 500) Entries.RemoveAt(0);
+            if (Entries.Count > MaxEntries)
+                Entries.RemoveAt(0);
         });
     }
 

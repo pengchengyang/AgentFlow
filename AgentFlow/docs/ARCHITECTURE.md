@@ -286,6 +286,45 @@ configuration and platform before copying plugin assemblies. This is required be
 Visual Studio's publish pipeline can evaluate project references separately, and it
 must not depend on plugin binaries being rebuilt by the host build phase alone.
 
+### SDK Packaging
+
+Two SDK packaging scripts are kept for different distribution models:
+
+- `package-sdk.bat` builds the source-based SDK. It copies the public shared project
+  sources under `src` and packages plugin assemblies separately for Debug and Release.
+- `package-sdk-dll.bat` builds the binary-only SDK. It does not include shared source
+  code. External projects reference the prebuilt assemblies under `SharedDlls` instead.
+
+The binary SDK layout is configuration-isolated:
+
+```text
+AgentFlow.Sdk.Binaries/
+└─ SharedDlls/
+   └─ x64/
+      ├─ Debug/
+      │  ├─ *.dll / *.pdb
+      │  └─ plugins/
+      └─ Release/
+         ├─ *.dll
+         └─ plugins/
+```
+
+`SharedDlls/x64/<Configuration>/plugins` contains only node plugin assemblies. Debug
+plugin builds also include PDB files, while Release plugin builds exclude them.
+`Node.Broadcast.Demo` remains Debug-only. `SharedDlls/x64/<Configuration>` contains the
+shared AgentFlow assemblies, plugin runtime dependencies, their PDB files in Debug,
+and the NuGet runtime dependencies required to compile and run against the SDK.
+Consumers must use matching Debug or Release assemblies and must not copy the shared
+assemblies into the plugin folder; keeping one central copy preserves shared type
+identity and process-local services such as the broadcast bus.
+
+The binary package is written to
+`artifacts/AgentFlow.Sdk.Binaries.zip` by running:
+
+```powershell
+.\package-sdk-dll.bat
+```
+
 ## Bundled Plugin Skeletons
 
 The following plugins provide the standard construction, parameters, pins, lifecycle,
@@ -293,26 +332,30 @@ and receive hooks without implementing final business behavior yet:
 
 | Plugin | Role | Default pins |
 | --- | --- | --- |
-| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, RET-to-JSON publication, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host` and `output_string_cmd` outputs |
-| `Node.UserSettings` | Standalone INI settings reader that loads during initialization, broadcasts the complete keyed snapshot to GUI consumers, and publishes runtime endpoint/SLOT outputs during Run | `input_string_ready` string input; `output_string_slotA/B/C/D/F` and `output_string_endpoint` string outputs |
+| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, raw and JSON RET publication, successful position-keyed command broadcasting, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_cmd`, and `output_int64_ret` outputs |
+| `Node.UserSettings` | Standalone INI settings reader that loads during initialization, publishes parsed settings JSON through `output_string_settings`, broadcasts the complete keyed snapshot to GUI consumers, and publishes runtime endpoint/SLOT outputs during Run | `input_string_ready` string input; `output_string_slotA/B/C/D/F`, `output_string_endpoint`, and `output_string_settings` string outputs |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
 | `Node.FACTFlatFileParser` | Parses FACT XML logs and publishes original XML plus normalized JSON with the legacy FlatFile row split into indexed fields | `input_string_path` string input; `output_string_raw_xml` and `output_string_json` string outputs |
-| `Node.PriFileParser` | Parses PRI configuration files into a JSON dictionary, publishes it through `output_string_json` when connected, and broadcasts the keyed dictionary on `Pri.File.Settings` | `input_string_path` string input; `output_string_json` string output |
-| `Node.PassFailTotalYield` | Maintains per-slot pass/fail/yield counters in `C:\AC710\UserSettings\Yield.ini` and broadcasts keyed slot and aggregate calculations | `input_string_slotA/B/C/D/F` string inputs; no output pins |
+| `Node.PriFileParser` | Resolves direct PRI paths or `/P` paths from FACT commands, parses PRI configuration files into a JSON dictionary, publishes it through `output_string_json` when connected, and broadcasts the keyed dictionary on `Pri.File.Settings` | `input_string_path` string input; `output_string_json` string output |
+| `Node.PassFailTotalYield` | Maintains per-slot pass/fail/yield counters in `C:\AC710\UserSettings\Yield.ini` and broadcasts keyed slot and aggregate calculations; `0` records a pass and any non-zero RET records a fail | `input_int64_retA/B/C/D/F` INT64 inputs; no output pins; GUI reset via `PassFailTotalYieldBroadcasts.Reset` |
 | `Node.WorkflowFileConverter` | Developer-only conversion between encrypted `.rw` workflows and readable JSON files | `input_string_rw` and `input_string_json` string inputs; `output_string_json` and `output_string_rw` string outputs |
-| `Node.AutoStart` | Workflow start trigger and SLOT router; validates input and routes valid groups to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
+| `Node.AutoStart` | Workflow start trigger and SLOT router; requires semicolon-prefixed batches, validates semicolon-terminated groups, and routes valid groups to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
 | `Node.AutoStop` | Workflow stop trigger with input validation and launcher-stop publication | `input_string_stop` string input; no output pins |
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
 | `Node.ProcessRunner` | Windows command runner using the already-elevated AgentFlow host token; streams stdout/stderr lines to the log panel in real time and publishes the final combined output | `input_string_cmd` string input; `output_string_ret` string output and `output_int64_ret` int64 output |
+| `Node.Heartbeat` | Immediately forwards each input sample and repeatedly publishes a cloned copy of the latest sample on a fixed interval | `input` and `output`; configurable data type and `IntervalMilliseconds` |
 
-`Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. It loads and caches settings during `Initialize`, publishes a complete keyed `SampleListsByKey` snapshot to GUI consumers, and publishes runtime endpoint/SLOT Pin values during `Run`. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
+`Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. It loads and caches settings during `Initialize`, publishes parsed settings JSON through `output_string_settings`, publishes a complete keyed `SampleListsByKey` snapshot to GUI consumers, and publishes runtime endpoint/SLOT Pin values during `Run`. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
+
+`Node.PassFailTotalYield` subscribes to `PassFailTotalYieldBroadcasts.Reset` (`Pass.Fail.Total.Yield.Reset`) during `Initialize` and retains the subscription until `Shutdown`, independent of `Run`/`Stop`. Reset payloads contain `A/B/C/D/F` keys with exact `StringSample` values of `Reset`; valid requests clear only selected slots, persist `Yield.ini`, then publish a complete `Pass.Fail.Total.Yield` snapshot. Input pins accept only INT64 RET results and do not accept reset commands.
 
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.
 
-`Node.AutoStart` buffers semicolon-terminated `SLOT`/`FSN`/`IMEI` JSON groups from
-`input_string_start`, validates each group, sends the corresponding JSON group to the output
-mapped from `SLOT`, and emits a host-neutral start request through
+`Node.AutoStart` buffers semicolon-prefixed batches of semicolon-terminated
+`SLOT`/`FSN`/`IMEI` JSON groups from `input_string_start`, rejects batches without the
+leading boundary marker, validates each group, sends the corresponding JSON group to the
+output mapped from `SLOT`, and emits a host-neutral start request through
 `IWorkflowStartRequestSink`. A product-specific host registers the service implementation;
 the plugin has no Avalonia dependency.
 
@@ -328,7 +371,3 @@ each expose `input_string`, `input_binary`, `output_string`, and `output_binary`
 changes without modifying persisted workflow parameters. Text inputs are UTF-8 encoded,
 binary inputs are sent unchanged, and received byte blocks are published without adding
 framing or automatic replies. See `docs/tcp-transport.md`.
-
-
-
-

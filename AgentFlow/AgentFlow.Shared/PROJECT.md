@@ -29,7 +29,8 @@ above; do not place project-specific types at the repository root.
 
 - `Errors`: `FlashForgeHmiErrorCode`, with reserved numeric ranges per node family.
 - `Results`: `FlashForgeHmiResult` and `FlashForgeHmiResult<T>` result wrappers.
-- `Broadcasts`: `FlashForgeHmiBroadcastSubscriptions` topic constants and
+- `Broadcasts`: `FlashForgeHmiBroadcastSubscriptions` topic constants,
+  `PassFailTotalYieldBroadcasts` reset command topics, and
   `FlashForgeHmiLauncherStartSignals` request/reply payload values.
 
 ## Broadcast Subscriptions
@@ -57,11 +58,23 @@ containing C# types are renamed.
   - Shared successful reply payload value.
 - `FlashForgeHmiBroadcastSubscriptions.LauncherStop`: `FACT.Launcher.Stop`
   - Published by `Node.AutoStop` as the shared launcher stop signal.
+- `FlashForgeHmiBroadcastSubscriptions.LauncherCommand`: `FACT.Launcher.Command`
+  - Published by `Node.FACTLauncher` after a launch command is successfully sent to its
+    command output pin.
+  - Carries one `StringSample` in `BroadcastTopicMessage.SamplesByKey`, keyed by the
+    launcher position (`A`, `B`, `C`, `D`, or `F`); its `StringValue` is the complete
+    command dispatched to the downstream command pin.
 - `FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield`: `Pass.Fail.Total.Yield`
   - Published by `Node.PassFailTotalYield` during initialization and after every
     successful update or reset.
   - Carries a keyed Sample dictionary with per-slot pass/fail/yield values and
     aggregate `P`, `F`, `T`, and `Y` values.
+- `PassFailTotalYieldBroadcasts.Reset`: `Pass.Fail.Total.Yield.Reset`
+  - GUI-to-node selective reset command consumed by `Node.PassFailTotalYield`.
+  - Payload: `BroadcastTopicMessage.SamplesByKey` with keys `A`, `B`, `C`, `D`, or `F`
+    and exact `StringSample` value `"Reset"`.
+  - Valid requests clear only the selected slots, rewrite `Yield.ini`, and cause a complete
+    `Pass.Fail.Total.Yield` snapshot to be published after persistence succeeds.
 
 ## Build
 

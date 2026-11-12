@@ -2,18 +2,20 @@
 
 ## Purpose
 
-`Node.AutoStart` is a workflow-control plugin. It receives semicolon-terminated JSON groups
+`Node.AutoStart` is a workflow-control plugin. It receives semicolon-prefixed batches of semicolon-terminated JSON groups
 on `input_string_start`, validates each group, emits the original group JSON to a slot-specific
 output pin, and forwards a workflow-start request to a host-provided service.
 
 ## Input Contract
 
-The input is a text buffer containing one or more JSON objects separated by English
-semicolons. The final object must also be followed by a semicolon so the node can identify
-the end of the batch while TCP data is still arriving in arbitrary chunks.
+The input is a text buffer whose first non-whitespace character must be an English
+semicolon. The leading semicolon marks the batch start and is ignored. One or more JSON
+objects follow, separated by semicolons. The final object must also be followed by a
+semicolon so the node can identify the batch boundary while TCP data is still arriving in
+arbitrary chunks.
 
 ```text
-{"SLOT":"1","FSN":"603122002902AB","IMEI":"354360451234561"};{"SLOT":"2","FSN":"/F603122002902AC","IMEI":"/I354360451234562"};
+;{"SLOT":"1","FSN":"603122002902AB","IMEI":"354360451234561"};{"SLOT":"2","FSN":"/F603122002902AC","IMEI":"/I354360451234562"};
 ```
 
 Each JSON object must contain:
@@ -54,8 +56,10 @@ TCP does not preserve message boundaries. The node keeps a pending input buffer 
 `StringSample` calls and processes a group only after a semicolon has been received.
 Incomplete trailing content remains buffered until later input arrives or the node stops.
 
-An empty segment between consecutive semicolons is ignored. Invalid JSON, missing fields,
-or an out-of-range `SLOT` is logged as an error and does not produce output.
+The first empty segment created by the batch-start semicolon is ignored. Other empty
+segments between consecutive semicolons are also ignored. Input that does not begin with a
+semicolon is logged as an error and rejected. Invalid JSON, missing fields, or an
+out-of-range `SLOT` is logged as an error and does not produce output.
 
 The pending buffer is capped at 64 KiB to prevent unbounded growth from malformed input.
 
@@ -83,4 +87,3 @@ The parser has no dependency on other plugin projects.
 ```powershell
 dotnet build "AgentFlow/plugins/Node.AutoStart/Node.AutoStart.csproj" -c Debug -p:Platform=x64
 ```
-

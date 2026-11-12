@@ -40,6 +40,9 @@ public sealed class UserSettingsNode : BaseNode
     private readonly BasePin _endpointOutputPin =
         new("output_string_endpoint", DataType.STRING, PinDirection.Output);
 
+    private readonly BasePin _settingsOutputPin =
+        new("output_string_settings", DataType.STRING, PinDirection.Output);
+
     private readonly BasePin[] _slotOutputPins;
 
     private readonly record struct SlotAssignment(int Slot, string PortHub);
@@ -76,6 +79,7 @@ public sealed class UserSettingsNode : BaseNode
         foreach (var outputPin in _slotOutputPins)
             AddOutputPin(outputPin);
         AddOutputPin(_endpointOutputPin);
+        AddOutputPin(_settingsOutputPin);
     }
 
     protected override void AddParam()
@@ -111,6 +115,7 @@ public sealed class UserSettingsNode : BaseNode
         }
 
         _settings = settings;
+        PublishSettingsJson(settings);
         await PublishInitializationSnapshotAsync(settings, ct).ConfigureAwait(false);
     }
 
@@ -154,13 +159,32 @@ public sealed class UserSettingsNode : BaseNode
 
             _logger?.LogTrace(
                 "UserSettings received readiness input through {Pin} for profile {Profile}: {Input}. " +
-                "Initialization settings are broadcast during Initialize; output pins are published during Run.",
+                "The settings JSON output is published during Initialize; runtime output pins are published during Run.",
                 pin.Name,
                 Param("Profile").Value,
                 inputText);
         }
     }
 
+    private void PublishSettingsJson(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
+    {
+        if (_settingsOutputPin.TargetCount == 0)
+        {
+            _logger?.LogWarning(
+                "UserSettings parsed settings JSON, but output pin {Pin} is not connected.",
+                _settingsOutputPin.Name);
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(settings);
+        var sample = StringSample.CreateSample();
+        sample.SetValue(json, _settingsOutputPin.Name);
+        _settingsOutputPin.SendSampleWithDispatchLog(
+            sample,
+            "UserSettings settings JSON",
+            LogLevel.Information);
+    }
     private void PublishEndpoint(
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
     {
@@ -387,5 +411,3 @@ public sealed class UserSettingsNode : BaseNode
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
 }
-
-

@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace Node.AutoStart;
 
 /// <summary>
-/// Workflow control node that receives semicolon-terminated JSON groups and emits each
+/// Workflow control node that receives semicolon-prefixed and semicolon-terminated JSON groups and emits each
 /// validated JSON group through the output selected by its SLOT value. The actual workflow-start action
 /// is supplied by the host through <see cref="IWorkflowStartRequestSink"/>.
 /// </summary>
@@ -42,6 +42,7 @@ public sealed class AutoStartNode : BaseNode
     private INodeContext? _context;
     private ILogger? _logger;
     private string _pendingInput = string.Empty;
+    private bool _batchStartReceived;
 
     public AutoStartNode()
     {
@@ -79,7 +80,10 @@ public sealed class AutoStartNode : BaseNode
         _context = context;
         _logger = context.Logger;
         lock (_inputGate)
+        {
             _pendingInput = string.Empty;
+            _batchStartReceived = false;
+        }
 
         return Task.CompletedTask;
     }
@@ -90,10 +94,13 @@ public sealed class AutoStartNode : BaseNode
         _logger = context.Logger;
         Running = true;
         lock (_inputGate)
+        {
             _pendingInput = string.Empty;
+            _batchStartReceived = false;
+        }
 
         _logger?.LogTrace(
-            "AutoStart is waiting for semicolon-terminated SLOT/FSN/IMEI JSON groups.");
+            "AutoStart is waiting for semicolon-prefixed batches containing semicolon-terminated SLOT/FSN/IMEI JSON groups.");
         return Task.CompletedTask;
     }
 
@@ -103,7 +110,10 @@ public sealed class AutoStartNode : BaseNode
         _logger = null;
         _context = null;
         lock (_inputGate)
+        {
             _pendingInput = string.Empty;
+            _batchStartReceived = false;
+        }
 
         return Task.CompletedTask;
     }
@@ -127,6 +137,26 @@ public sealed class AutoStartNode : BaseNode
 
             lock (_inputGate)
             {
+                if (!_batchStartReceived)
+                {
+                    var candidate = inputText.TrimStart();
+                    if (candidate.Length == 0)
+                        return;
+
+                    if (candidate[0] != ';')
+                    {
+                        _logger?.LogError(
+                            "AutoStart rejected input because each batch must begin with ';': {Payload}",
+                            inputText);
+                        _pendingInput = string.Empty;
+                        _batchStartReceived = false;
+                        return;
+                    }
+
+                    _batchStartReceived = true;
+                    inputText = candidate[1..];
+                }
+
                 _pendingInput += inputText;
                 if (_pendingInput.Length > MaxPendingCharacters)
                 {
@@ -134,9 +164,11 @@ public sealed class AutoStartNode : BaseNode
                         "AutoStart input exceeded the {MaxCharacters}-character buffer limit and was cleared.",
                         MaxPendingCharacters);
                     _pendingInput = string.Empty;
+                    _batchStartReceived = false;
                     return;
                 }
 
+                var processedSegment = false;
                 while (true)
                 {
                     var separatorIndex = _pendingInput.IndexOf(';');
@@ -150,6 +182,13 @@ public sealed class AutoStartNode : BaseNode
                         continue;
 
                     ProcessCompletedSegment(segment, pin.Context);
+                    processedSegment = true;
+                }
+
+                if (processedSegment && string.IsNullOrWhiteSpace(_pendingInput))
+                {
+                    _pendingInput = string.Empty;
+                    _batchStartReceived = false;
                 }
             }
         }
