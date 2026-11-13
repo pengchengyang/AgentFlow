@@ -89,6 +89,10 @@ for /D %%D in ("%ROOT%\plugins\*") do (
     )
 )
 
+echo.
+echo Validating binary version metadata...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\build\Verify-BinaryVersions.ps1" -Root "%STAGING%" -Output "%STAGING%\BinaryVersions.json"
+if errorlevel 1 goto :fail
 (
     echo AgentFlow Binary SDK
     echo.
@@ -105,6 +109,7 @@ for /D %%D in ("%ROOT%\plugins\*") do (
     echo   Release projects -^> SharedDlls\x64\Release
     echo.
     echo Keep plugins and SharedDlls from the same SDK archive. Do not mix Debug and Release.
+    echo BinaryVersions.json contains the file and assembly versions of every AgentFlow-owned binary.
     echo Node.Broadcast.Demo is included only in the Debug plugin folder.
     echo Target framework: net8.0.
 ) > "%STAGING%\README.txt"

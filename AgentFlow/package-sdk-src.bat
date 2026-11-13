@@ -64,6 +64,10 @@ for /D %%D in ("%ROOT%\plugins\*") do (
     )
 )
 
+echo.
+echo Validating binary version metadata...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\build\Verify-BinaryVersions.ps1" -Root "%STAGING%" -Output "%STAGING%\BinaryVersions.json"
+if errorlevel 1 goto :fail
 (
     echo AgentFlow SDK
     echo.
@@ -73,6 +77,7 @@ for /D %%D in ("%ROOT%\plugins\*") do (
     echo   x64\Release\src    Public project source code
     echo   x64\Release\plugins Release plugin assemblies
     echo.
+    echo BinaryVersions.json contains the file and assembly versions of every packaged AgentFlow binary.
     echo Node.Broadcast.Demo is included only in the Debug variant.
 ) > "%STAGING%\README.txt"
 
@@ -98,6 +103,16 @@ for %%S in (
 ) do (
     call :CopySource "%ROOT%\%%S" "%DEST%\%%S"
     if errorlevel 1 exit /b 1
+)
+copy /Y "%ROOT%\Directory.Build.props" "%DEST%\Directory.Build.props" >nul
+if errorlevel 1 (
+    echo ERROR: failed to copy Directory.Build.props.
+    exit /b 1
+)
+copy /Y "%ROOT%\Directory.Build.targets" "%DEST%\Directory.Build.targets" >nul
+if errorlevel 1 (
+    echo ERROR: failed to copy Directory.Build.targets.
+    exit /b 1
 )
 exit /b 0
 

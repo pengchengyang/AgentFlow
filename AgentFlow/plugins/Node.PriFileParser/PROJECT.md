@@ -38,7 +38,7 @@ key/value information as a JSON string.
 
 ## Broadcast Output
 
-- Topic: `FlashForgeHmiBroadcastSubscriptions.PriFileSettings` (`Pri.File.Settings`)
+- Topic: `RTSBroadcastSubscriptions.PriFileSettings` (`Pri.File.Settings`)
 - Payload: `BroadcastTopicMessage.FromSampleDictionary`
 - Each parsed key/value pair is published as one `StringSample`.
 - The dictionary is broadcast after parsing succeeds even when `output_string_json`

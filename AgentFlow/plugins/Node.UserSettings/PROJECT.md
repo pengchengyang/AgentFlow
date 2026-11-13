@@ -74,7 +74,7 @@ original casing and order.
 ## Initialization Broadcast Contract
 
 `Initialize` publishes `BroadcastTopicMessage.FromSampleListDictionary(...)` on
-`FlashForgeHmiBroadcastSubscriptions.LauncherSettings`. For example, the following INI content:
+`RTSBroadcastSubscriptions.LauncherSettings`. For example, the following INI content:
 
 ```ini
 [CMD]

@@ -16,7 +16,7 @@ desktop, CLI, headless, or future web hosts.
 | `AgentFlow.Desktop` | Desktop entry point and host logging setup. |
 | `AgentFlow.Cli` | Headless workflow entry point. |
 | `Hosting.Logging` | Shared Serilog-compatible logging integration. |
-| `AgentFlow.Shared` | GUI-neutral shared declarations grouped per concrete project (for example `FlashForgeHMI/Broadcasts`, `Errors`, `Results`), including error/result contracts and broadcast subscription names. |
+| `AgentFlow.Shared` | GUI-neutral shared declarations grouped per concrete project (for example `RTS/Broadcasts`, `Errors`, `Results`), including error/result contracts and broadcast subscription names. |
 | `plugins/*` | Dynamically loaded node implementations and demo nodes. |
 | `BroadcastKit*` | Optional process-local broadcast transport and shared topic/message contracts, including ordered sample batches, keyed Sample dictionaries, keyed Sample-list dictionaries, and correlated request/reply. |
 
@@ -286,11 +286,32 @@ configuration and platform before copying plugin assemblies. This is required be
 Visual Studio's publish pipeline can evaluate project references separately, and it
 must not depend on plugin binaries being rebuilt by the host build phase alone.
 
+### Binary Version Metadata
+
+All AgentFlow-owned DLL and EXE projects have their own `Version.props` file.
+`Directory.Build.props` supplies shared metadata and imports the nearest project
+version file:
+
+- `Company`: `Rolling Wireless, SARL.`
+- `Product`: `Agent Flow Node Editor`
+- `Copyright`: `(c) Rolling Wireless, SARL.  All rights reserved.`
+- `AssemblyTitle` and `Description`: derived from the project name.
+
+Each `Version.props` owns `AssemblyVersion`, `FileVersion`, and
+`InformationalVersion`. A change to one component therefore does not modify the
+version of any other component. `Directory.Build.targets` fails compilation when a
+project is missing its version file or required version fields.
+
+The packaging scripts validate every AgentFlow-owned DLL and EXE and write
+`BinaryVersions.json` into the package root. Validation checks company, product,
+copyright, file version, product version, file description, original filename, and
+SHA-256. The verifier is `build/Verify-BinaryVersions.ps1`.
+
 ### SDK Packaging
 
 Two SDK packaging scripts are kept for different distribution models:
 
-- `package-sdk.bat` builds the source-based SDK. It copies the public shared project
+- `package-sdk-src.bat` builds the source-based SDK. It copies the public shared project
   sources under `src` and packages plugin assemblies separately for Debug and Release.
 - `package-sdk-dll.bat` builds the binary-only SDK. It does not include shared source
   code. External projects reference the prebuilt assemblies under `SharedDlls` instead.

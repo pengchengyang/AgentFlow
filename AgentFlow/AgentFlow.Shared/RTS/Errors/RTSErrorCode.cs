@@ -1,10 +1,10 @@
-namespace AgentFlow.Shared.FlashForgeHmi.Errors;
+namespace AgentFlow.Shared.RTS.Errors;
 
 /// <summary>
-/// Shared FlashForgeHMI business error codes. Zero always means success; positive values identify failures.
+/// Shared RTS business error codes. Zero always means success; positive values identify failures.
 /// Node-specific ranges keep independently owned errors from colliding.
 /// </summary>
-public enum FlashForgeHmiErrorCode
+public enum RTSErrorCode
 {
     Success = 0,
 

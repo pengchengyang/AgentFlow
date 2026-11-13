@@ -1,16 +1,16 @@
 // -----------------------------------------------------------------------
-// <copyright company="Rolling Wireless SARL" file="FlashForgeHmiBroadcastSubscriptions.cs">
+// <copyright company="Rolling Wireless SARL" file="RTSBroadcastSubscriptions.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 // </copyright>
 // -----------------------------------------------------------------------
 
-namespace AgentFlow.Shared.FlashForgeHmi.Broadcasts;
+namespace AgentFlow.Shared.RTS.Broadcasts;
 
 /// <summary>
-/// Broadcast subscription names shared by FlashForgeHMI nodes and GUI consumers.
+/// Broadcast subscription names shared by RTS nodes and GUI consumers.
 /// Keep these values centralized so publishers and subscribers cannot drift apart.
 /// </summary>
-public static class FlashForgeHmiBroadcastSubscriptions
+public static class RTSBroadcastSubscriptions
 {
     /// <summary>Subscription used to exchange launcher settings between nodes and GUI hosts.</summary>
     public const string LauncherSettings = "FACT.Launcher.Settings";
@@ -30,12 +30,15 @@ public static class FlashForgeHmiBroadcastSubscriptions
     /// <summary>Subscription used to publish parsed PRI file settings as a keyed Sample dictionary.</summary>
     public const string PriFileSettings = "Pri.File.Settings";
 
+    /// <summary>Subscription used to broadcast the Auto Stop exit JSON payload.</summary>
+    public const string AutoStopExit = "Workflow.AutoStop.Exit";
+
     /// <summary>Subscription used to publish pass, fail, total, and yield values.</summary>
     public const string PassFailTotalYield = "Pass.Fail.Total.Yield";
 }
 
 /// <summary>Shared payload values for the launcher start request/reply protocol.</summary>
-public static class FlashForgeHmiLauncherStartSignals
+public static class RTSLauncherStartSignals
 {
     public const string Request = "Start";
     public const string Started = "Started";

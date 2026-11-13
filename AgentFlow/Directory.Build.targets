@@ -4,6 +4,12 @@
     <!-- Platform-specific plugin output folders use bin\<Platform>\<Configuration> on MSBuild. -->
     <PluginPlatformOutputPath Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != 'Any CPU'">$(Platform)\</PluginPlatformOutputPath>
   </PropertyGroup>
+  <Target Name="ValidateAgentFlowVersionMetadata" BeforeTargets="CoreCompile">
+    <Error Condition="'$(AgentFlowHasVersionProps)' != 'true'"
+           Text="$(MSBuildProjectName) must have its own Version.props file. Expected at $(AgentFlowVersionPropsPath)." />
+    <Error Condition="'$(AssemblyVersion)' == '' or '$(FileVersion)' == '' or '$(InformationalVersion)' == ''"
+           Text="$(MSBuildProjectName) must define AssemblyVersion, FileVersion, and InformationalVersion in Version.props." />
+  </Target>
   <!--
     ================================================================================
     Plugin distribution

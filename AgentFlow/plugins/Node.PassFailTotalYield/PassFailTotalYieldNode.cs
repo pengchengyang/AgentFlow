@@ -5,7 +5,7 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
-using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
+using AgentFlow.Shared.RTS.Broadcasts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
@@ -432,14 +432,14 @@ public sealed class PassFailTotalYieldNode : BaseNode
         try
         {
             await TopicBus.Instance.PublishAsync(
-                FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield,
+                RTSBroadcastSubscriptions.PassFailTotalYield,
                 BroadcastTopicMessage.FromSampleDictionary(samplesByKey),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
             _logger?.LogTrace(
                 "PassFailTotalYield broadcast {Count} values on {Topic}: P={Pass}, F={Fail}, T={Total}, Y={Yield}.",
                 samplesByKey.Count,
-                FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield,
+                RTSBroadcastSubscriptions.PassFailTotalYield,
                 snapshot.PassTotal,
                 snapshot.FailTotal,
                 snapshot.Total,
@@ -450,7 +450,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
             _logger?.LogError(
                 ex,
                 "PassFailTotalYield failed to broadcast snapshot on {Topic}: {Message}",
-                FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield,
+                RTSBroadcastSubscriptions.PassFailTotalYield,
                 ex.Message);
         }
     }

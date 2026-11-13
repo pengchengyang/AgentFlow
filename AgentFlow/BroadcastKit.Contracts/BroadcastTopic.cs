@@ -142,3 +142,4 @@ public sealed record BroadcastTopicMessage
         return new ReadOnlyDictionary<string, IReadOnlyList<Sample>>(snapshot);
     }
 }
+

@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="GraphDeserializer.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -51,3 +51,4 @@ public static class GraphDeserializer
         return Deserialize(WorkflowFileCrypto.ReadWorkflowJsonFile(path));
     }
 }
+

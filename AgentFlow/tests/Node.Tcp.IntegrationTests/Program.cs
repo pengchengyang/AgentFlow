@@ -446,3 +446,5 @@ internal sealed class CaptureLogger(string categoryName, ConcurrentQueue<string>
         sink.Enqueue($"[{categoryName}] {formatter(state, exception)}");
     }
 }
+
+

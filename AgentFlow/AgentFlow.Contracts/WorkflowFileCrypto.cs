@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="WorkflowFileCrypto.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -126,3 +126,5 @@ public static class WorkflowFileCrypto
         File.Move(temp, path, overwrite: true);
     }
 }
+
+

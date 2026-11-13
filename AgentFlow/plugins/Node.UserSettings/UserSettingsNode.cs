@@ -8,7 +8,7 @@ using System.Text.Json;
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
-using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
+using AgentFlow.Shared.RTS.Broadcasts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.UserSettings;
@@ -276,7 +276,7 @@ public sealed class UserSettingsNode : BaseNode
         try
         {
             await TopicBus.Instance.PublishAsync(
-                FlashForgeHmiBroadcastSubscriptions.LauncherSettings,
+                RTSBroadcastSubscriptions.LauncherSettings,
                 BroadcastTopicMessage.FromSampleListDictionary(sampleLists),
                 ct: ct).ConfigureAwait(false);
 

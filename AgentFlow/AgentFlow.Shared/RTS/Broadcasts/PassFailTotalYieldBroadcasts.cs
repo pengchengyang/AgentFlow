@@ -4,7 +4,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
-namespace AgentFlow.Shared.FlashForgeHmi.Broadcasts;
+namespace AgentFlow.Shared.RTS.Broadcasts;
 
 /// <summary>
 /// Broadcast topics used to control the pass, fail, total, and yield node.

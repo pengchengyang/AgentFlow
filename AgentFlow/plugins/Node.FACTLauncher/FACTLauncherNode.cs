@@ -6,7 +6,7 @@
 
 using System.Text.Json;
 using AgentFlow.Contracts;
-using AgentFlow.Shared.FlashForgeHmi.Broadcasts;
+using AgentFlow.Shared.RTS.Broadcasts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
@@ -367,7 +367,7 @@ public sealed class FACTLauncherNode : BaseNode
         try
         {
             await TopicBus.Instance.PublishAsync(
-                FlashForgeHmiBroadcastSubscriptions.LauncherSettings,
+                RTSBroadcastSubscriptions.LauncherSettings,
                 BroadcastTopicMessage.FromSamples(samples),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
@@ -461,7 +461,7 @@ public sealed class FACTLauncherNode : BaseNode
         try
         {
             await TopicBus.Instance.PublishAsync(
-                FlashForgeHmiBroadcastSubscriptions.LauncherCommand,
+                RTSBroadcastSubscriptions.LauncherCommand,
                 BroadcastTopicMessage.FromSampleDictionary(commandSamples),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
@@ -469,7 +469,7 @@ public sealed class FACTLauncherNode : BaseNode
                 "FACTLauncher {DisplayName} broadcast command for position {Position} on {Topic}: {Command}",
                 DisplayName,
                 position,
-                FlashForgeHmiBroadcastSubscriptions.LauncherCommand,
+                RTSBroadcastSubscriptions.LauncherCommand,
                 commandSample.StringValue);
         }
         catch (Exception ex)
@@ -479,7 +479,7 @@ public sealed class FACTLauncherNode : BaseNode
                 "FACTLauncher {DisplayName} failed to broadcast command for position {Position} on {Topic}: {Message}",
                 DisplayName,
                 position,
-                FlashForgeHmiBroadcastSubscriptions.LauncherCommand,
+                RTSBroadcastSubscriptions.LauncherCommand,
                 ex.Message);
         }
     }

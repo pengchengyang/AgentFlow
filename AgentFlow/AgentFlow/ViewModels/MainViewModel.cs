@@ -1696,3 +1696,5 @@ public partial class MainViewModel : ViewModelBase
         LoadFromPath(path);
     }
 }
+
+

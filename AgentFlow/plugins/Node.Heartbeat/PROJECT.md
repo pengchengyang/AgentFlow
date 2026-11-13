@@ -42,3 +42,4 @@ new byte array, so later changes to an upstream sample cannot alter the heartbea
 ```powershell
 dotnet build "Node.Heartbeat.csproj" -c Debug -p:Platform=x64
 ```
+

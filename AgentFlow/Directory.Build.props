@@ -2,5 +2,18 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <AvaloniaVersion>12.0.5</AvaloniaVersion>
+
+    <Company>Rolling Wireless, SARL.</Company>
+    <Product>Agent Flow Node Editor</Product>
+    <AssemblyTitle>$(MSBuildProjectName)</AssemblyTitle>
+    <Description>Agent Flow Node Editor component $(MSBuildProjectName).</Description>
+    <Copyright>(c) Rolling Wireless, SARL.  All rights reserved.</Copyright>
+    <NeutralLanguage>en</NeutralLanguage>
+
+    <AgentFlowVersionPropsPath>$(MSBuildProjectDirectory)\Version.props</AgentFlowVersionPropsPath>
+    <AgentFlowHasVersionProps>false</AgentFlowHasVersionProps>
+    <AgentFlowHasVersionProps Condition="Exists('$(AgentFlowVersionPropsPath)')">true</AgentFlowHasVersionProps>
   </PropertyGroup>
+
+  <Import Project="$(AgentFlowVersionPropsPath)" Condition="Exists('$(AgentFlowVersionPropsPath)')" />
 </Project>

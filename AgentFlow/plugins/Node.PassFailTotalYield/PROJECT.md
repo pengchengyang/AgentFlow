@@ -122,7 +122,7 @@ using midpoint-away-from-zero rounding. A zero denominator produces `0.0`.
 
 ## Broadcast
 
-- Output topic: `FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield` (`Pass.Fail.Total.Yield`)
+- Output topic: `RTSBroadcastSubscriptions.PassFailTotalYield` (`Pass.Fail.Total.Yield`)
 - Reset input topic: `PassFailTotalYieldBroadcasts.Reset` (`Pass.Fail.Total.Yield.Reset`)
 - Payload: `BroadcastTopicMessage.FromSampleDictionary`
 - Keys:

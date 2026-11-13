@@ -110,7 +110,7 @@ produce no settings broadcast.
 
 ## Launcher Settings Broadcast
 
-The launcher publishes `FlashForgeHmiBroadcastSubscriptions.LauncherSettings` using
+The launcher publishes `RTSBroadcastSubscriptions.LauncherSettings` using
 `BroadcastTopicMessage.FromSamples(...)` with samples in this order:
 
 | Index | Sample key | Value |
@@ -120,14 +120,14 @@ The launcher publishes `FlashForgeHmiBroadcastSubscriptions.LauncherSettings` us
 | `2` | `SLOT` | `_slot` |
 | `3` | `PORTHUB` | `_porthub` |
 
-`Node.AutoStop` owns the `FlashForgeHmiBroadcastSubscriptions.LauncherStop` broadcast.
+`Node.AutoStop` owns the `RTSBroadcastSubscriptions.LauncherStop` broadcast.
 
 ## Launcher Command Broadcast
 
 When `SendCommand` successfully dispatches the full FACT command to
 `output_string_cmd`, the launcher publishes a keyed Sample dictionary to:
 
-`FlashForgeHmiBroadcastSubscriptions.LauncherCommand` (`FACT.Launcher.Command`)
+`RTSBroadcastSubscriptions.LauncherCommand` (`FACT.Launcher.Command`)
 
 The payload is:
 

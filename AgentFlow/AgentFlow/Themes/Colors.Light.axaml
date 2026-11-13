@@ -53,6 +53,9 @@
     <Color x:Key="ToolTipBorder">#E5E7EB</Color>
     <Color x:Key="PillBg">#F3F4F6</Color>
     <Color x:Key="ShadowNode">#1A0F172A</Color>
+    <Color x:Key="SnapPreviewBackground">#CCFFFFFF</Color>
+    <Color x:Key="SnapPreviewBorder">#7C5CFA</Color>
+    <Color x:Key="SnapPreviewTint">#127C5CFA</Color>
 
     <!-- ============ Semantic colors ============ -->
     <Color x:Key="Danger">#F04438</Color>
@@ -104,6 +107,9 @@
     <SolidColorBrush x:Key="BrushToolTipBg" Color="{StaticResource ToolTipBg}" />
     <SolidColorBrush x:Key="BrushToolTipBorder" Color="{StaticResource ToolTipBorder}" />
     <SolidColorBrush x:Key="BrushPill" Color="{StaticResource PillBg}" />
+    <SolidColorBrush x:Key="BrushSnapPreviewBackground" Color="{StaticResource SnapPreviewBackground}" />
+    <SolidColorBrush x:Key="BrushSnapPreviewBorder" Color="{StaticResource SnapPreviewBorder}" />
+    <SolidColorBrush x:Key="BrushSnapPreviewTint" Color="{StaticResource SnapPreviewTint}" />
 
     <SolidColorBrush x:Key="BrushTextPrimary" Color="{StaticResource TextPrimary}" />
     <SolidColorBrush x:Key="BrushTextSecondary" Color="{StaticResource TextSecondary}" />

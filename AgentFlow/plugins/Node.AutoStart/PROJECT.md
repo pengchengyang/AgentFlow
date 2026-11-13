@@ -87,3 +87,5 @@ The parser has no dependency on other plugin projects.
 ```powershell
 dotnet build "AgentFlow/plugins/Node.AutoStart/Node.AutoStart.csproj" -c Debug -p:Platform=x64
 ```
+
+

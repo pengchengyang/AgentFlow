@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow.Core\AgentFlow.Core.csproj" />
     <ProjectReference Include="..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
-    <!-- Shared plugin dependency: FlashForgeHMI plugins reference AgentFlow.Shared, so the host must provide this assembly. -->
+    <!-- Shared plugin dependency: RTS plugins reference AgentFlow.Shared, so the host must provide this assembly. -->
     <ProjectReference Include="..\AgentFlow.Shared\AgentFlow.Shared.csproj" />
     <!-- Shared plugin dependency: Node.Broadcast.Demo references BroadcastKit, so the host
          (even though the CLI no longer uses TopicBus itself) must provide this assembly. -->

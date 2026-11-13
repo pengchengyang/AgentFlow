@@ -173,3 +173,5 @@ internal sealed class MsLevelNameEnricher : ILogEventEnricher
         logEvent.AddPropertyIfAbsent(propertyFactory.CreateProperty("LevelName", LogLevelNames.From(logEvent.Level)));
     }
 }
+
+

@@ -1083,3 +1083,5 @@ public sealed class GraphCanvas : Control
             UpdateSpinAnimation();
     }
 }
+
+

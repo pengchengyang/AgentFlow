@@ -12,7 +12,7 @@ the same three sub-folders, so multiple product lines can coexist without name c
 
 ```
 AgentFlow.Shared/
-  FlashForgeHMI/
+  RTS/
     Broadcasts/   broadcast subscription names and protocol payload constants
     Errors/       business error code enums
     Results/      result wrapper types
@@ -25,46 +25,50 @@ AgentFlow.Shared/
 To support a new project, add a new project-named folder and create the three sub-folders
 above; do not place project-specific types at the repository root.
 
-## FlashForgeHMI Modules
+## RTS Modules
 
-- `Errors`: `FlashForgeHmiErrorCode`, with reserved numeric ranges per node family.
-- `Results`: `FlashForgeHmiResult` and `FlashForgeHmiResult<T>` result wrappers.
-- `Broadcasts`: `FlashForgeHmiBroadcastSubscriptions` topic constants,
+- `Errors`: `RTSErrorCode`, with reserved numeric ranges per node family.
+- `Results`: `RTSResult` and `RTSResult<T>` result wrappers.
+- `Broadcasts`: `RTSBroadcastSubscriptions` topic constants,
   `PassFailTotalYieldBroadcasts` reset command topics, and
-  `FlashForgeHmiLauncherStartSignals` request/reply payload values.
+  `RTSLauncherStartSignals` request/reply payload values.
 
 ## Broadcast Subscriptions
 
 Topic string values are wire-level protocol identifiers and stay stable even when the
 containing C# types are renamed.
 
-- `FlashForgeHmiBroadcastSubscriptions.PriFileSettings`: `Pri.File.Settings`
+- `RTSBroadcastSubscriptions.PriFileSettings`: `Pri.File.Settings`
   - Published by `Node.PriFileParser` after parsing a PRI file.
   - Carries the parsed key/value dictionary as `BroadcastTopicMessage.SamplesByKey`,
     with one string sample per key.
-- `FlashForgeHmiBroadcastSubscriptions.LauncherSettings`: `FACT.Launcher.Settings`
+- `RTSBroadcastSubscriptions.LauncherSettings`: `FACT.Launcher.Settings`
   - Used to exchange launcher settings between nodes and GUI hosts.
   - `Node.UserSettings` publishes the complete keyed initialization snapshot during
     `Initialize`; `Node.FACTLauncher` publishes its current launcher settings.
   - Both publishing and subscribing code must reference this shared constant instead of
     duplicating the literal string.
-- `FlashForgeHmiBroadcastSubscriptions.LauncherStart`: `FACT.Launcher.Start`
+- `RTSBroadcastSubscriptions.LauncherStart`: `FACT.Launcher.Start`
   - Used as the request topic for a launcher start command.
-- `FlashForgeHmiBroadcastSubscriptions.LauncherStartReply`: `FACT.Launcher.Start.Reply`
+- `RTSBroadcastSubscriptions.LauncherStartReply`: `FACT.Launcher.Start.Reply`
   - Used by launcher instances to send correlated start confirmations.
-- `FlashForgeHmiLauncherStartSignals.Request`: `Start`
+- `RTSLauncherStartSignals.Request`: `Start`
   - Shared request payload value.
-- `FlashForgeHmiLauncherStartSignals.Started`: `Started`
+- `RTSLauncherStartSignals.Started`: `Started`
   - Shared successful reply payload value.
-- `FlashForgeHmiBroadcastSubscriptions.LauncherStop`: `FACT.Launcher.Stop`
-  - Published by `Node.AutoStop` as the shared launcher stop signal.
-- `FlashForgeHmiBroadcastSubscriptions.LauncherCommand`: `FACT.Launcher.Command`
+- `RTSBroadcastSubscriptions.LauncherStop`: `FACT.Launcher.Stop`
+  - Shared launcher stop topic retained for workflow-control components.
+- `RTSBroadcastSubscriptions.AutoStopExit`: `Workflow.AutoStop.Exit`
+  - Published by `Node.AutoStop` when it receives the exact input
+    `;{"Request":"Exit"};`.
+  - Carries one `StringSample` with value `{"Request":"Exit"}`.
+- `RTSBroadcastSubscriptions.LauncherCommand`: `FACT.Launcher.Command`
   - Published by `Node.FACTLauncher` after a launch command is successfully sent to its
     command output pin.
   - Carries one `StringSample` in `BroadcastTopicMessage.SamplesByKey`, keyed by the
     launcher position (`A`, `B`, `C`, `D`, or `F`); its `StringValue` is the complete
     command dispatched to the downstream command pin.
-- `FlashForgeHmiBroadcastSubscriptions.PassFailTotalYield`: `Pass.Fail.Total.Yield`
+- `RTSBroadcastSubscriptions.PassFailTotalYield`: `Pass.Fail.Total.Yield`
   - Published by `Node.PassFailTotalYield` during initialization and after every
     successful update or reset.
   - Carries a keyed Sample dictionary with per-slot pass/fail/yield values and

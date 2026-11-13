@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgentFlow.Views.TopSnapPreviewWindow"
+        WindowStartupLocation="Manual"
+        WindowDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Focusable="False"
+        IsHitTestVisible="False"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent">
+  <!-- This window is a non-interactive maximize preview shown while the title bar is dragged to the top edge. -->
+  <Border x:Name="PreviewSurface"
+          Margin="4"
+          CornerRadius="10"
+          Background="{DynamicResource BrushSnapPreviewBackground}"
+          BorderBrush="{DynamicResource BrushSnapPreviewBorder}"
+          BorderThickness="2"
+          IsHitTestVisible="False"
+          Opacity="0">
+    <Border Margin="2"
+            CornerRadius="8"
+            Background="{DynamicResource BrushSnapPreviewTint}"
+            IsHitTestVisible="False" />
+  </Border>
+</Window>

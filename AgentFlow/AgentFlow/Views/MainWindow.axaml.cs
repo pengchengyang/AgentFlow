@@ -26,7 +26,11 @@ public partial class MainWindow : Window
     {
         base.OnPropertyChanged(change);
         if (change.Property == WindowStateProperty)
+        {
             UpdateMaximizeRestoreIcon();
+            if (_isTitleBarDragging)
+                CancelTitleBarDrag();
+        }
     }
 
     private void UpdateMaximizeRestoreIcon()
@@ -49,13 +53,14 @@ public partial class MainWindow : Window
         => Close();
 
     private const double TitleBarDragThresholdPixels = 3;
-    private const int TopSnapThresholdPixels = 8;
-    private const int TopSnapReleaseThresholdPixels = 18;
+    private const int TopSnapEnterThresholdPixels = 8;
+    private const int TopSnapExitThresholdPixels = 18;
     private bool _isTitleBarDragging;
     private bool _titleBarDragMoved;
     private PixelPoint _titleBarDragStartPointer;
     private PixelPoint _titleBarDragStartWindow;
     private bool _topSnapArmed;
+    private TopSnapPreviewWindow? _snapPreviewWindow;
 
     private void TitleBar_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -80,6 +85,7 @@ public partial class MainWindow : Window
         if (WindowState != WindowState.Normal)
             return;
 
+        HideSnapPreview();
         _isTitleBarDragging = true;
         _titleBarDragMoved = false;
         _topSnapArmed = false;
@@ -113,29 +119,29 @@ public partial class MainWindow : Window
 
         _titleBarDragMoved = true;
 
-        // Match Explorer: entering the top edge arms the snap preview. Maximize only on release.
+        // Follow the pointer without committing the snap until the mouse is released.
+        Position = new PixelPoint(
+            _titleBarDragStartWindow.X + deltaX,
+            _titleBarDragStartWindow.Y + deltaY);
+
         var screen = Screens.ScreenFromPoint(pointer)
                      ?? Screens.ScreenFromWindow(this);
         bool inTopSnapZone = false;
         if (screen is not null)
         {
             int distanceFromTop = pointer.Y - screen.WorkingArea.Y;
-            inTopSnapZone = _topSnapArmed
-                ? distanceFromTop <= TopSnapReleaseThresholdPixels
-                : distanceFromTop <= TopSnapThresholdPixels;
-            _topSnapArmed = inTopSnapZone;
-        }
-        else
-        {
-            _topSnapArmed = false;
+            int threshold = _topSnapArmed
+                ? TopSnapExitThresholdPixels
+                : TopSnapEnterThresholdPixels;
+            inTopSnapZone = distanceFromTop <= threshold;
         }
 
-        int targetY = inTopSnapZone && screen is not null
-            ? screen.WorkingArea.Y
-            : _titleBarDragStartWindow.Y + deltaY;
-        Position = new PixelPoint(
-            _titleBarDragStartWindow.X + deltaX,
-            targetY);
+        _topSnapArmed = inTopSnapZone;
+        if (_topSnapArmed && screen is not null)
+            ShowSnapPreview(screen.WorkingArea, screen.Scaling);
+        else
+            HideSnapPreview();
+
         e.Handled = true;
     }
 
@@ -156,19 +162,36 @@ public partial class MainWindow : Window
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
-        _topSnapArmed = false;
-        _isTitleBarDragging = false;
-        _titleBarDragMoved = false;
+        CancelTitleBarDrag();
     }
 
-    private void EndTitleBarDrag(IPointer pointer)
+    private void ShowSnapPreview(PixelRect workArea, double scaling)
+    {
+        if (_snapPreviewWindow is null)
+        {
+            _snapPreviewWindow = new TopSnapPreviewWindow();
+            _snapPreviewWindow.Closed += (_, _) => _snapPreviewWindow = null;
+        }
+
+        _snapPreviewWindow.ShowPreview(workArea, scaling);
+    }
+
+    private void HideSnapPreview()
+        => _snapPreviewWindow?.HidePreview();
+
+    private void CancelTitleBarDrag()
     {
         _isTitleBarDragging = false;
         _topSnapArmed = false;
         _titleBarDragMoved = false;
-        pointer.Capture(null);
+        HideSnapPreview();
     }
 
+    private void EndTitleBarDrag(IPointer pointer)
+    {
+        CancelTitleBarDrag();
+        pointer.Capture(null);
+    }
     /// <summary>
     /// Window-level undo / redo shortcuts. Text editors keep their native Ctrl+Z / Ctrl+Y behavior.
     /// </summary>
@@ -209,6 +232,13 @@ public partial class MainWindow : Window
 
     private bool _allowClose;
     private bool _closing;
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _snapPreviewWindow?.ClosePreview();
+        _snapPreviewWindow = null;
+        base.OnClosed(e);
+    }
 
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
@@ -271,3 +301,5 @@ public partial class MainWindow : Window
         }
     }
 }
+
+

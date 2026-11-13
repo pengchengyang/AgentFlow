@@ -50,3 +50,5 @@ dotnet build 'AgentFlow.Core\AgentFlow.Core.csproj' `
 ```
 
 The desktop and CLI hosts consume this project through project references.
+
+
