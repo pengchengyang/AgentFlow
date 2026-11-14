@@ -47,7 +47,7 @@
           Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' != 'true'">
     <ItemGroup>
       <_BuildPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
-      <_BuildPluginDlls Include="@(_BuildPluginProjects->'%(RootDir)%(Directory)bin\$(PluginPlatformOutputPath)$(Configuration)\net8.0\%(Filename).dll')" />
+      <_BuildPluginDlls Include="@(_BuildPluginProjects->'%(RootDir)%(Directory)bin\$(PluginPlatformOutputPath)$(Configuration)\$(PluginTargetFramework)\%(Filename).dll')" />
       <_BuildMissingPluginDlls Include="@(_BuildPluginDlls)" Condition="!Exists('%(FullPath)')" />
     </ItemGroup>
     <Error Condition="'@(_BuildPluginDlls)' == ''"
@@ -65,7 +65,7 @@
           Condition="'$(PluginHost)' == 'true'">
     <ItemGroup>
       <_PublishPluginProjects Include="@(PluginProjects->'%(FullPath)')" />
-      <_PublishPluginDlls Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)bin\$(PluginPlatformOutputPath)$(Configuration)\net8.0\%(Filename).dll')" />
+      <_PublishPluginDlls Include="@(_PublishPluginProjects->'%(RootDir)%(Directory)bin\$(PluginPlatformOutputPath)$(Configuration)\$(PluginTargetFramework)\%(Filename).dll')" />
     </ItemGroup>
     <Error Condition="'@(_PublishPluginProjects)' == ''"
            Text="$(MSBuildProjectName) has PluginHost=true but @(PluginProjects) is empty: nothing to publish." />

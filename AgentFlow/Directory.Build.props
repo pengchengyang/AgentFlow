@@ -1,4 +1,7 @@
 <Project>
+  <!-- Optional per-machine overrides. This file is intentionally ignored by Git. -->
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.local.props" Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.local.props')" />
+
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <AvaloniaVersion>12.0.5</AvaloniaVersion>
@@ -9,6 +12,10 @@
     <Description>Agent Flow Node Editor component $(MSBuildProjectName).</Description>
     <Copyright>(c) Rolling Wireless, SARL.  All rights reserved.</Copyright>
     <NeutralLanguage>en</NeutralLanguage>
+
+    <!-- Central target framework selection for the application, shared libraries and hosts. -->
+    <AgentFlowTargetFramework Condition="'$(AgentFlowTargetFramework)' == ''">net10.0</AgentFlowTargetFramework>
+    <PluginTargetFramework Condition="'$(PluginTargetFramework)' == ''">$(AgentFlowTargetFramework)</PluginTargetFramework>
 
     <AgentFlowVersionPropsPath>$(MSBuildProjectDirectory)\Version.props</AgentFlowVersionPropsPath>
     <AgentFlowHasVersionProps>false</AgentFlowHasVersionProps>

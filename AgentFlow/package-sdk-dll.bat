@@ -27,6 +27,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
+for /f "usebackq delims=" %%T in (`dotnet msbuild "%ROOT%\AgentFlow.Contracts\AgentFlow.Contracts.csproj" -nologo -getProperty:AgentFlowTargetFramework`) do set "AGENTFLOW_TARGET_FRAMEWORK=%%T"
+for /f "usebackq delims=" %%T in (`dotnet msbuild "%ROOT%\plugins\Node.AutoStart\Node.AutoStart.csproj" -nologo -getProperty:PluginTargetFramework`) do set "AGENTFLOW_PLUGIN_TARGET_FRAMEWORK=%%T"
+if not defined AGENTFLOW_TARGET_FRAMEWORK (
+    echo ERROR: AgentFlowTargetFramework is not defined.
+    exit /b 1
+)
+if not defined AGENTFLOW_PLUGIN_TARGET_FRAMEWORK (
+    echo ERROR: PluginTargetFramework is not defined.
+    exit /b 1
+)
 if exist "%STAGING%" rmdir /s /q "%STAGING%"
 if exist "%BUILD_ROOT%" rmdir /s /q "%BUILD_ROOT%"
 if exist "%ZIP%" del /f /q "%ZIP%"
@@ -111,7 +121,8 @@ if errorlevel 1 goto :fail
     echo Keep plugins and SharedDlls from the same SDK archive. Do not mix Debug and Release.
     echo BinaryVersions.json contains the file and assembly versions of every AgentFlow-owned binary.
     echo Node.Broadcast.Demo is included only in the Debug plugin folder.
-    echo Target framework: net8.0.
+    echo Application/shared target framework: !AGENTFLOW_TARGET_FRAMEWORK!.
+    echo Plugin target framework: !AGENTFLOW_PLUGIN_TARGET_FRAMEWORK!.
 ) > "%STAGING%\README.txt"
 
 echo.

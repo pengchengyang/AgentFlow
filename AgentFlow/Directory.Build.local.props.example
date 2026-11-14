@@ -1,0 +1,17 @@
+<Project>
+  <!--
+    Copy this file to Directory.Build.local.props on a specific machine.
+    Directory.Build.local.props is ignored by Git, so each machine can select
+    its own installed .NET target framework without modifying tracked files.
+
+    Default when this file is absent: net10.0.
+  -->
+  <PropertyGroup>
+    <AgentFlowTargetFramework>net10.0</AgentFlowTargetFramework>
+
+    <!-- Optional: only use this when plugins intentionally target a different TFM. -->
+    <!--
+    <PluginTargetFramework>net8.0</PluginTargetFramework>
+    -->
+  </PropertyGroup>
+</Project>

@@ -95,3 +95,6 @@ plugins/**/artifacts/
 # !plugins/vendor/**/*.dll
 # !plugins/runtime/**/*.so
 !*.bat
+
+# 本机构建覆盖（不同电脑可各自选择 .NET 目标框架）
+Directory.Build.local.props
