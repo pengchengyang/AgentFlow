@@ -86,18 +86,33 @@ Pin 的 `ConnectedPin` 引用中，节点之间不直接持有彼此。
 - 节点实例由 Core 统一容器管理，实例 ID 位于 1000–10000，分配最小可用 ID，删除后回收。
 - 插件工程仅引用契约层，MSBuild 目标自动把产物 DLL 复制到各宿主的 `Plugins/` 目录。
 
-### 4.4 分层序列化
+### 4.4 多实例运行管理
+
+Core 提供 `WorkflowRunManager` 和 `WorkflowRunSession`，用于在同一进程内运行多个独立工作流实例。每个 Session 拥有独立的 `NodeRegistryScope`、外部 Worker Runtime、`TopicBus` 广播实例、NodeServiceRegistry、WorkflowGraph、Node 实例、CancellationToken、日志工厂以及最终结果；实例之间不会共享运行中的节点对象、外部 Worker 进程或广播订阅。Batch Run 的 `AutoStop` 只请求当前 RunId 停止，不会隐式取消整批。
+
+默认失败策略是 `ContinueOthers`：一个实例失败只记录自身失败，不影响其他实例。CLI 通过该共享运行管理器启动同一工作流的多实例或不同工作流的混合批次，并在 Ctrl+C 时请求所有实例执行 Stop/Shutdown 后统一汇总退出状态。
+
+Desktop 明确区分两种运行模式：工具栏 `Editor Run` 用于画布内交互调试；底部 `Batch Run` 面板用于正式多实例运行，并复用同一个 Core 管理器。用户可以组合多个 `.rw` 工作流文件，每个来源配置 1–50 个实例。`MaxConcurrency` 是整个 Batch 面板共享的全局限制，不是每行独立限制；`RunMode=Auto` 会在有限工作流自然完成后返回成功，只有包含 `RequiresPersistentHost=true` 节点（例如 TCP Client/TCP Server）的工作流才保持运行直到 Stop。Editor Run 与 Batch Start 通过同步 `RunStartGate` 互斥，避免定时刷新状态造成的启动竞态。
+
+每个实例日志使用 `RunId` 标签写入 UI 日志面板；Log 面板支持按 RunId 或前缀筛选，并为每个 RunId 单独保留最近 50 条 ERROR 日志。关闭窗口时 Desktop 会同时等待编辑器运行和所有批量实例完成 Stop/Shutdown 后再退出。Stop/Shutdown 的节点级失败会进入 `CleanupError`，成功运行如果清理失败会降级为 Failed，避免资源泄漏被静默忽略。
+
+自动化集成测试覆盖同工作流/不同工作流多实例、失败隔离、StopAll、广播隔离、AutoStop 仅停止当前实例、单批与跨管理器全局并发限制、10 实例压力运行、排队实例 Stop、Auto 有限工作流、清理失败上报及 StopAll 旧结果清理；同时实际启动 Python、C、C++ 外部节点各自 3 个实例，验证每组实例拥有独立的 Worker 进程、各自产生双输入/双输出结果且互不共享。
+
+CLI 支持多工作流、多实例、全局 `--max-concurrency`、`--failure-policy ContinueOthers|CancelBatch`、`--run-mode RunOnce|Auto|Persistent`，并可通过 `--output-json` 输出包含 RunId、状态、时间、ExitCode、Error、CleanupError 和 EffectiveError 的稳定 JSON 结果。退出码约定为：0 全部成功；1 至少一个失败或取消；2 参数错误；130 Ctrl+C。
+### 4.5 分层序列化
 
 - **Core 层** `LogicSerializer` / `LogicDeserializer`：只处理节点逻辑参数，忽略坐标等 GUI 信息。
 - **UI 层** `GraphSerializer` / `GraphDeserializer`：合并逻辑 JSON 与坐标、连线等界面信息，
   组装完整工作流文档。Core 因此不依赖任何 UI 概念即可独立运行。
 
-### 4.5 持久化抽象
+### 4.6 持久化抽象
 
 UI 通过 `IWorkflowStore` 存取工作流：桌面端使用本地文件实现，Web 端替换为
 `HttpWorkflowStore` 走后端 API，同一套 ViewModel 无需改动。
 
-### 4.6 日志
+保存前会分配缺失的 PinId、检查 PinId 唯一性，并执行完整工作流校验（节点 Id/类型、Pin 类型与连接、必填输入、DependsOn 和环路）；校验失败时磁盘文件不会被覆盖。用户设置采用“临时文件写入 + 原子替换”方式保存，避免进程中断留下半个 JSON 文件。
+
+### 4.7 日志
 
 全平台统一使用 `Microsoft.Extensions.Logging.ILogger` 抽象，Core 提供
 `RollingLoggerProvider` 把日志转发到 `Rolling.Logging`（Serilog），输出到控制台与滚动文件；
@@ -119,6 +134,17 @@ dotnet build AgentFlow.sln
 
 # 无界面运行示例
 dotnet run --project AgentFlow.Cli -- sample.workflow.json
+
+# Debug + Release + 集成测试 + SDK 打包（可选项见脚本头部）
+pwsh -File Scripts/Build-Release.ps1
+
+# 只做本地包，不编译外部语言节点
+pwsh -File Scripts/Build-Release.ps1 -SkipExternal -SkipTests
+
+# 无界面多实例 + JSON 结果
+dotnet run --project AgentFlow.Cli -- --workflow sample.workflow.rw --instances 5 `
+  --max-concurrency 3 --failure-policy ContinueOthers --run-mode Auto `
+  --output-json .\artifacts\cli-result.json
 ```
 
 插件工程构建后由 MSBuild 目标自动复制到 Desktop / Cli / UI 的 `Plugins/` 输出目录，

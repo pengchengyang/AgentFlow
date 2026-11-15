@@ -225,8 +225,7 @@ public partial class LogPanelView : UserControl
         if (isDouble)
         {
             _hasLastEmptyPress = false;
-            if (DataContext is ViewModels.LogPanelViewModel vm && vm.ToggleExpandedCommand.CanExecute(null))
-                vm.ToggleExpandedCommand.Execute(null);
+            _viewModel?.ToggleExpanded();
         }
     }
 

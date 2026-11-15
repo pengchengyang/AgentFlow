@@ -19,6 +19,7 @@ namespace Node.Broadcast.Demo;
 public sealed class BroadcastDemoNode : BaseNode
 {
     private ITopicSubscription? _fromGuiSubscription;
+    private ITopicBus? _topicBus;
 
     public BroadcastDemoNode()
     {
@@ -36,12 +37,16 @@ public sealed class BroadcastDemoNode : BaseNode
     public override void Configure(IReadOnlyDictionary<string, object?> parameters) { }
 
     public override Task Initialize(INodeContext context, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+    {
+        _topicBus = ResolveTopicBus(context);
+        return Task.CompletedTask;
+    }
 
     public override async Task Run(INodeContext context, CancellationToken cancellationToken = default)
     {
+        _topicBus = ResolveTopicBus(context);
         _fromGuiSubscription?.Dispose();
-        _fromGuiSubscription = TopicBus.Instance.Subscribe(
+        _fromGuiSubscription = _topicBus.Subscribe(
             BroadcastTopics.GuiToNode,
             message => OnGuiMessage(context, message));
         Running = true;
@@ -51,7 +56,7 @@ public sealed class BroadcastDemoNode : BaseNode
 
         try
         {
-            await TopicBus.Instance.PublishAsync(
+            await _topicBus.PublishAsync(
                 BroadcastTopics.NodeToGui,
                 BroadcastTopicMessage.FromBoth("node payload", sample),
                 ct: cancellationToken);
@@ -71,8 +76,12 @@ public sealed class BroadcastDemoNode : BaseNode
         Running = false;
         _fromGuiSubscription?.Dispose();
         _fromGuiSubscription = null;
+        _topicBus = null;
         return Task.CompletedTask;
     }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     private static Task OnGuiMessage(INodeContext context, TopicMessage message)
     {
@@ -99,5 +108,10 @@ public sealed class BroadcastDemoNode : BaseNode
     /// currently has no additional process-exit cleanup.
     /// </summary>
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
-        => Task.CompletedTask;
+    {
+        _fromGuiSubscription?.Dispose();
+        _fromGuiSubscription = null;
+        _topicBus = null;
+        return Task.CompletedTask;
+    }
 }

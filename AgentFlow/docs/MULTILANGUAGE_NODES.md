@@ -17,14 +17,14 @@
 - `hello / welcome / register / registered / ready / heartbeat` 握手。
 - `node.create / configure / command / state / error` 生命周期。
 - `pin.receive / pin.send`。
-- `broadcast.subscribe / unsubscribe / publish / receive`，并与 `BroadcastKit.TopicBus.Instance` 双向桥接。
+- `broadcast.subscribe / unsubscribe / publish / receive`，与当前运行实例的 `BroadcastKit.ITopicBus` 双向桥接；Batch Run 使用实例级 TopicBus，Editor Run 回退到进程级 `TopicBus.Instance`。
 - Worker 心跳超时、进程退出状态、注册声明与 manifest 一致性校验。
 - Python SDK 与 `Node.PythonUpper`，支持生命周期、Pin、广播、日志、心跳。
 - C SDK（C ABI）与 `Node.CUpper` 示例，Windows/Linux 条件编译传输。
 - C++ 薄封装与 `Node.CppUpper` 示例。
 - FakeCore 工具：`Tools/ExternalWorkerTestClient`，已验证 Python、C、C++ Worker 的生命周期、Pin 和双向广播桥接。
 - C/C++ SDK 与示例已使用 MSVC/CMake 实际编译，并完成 FakeCore 端到端验证。
-- CLI 多工作流实例已按工作流创建独立 `ExternalNodeRuntime`；同 Package 两个并发实例会启动两个独立 Worker 进程。
+- CLI/Desktop Batch Run 的每个工作流实例都会创建独立 `ExternalNodeRuntime` 和独立 TopicBus；同 Package 两个并发实例会启动两个独立 Worker 进程，广播订阅也互不可见。
 - 工作流加载完成后会预启动其使用的外部 Worker，并创建 Worker 侧节点实例以建立广播订阅；不会调用 `init/run`，运行前 `InitializeAsync` 仍会兜底确认 Worker 已就绪。
 - GUI 节点属性对话框已增加只读 Package 信息区，显示 Package ID、版本、作者、版权、许可证、仓库等 manifest 元数据。
 
@@ -4767,3 +4767,8 @@ Core 统一图调度和路由
 - Shutdown 幂等并正常退出。
 - 失败通过结构化协议上报。
 - Release 产物在干净系统验证通过。
+
+
+## 外部 Worker 队列边界
+
+Core 侧的 Worker 事件通道使用有界通道（当前容量 256），避免 Worker 异常刷消息时无限占用内存。ExternalNodeProxy 对每个输入 Pin 的待发送缓存设置上限（当前 1024 个 Sample）；超过上限时记录 Error、将该外部节点标记为 Failed，并拒绝新输入，而不是静默丢弃。后续 SDK 的 Worker 内部业务队列仍应使用各自语言的有界队列，并在队列满时上报结构化错误。

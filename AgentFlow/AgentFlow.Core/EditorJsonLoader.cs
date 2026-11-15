@@ -59,8 +59,12 @@ public static class EditorJsonLoader
 
     /// <summary>Load an editor-persisted JSON file into a runnable <see cref="WorkflowGraph"/>.</summary>
     public static WorkflowGraph Load(string path, NodeRegistry registry)
+        => FromJson(WorkflowFileCrypto.ReadWorkflowJsonFile(path), registry);
+
+    /// <summary>Build a runnable workflow graph from an editor-persisted JSON snapshot.</summary>
+    public static WorkflowGraph FromJson(string json, NodeRegistry registry)
     {
-        var json = WorkflowFileCrypto.ReadWorkflowJsonFile(path);
+        ArgumentNullException.ThrowIfNull(registry);
         var doc = JsonSerializer.Deserialize<EditorDocument>(json, Options)
             ?? throw new InvalidDataException("Editor JSON is empty or malformed");
         return Build(doc, registry);
@@ -178,5 +182,3 @@ public static class EditorJsonLoader
         return graph;
     }
 }
-
-

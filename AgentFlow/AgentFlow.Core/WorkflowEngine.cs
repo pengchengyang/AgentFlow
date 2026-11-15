@@ -36,6 +36,19 @@ public sealed class WorkflowEngine
     /// <summary>Whether any node is still connecting/running (or failed but not yet reset).</summary>
     public bool IsActive => _prepared?.Manager.Instances.Any(n => n.State != NodeState.Idle) ?? false;
 
+    /// <summary>
+    /// Whether the prepared graph contains a node that intentionally remains active after Run
+    /// returns, such as a TCP client or server service.
+    /// </summary>
+    public bool RequiresPersistentHost =>
+        _prepared?.Manager.Instances.Any(n => n.RequiresPersistentHost) ?? false;
+
+    /// <summary>Number of node Stop failures reported by the most recent cleanup call.</summary>
+    public int LastStopFailureCount => _prepared?.Manager.LastStopFailureCount ?? 0;
+
+    /// <summary>Number of node Shutdown failures reported by the most recent cleanup call.</summary>
+    public int LastShutdownFailureCount => _prepared?.Manager.LastShutdownFailureCount ?? 0;
+
     public WorkflowEngine(
         NodeRegistry registry,
         ILoggerFactory loggerFactory,
@@ -100,6 +113,18 @@ public sealed class WorkflowEngine
             }
         }
     }
+
+    /// <summary>
+    /// Run a graph that has already been initialized by <see cref="InitializeAsync"/>. Unlike
+    /// <see cref="RunOnceAsync"/>, this method leaves Stop and Shutdown to the caller so the host
+    /// can collect and report cleanup failures as part of the workflow result.
+    /// </summary>
+    public async Task RunPreparedAsync(WorkflowGraph graph, CancellationToken ct = default)
+    {
+        var run = Prepare(graph);
+        await run.Manager.RunAsync(run.GetContext, ct).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Start a persistent workflow that was prepared by <see cref="InitializeAsync"/>. Start does
     /// not initialize nodes itself and rejects stale prepared state. It does NOT stop automatically;
@@ -341,11 +366,3 @@ public sealed class WorkflowEngine
         private static readonly OllamaClientFactory LlmFactory = new();
     }
 }
-
-
-
-
-
-
-
-

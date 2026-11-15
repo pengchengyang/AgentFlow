@@ -14,6 +14,7 @@
     <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' != 'Windows_NT' and '$(Platform)' == 'ARM64'">linux-arm64</AgentFlowExternalNodeRid>
     <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' != 'Windows_NT' and '$(Platform)' == 'ARM'">linux-arm</AgentFlowExternalNodeRid>
     <AgentFlowExternalNodeRidIsSupported Condition="'$(AgentFlowExternalNodeRid)' != ''">$([System.String]::Copy(';$(AgentFlowExternalNodeSupportedRids);').Contains(';$(AgentFlowExternalNodeRid);'))</AgentFlowExternalNodeRidIsSupported>
+    <AgentFlowExternalNodeEnabled Condition="'$(AgentFlowExternalNodeEnabled)' == ''">true</AgentFlowExternalNodeEnabled>
     <AgentFlowExternalNodeStamp>$(MSBuildThisFileDirectory)artifacts\External-Build\source-stamps\$(Configuration).$(AgentFlowExternalNodeRid).sha256</AgentFlowExternalNodeStamp>
   </PropertyGroup>
   <Target Name="ValidateAgentFlowVersionMetadata" BeforeTargets="CoreCompile">
@@ -113,7 +114,7 @@
 
   <Target Name="SyncExternalNodesToBuildOutput"
           AfterTargets="CopyPluginsToBuildOutput"
-          Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' != 'true'">
+          Condition="'$(PluginHost)' == 'true' and '$(AgentFlowExternalNodeEnabled)' == 'true' and '$(_IsPublishing)' != 'true'">
     <PropertyGroup>
       <_AgentFlowBuildExternalDestination>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine($(MSBuildProjectDirectory),$(OutDir),Plugins,External))))</_AgentFlowBuildExternalDestination>
     </PropertyGroup>
@@ -127,7 +128,7 @@
 
   <Target Name="SyncExternalNodesToPublishOutput"
           AfterTargets="PublishFreshPlugins"
-          Condition="'$(PluginHost)' == 'true'">
+          Condition="'$(PluginHost)' == 'true' and '$(AgentFlowExternalNodeEnabled)' == 'true'">
     <PropertyGroup>
       <_AgentFlowPublishExternalDestination>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine($(MSBuildProjectDirectory),$(PublishDir),Plugins,External))))</_AgentFlowPublishExternalDestination>
       <_AgentFlowBuildExternalDestination>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine($(MSBuildProjectDirectory),$(OutDir),Plugins,External))))</_AgentFlowBuildExternalDestination>

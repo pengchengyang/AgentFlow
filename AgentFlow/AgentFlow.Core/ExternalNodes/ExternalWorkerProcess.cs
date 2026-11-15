@@ -23,7 +23,13 @@ public sealed class ExternalWorkerProcess : IAsyncDisposable
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonObject>> _pending = new();
     private readonly ConcurrentDictionary<int, ExternalNodeProxy> _nodes = new();
-    private readonly Channel<JsonObject> _events = Channel.CreateUnbounded<JsonObject>();
+    private readonly Channel<JsonObject> _events = Channel.CreateBounded<JsonObject>(
+        new BoundedChannelOptions(256)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.Wait
+        });
     private readonly CancellationTokenSource _pumpCts = new();
     private IExternalEndpoint? _endpoint;
     private IExternalDuplexConnection? _connection;

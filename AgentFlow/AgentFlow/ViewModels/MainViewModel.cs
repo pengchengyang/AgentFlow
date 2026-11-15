@@ -65,6 +65,7 @@ public partial class MainViewModel : ViewModelBase
     public NodeLibraryViewModel NodeLibrary { get; }
     public LogPanelViewModel LogPanel { get; }
     public CanvasViewModel Canvas { get; }
+    public RunManagerViewModel RunManager { get; }
     [ObservableProperty]
     private NodeViewModel? _selectedNode;
     /// <summary>
@@ -89,6 +90,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanStop));
         OnPropertyChanged(nameof(CanUndoNow));
         OnPropertyChanged(nameof(CanRedoNow));
+        RunManager?.RefreshCanStart();
     }
 
     partial void OnIsStartingChanged(bool value)
@@ -97,10 +99,12 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanStop));
         OnPropertyChanged(nameof(CanUndoNow));
         OnPropertyChanged(nameof(CanRedoNow));
+        RunManager?.RefreshCanStart();
     }
 
     /// <summary>Whether the workflow is running or still starting (the Start button is disabled while busy).</summary>
-    public bool IsBusy => IsRunning || IsStarting;
+    public bool IsBusy => IsRunning || IsStarting || _runInProgress || _runStartGate.IsHeld
+        || RunManager?.IsBatchActive == true;
 
     /// <summary>Undo is available only when there is history and the workflow is not active.</summary>
     public bool CanUndoNow => CanUndo && !IsBusy;
@@ -147,6 +151,7 @@ public partial class MainViewModel : ViewModelBase
     // path uses it to stop a start that is still inside StartAsync even though IsRunning/ IsStarting
     // (refreshed every 300 ms) have not caught up yet.
     private bool _runInProgress;
+    private readonly RunStartGate _runStartGate = new();
 
     // Monotonic revision of in-memory edits. Auto-save captures it before serializing so a change
     // made while the write is in flight is not marked as saved by the completing write.
@@ -355,21 +360,31 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Whether the bottom log panel is expanded (toggled by the Logs button).</summary>
     [ObservableProperty]
     private bool _isLogPanelOpen;
-    /// <summary>Whether the log panel fills the whole canvas area (double-click toggle).</summary>
+    /// <summary>Whether the active bottom panel fills the whole canvas area (double-click toggle).</summary>
     [ObservableProperty]
     private bool _isLogPanelExpanded;
+    /// <summary>Whether the independent Batch Run panel is open.</summary>
+    [ObservableProperty]
+    private bool _isBatchPanelOpen;
     public void ToggleLogPanelExpanded() => IsLogPanelExpanded = !IsLogPanelExpanded;
 
     /// <summary>
     /// Bottom inset the canvas reserves while the log panel is docked, so canvas content is never
     /// drawn underneath it. Zero when the panel is closed or when it fills the whole area.
     /// </summary>
-    public Thickness CanvasLogInset => IsLogPanelOpen && !IsLogPanelExpanded
+    public Thickness CanvasLogInset => (IsLogPanelOpen || IsBatchPanelOpen) && !IsLogPanelExpanded
         ? new Thickness(0, 0, 0, BoolToPanelHeightConverter.DockedHeight)
         : default;
 
     /// <summary>Closing the panel also clears its expanded state, otherwise the canvas stays hidden.</summary>
     partial void OnIsLogPanelOpenChanged(bool value)
+    {
+        if (!value)
+            IsLogPanelExpanded = false;
+        OnPropertyChanged(nameof(CanvasLogInset));
+    }
+
+    partial void OnIsBatchPanelOpenChanged(bool value)
     {
         if (!value)
             IsLogPanelExpanded = false;
@@ -452,6 +467,24 @@ public partial class MainViewModel : ViewModelBase
         NodeLibrary = new NodeLibraryViewModel(this);
         LogPanel = new LogPanelViewModel(this);
         Canvas = new CanvasViewModel(this);
+        RunManager = new RunManagerViewModel(
+            _registry,
+            _loggerFactory,
+            message => StatusText = message,
+            () => !IsRunning && !IsStarting,
+            ToggleLogPanelExpanded,
+            _runStartGate);
+        RunManager.LogFilterRequested += runIdPrefix => LogPanel.SetRunIdFilter(runIdPrefix);
+        RunManager.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(RunManagerViewModel.IsBatchActive))
+                return;
+
+            OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(CanStop));
+            OnPropertyChanged(nameof(CanUndoNow));
+            OnPropertyChanged(nameof(CanRedoNow));
+        };
 
         // Run indicator: the state itself is derived from the nodes' real runtime state (re-derived
         // on every tick, so a node that connects later or fails asynchronously shows up within
@@ -769,6 +802,16 @@ public partial class MainViewModel : ViewModelBase
     private async Task SaveSnapshotAsync()
     {
         SyncGraphState();
+        _graph.EnsurePinIds();
+
+        var graph = _graph.ToWorkflowGraph();
+        var validationErrors = WorkflowValidation.Validate(_registry, graph);
+        if (validationErrors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Workflow validation failed: " + string.Join(" | ", validationErrors));
+        }
+
         var json = GraphSerializer.Serialize(_graph);
         if (!string.IsNullOrEmpty(CurrentFilePath))
         {
@@ -1144,7 +1187,30 @@ public partial class MainViewModel : ViewModelBase
         DialogRequested?.Invoke(this, dialog);
     }
     [RelayCommand]
-    private void ToggleLogPanel() => IsLogPanelOpen = !IsLogPanelOpen;
+    private void ToggleLogPanel()
+    {
+        if (IsLogPanelOpen)
+        {
+            IsLogPanelOpen = false;
+            return;
+        }
+
+        IsBatchPanelOpen = false;
+        IsLogPanelOpen = true;
+    }
+
+    [RelayCommand]
+    private void ToggleBatchPanel()
+    {
+        if (IsBatchPanelOpen)
+        {
+            IsBatchPanelOpen = false;
+            return;
+        }
+
+        IsLogPanelOpen = false;
+        IsBatchPanelOpen = true;
+    }
 
     /// <summary>Helper: append a structured log entry to the UI panel (thread-safe).</summary>
     private void Log(string message, string level = "INFO", string source = "Main")
@@ -1153,6 +1219,8 @@ public partial class MainViewModel : ViewModelBase
             Timestamp = DateTimeOffset.Now,
             Level = level,
             Source = source,
+            RunId = "",
+            Tag = "",
             Message = UiLogEntry.Flatten(message),
             RawMessage = message,
         });
@@ -1349,84 +1417,121 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task RunAsync()
     {
-        if (IsBusy || _shuttingDown) return;
-        // Validate BEFORE starting, so a validation failure doesn't flash the indicator. ToGraph
-        // runs user/plugin Configure code and can throw; keep it inside a catch so the async
-        // command never leaves an unobserved exception on the UI dispatcher.
-        WorkflowGraph graph;
-        IReadOnlyList<string> validationErrors;
-        try
-        {
-            graph = ToGraph();
-            validationErrors = WorkflowValidation.Validate(_registry, graph);
-        }
-        catch (Exception ex)
-        {
-            StatusText = L["ValidationFailed"];
-            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
-            _logger.LogError(ex, "Preparing the workflow failed: {Message}", ex.Message);
-            return;
-        }
-        if (validationErrors.Count > 0)
-        {
-            StatusText = L["ValidationFailed"];
-            foreach (var err in validationErrors)
-                Log($"[{L["ErrorPrefix"]}] {err}", "ERROR");
-            return;
-        }
-        if (_shuttingDown) return;
-        // Do NOT light the "running" indicator here: it is derived from the nodes' real state further
-        // down (and every 300 ms afterwards), so it turns green only once every node is started.
-        _runFailureNotified = false;
-        StatusText = L["RunStateStarting"];
-        _logger.LogTrace("Run started ({NodeCount} nodes).", Nodes.Count);
-        _runCts = new CancellationTokenSource();
-        // Yield to the UI thread so the Stop icon renders before the run starts.
-        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
-            () => { }, Avalonia.Threading.DispatcherPriority.Render);
         if (_shuttingDown)
+            return;
+
+        if (!_runStartGate.TryEnter())
         {
-            _runCts?.Dispose();
-            _runCts = null;
+            StatusText = L["RunStateStarting"];
             return;
         }
-        _runInProgress = true;
+
         try
         {
-            // WorkflowHost keeps initialization and launch as separate lifecycle phases. The
-            // prepared node set must be initialized before Start can launch dependency-aware runs.
-            var runToken = _runCts.Token;
-            await Task.Run(async () =>
+            if (IsRunning || IsStarting || RunManager?.IsBatchActive == true)
             {
-                await _workflowHost.InitializeAsync(runToken);
-                await _workflowHost.StartAsync(runToken);
-            }, runToken);
-            RefreshRunState();
-            StatusText = IsRunning ? L["Running"]
-                : IsStarting ? L["RunStateStarting"]
-                : IsRunFailed ? L["RunFailed"]
-                : L["Ready"];
-            _logger.LogTrace("Run launched ({State}).", IsRunning ? "running" : "starting");
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = L["RunCancelled"];
-            _logger.LogWarning("Run cancelled.");
-        }
-        catch (Exception ex)
-        {
-            StatusText = L["RunFailed"];
-            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
-            _logger.LogError(ex, "Run failed: {Message}", ex.Message);
+                StatusText = L["RunStateStarting"];
+                return;
+            }
+
+            // Validate BEFORE starting, so a validation failure doesn't flash the indicator. ToGraph
+            // runs user/plugin Configure code and can throw; keep it inside a catch so the async
+            // command never leaves an unobserved exception on the UI dispatcher.
+            WorkflowGraph graph;
+            IReadOnlyList<string> validationErrors;
+            try
+            {
+                graph = ToGraph();
+                validationErrors = WorkflowValidation.Validate(_registry, graph);
+            }
+            catch (Exception ex)
+            {
+                StatusText = L["ValidationFailed"];
+                Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+                _logger.LogError(ex, "Preparing the workflow failed: {Message}", ex.Message);
+                return;
+            }
+            if (validationErrors.Count > 0)
+            {
+                StatusText = L["ValidationFailed"];
+                foreach (var err in validationErrors)
+                    Log($"[{L["ErrorPrefix"]}] {err}", "ERROR");
+                return;
+            }
+            if (_shuttingDown)
+                return;
+
+            // This flag covers the gap before timer-driven IsRunning/IsStarting state catches up.
+            _runInProgress = true;
+            OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(CanUndoNow));
+            OnPropertyChanged(nameof(CanRedoNow));
+            RunManager?.RefreshCanStart();
+
+            // Do NOT light the "running" indicator here: it is derived from the nodes' real state further
+            // down (and every 300 ms afterwards), so it turns green only once every node has started.
+            _runFailureNotified = false;
+            StatusText = L["RunStateStarting"];
+            _logger.LogTrace("Run started ({NodeCount} nodes).", Nodes.Count);
+            _runCts = new CancellationTokenSource();
+            // Yield to the UI thread so the Stop icon renders before the run starts.
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                () => { }, Avalonia.Threading.DispatcherPriority.Render);
+            if (_shuttingDown)
+            {
+                _runCts?.Dispose();
+                _runCts = null;
+                return;
+            }
+
+            try
+            {
+                // WorkflowHost keeps initialization and launch as separate lifecycle phases. The
+                // prepared node set must be initialized before Start can launch dependency-aware runs.
+                var runToken = _runCts.Token;
+                await Task.Run(async () =>
+                {
+                    await _workflowHost.InitializeAsync(runToken);
+                    await _workflowHost.StartAsync(runToken);
+                }, runToken);
+                RefreshRunState();
+                StatusText = IsRunning ? L["Running"]
+                    : IsStarting ? L["RunStateStarting"]
+                    : IsRunFailed ? L["RunFailed"]
+                    : L["Ready"];
+                _logger.LogTrace("Run launched ({State}).", IsRunning ? "running" : "starting");
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText = L["RunCancelled"];
+                _logger.LogWarning("Run cancelled.");
+            }
+            catch (Exception ex)
+            {
+                StatusText = L["RunFailed"];
+                Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+                _logger.LogError(ex, "Run failed: {Message}", ex.Message);
+            }
+            finally
+            {
+                RefreshRunState();
+                _runInProgress = false;
+                // NodeInstanceManager owns the linked token source it created from this parent. Do not
+                // dispose the parent while background runs may still be alive; Stop/auto-stop cancels
+                // the manager's linked source instead. Dropping the reference is enough.
+                _runCts = null;
+                OnPropertyChanged(nameof(IsBusy));
+                OnPropertyChanged(nameof(CanUndoNow));
+                OnPropertyChanged(nameof(CanRedoNow));
+            }
         }
         finally
         {
-            RefreshRunState();
-            _runInProgress = false;
-            // NodeInstanceManager owns the linked token source it created from this parent. Do not
-            // dispose the parent while background runs may still be alive; Stop/auto-stop cancels
-            // the manager's linked source instead. Dropping the reference is enough.
-            _runCts = null;
+            _runStartGate.Exit();
+            OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(CanUndoNow));
+            OnPropertyChanged(nameof(CanRedoNow));
+            RunManager?.RefreshCanStart();
         }
     }
     [RelayCommand]
@@ -1478,6 +1583,20 @@ public partial class MainViewModel : ViewModelBase
         {
             Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
             _logger.LogError(ex, "Application shutdown callback failed.");
+        }
+    }
+
+    /// <summary>Stop every Desktop batch instance and wait for Stop/Shutdown before the app exits.</summary>
+    public async Task StopRunManagerForShutdownAsync()
+    {
+        try
+        {
+            await RunManager.StopAllForShutdownAsync();
+        }
+        catch (Exception ex)
+        {
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Run manager shutdown failed.");
         }
     }
     /// <summary>Allow the editor to be used again when the close sequence is aborted (save failed).</summary>
@@ -1720,5 +1839,3 @@ public partial class MainViewModel : ViewModelBase
         LoadFromPath(path);
     }
 }
-
-

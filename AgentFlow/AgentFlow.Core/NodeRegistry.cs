@@ -7,6 +7,7 @@
 
 using AgentFlow.Contracts;
 using AgentFlow.Core.ExternalNodes;
+using BroadcastKit;
 using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Core;
@@ -155,7 +156,7 @@ public sealed class NodeRegistry
     /// descriptors get a fresh <see cref="ExternalNodeRuntime"/> so each concurrent workflow owns
     /// independent Worker processes and node-instance routing.
     /// </summary>
-    public NodeRegistryScope CreateWorkflowScope(ILogger logger)
+    public NodeRegistryScope CreateWorkflowScope(ILogger logger, ITopicBus? topicBus = null)
     {
         ArgumentNullException.ThrowIfNull(logger);
         var scoped = new NodeRegistry();
@@ -169,7 +170,7 @@ public sealed class NodeRegistry
                 continue;
             }
 
-            runtime ??= new ExternalNodeRuntime(logger);
+            runtime ??= new ExternalNodeRuntime(logger, topicBus);
             var capturedRuntime = runtime;
             scoped.Register(new NodeDescriptor(
                 descriptor.Name,

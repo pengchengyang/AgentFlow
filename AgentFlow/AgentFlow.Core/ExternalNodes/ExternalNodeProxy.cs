@@ -17,6 +17,8 @@ namespace AgentFlow.Core.ExternalNodes;
 /// </summary>
 public sealed class ExternalNodeProxy : BaseNode
 {
+    private const int MaxPendingInputsPerPin = 1024;
+
     private readonly ExternalNodeDefinition _definition;
     private readonly ExternalNodeRuntime _runtime;
     private readonly object _parameterGate = new();
@@ -210,6 +212,7 @@ public sealed class ExternalNodeProxy : BaseNode
 
         if (_worker is null || !_created || !_worker.IsReady || !Running)
         {
+            var overflow = false;
             lock (_inputGate)
             {
                 if (!_pendingInputs.TryGetValue(pin.Name, out var queue))
@@ -217,8 +220,15 @@ public sealed class ExternalNodeProxy : BaseNode
                     queue = new Queue<Sample?>();
                     _pendingInputs[pin.Name] = queue;
                 }
-                queue.Enqueue(value);
+
+                if (queue.Count >= MaxPendingInputsPerPin)
+                    overflow = true;
+                else
+                    queue.Enqueue(value);
             }
+
+            if (overflow)
+                ReportPendingInputOverflow(pin.Name);
             return;
         }
 
@@ -289,6 +299,18 @@ public sealed class ExternalNodeProxy : BaseNode
                 _context?.Logger.LogError(ex, "External node '{Node}' configuration failed.", DisplayName);
             SetFailed();
         }
+    }
+
+    private void ReportPendingInputOverflow(string pinName)
+    {
+        if (Interlocked.Exchange(ref _faultReported, 1) == 0)
+        {
+            _context?.Logger.LogError(
+                "External node '{Node}' pending input queue for pin '{Pin}' exceeded {Limit} samples; " +
+                "the node was marked failed and new input was rejected.",
+                DisplayName, pinName, MaxPendingInputsPerPin);
+        }
+        SetFailed();
     }
 
     private async Task FlushPendingInputsAsync(CancellationToken cancellationToken)

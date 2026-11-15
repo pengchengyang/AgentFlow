@@ -42,6 +42,7 @@ public sealed class FACTLauncherNode : BaseNode
 
     private readonly object _inputGate = new();
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
     private string _displayName = DefaultDisplayName;
     private string _position = DefaultPosition;
     private string? _lastInput;
@@ -114,6 +115,7 @@ public sealed class FACTLauncherNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         RefreshPosition();
         lock (_inputGate)
         {
@@ -133,6 +135,7 @@ public sealed class FACTLauncherNode : BaseNode
     {
         Running = true;
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         RefreshPosition();
         _logger?.LogTrace(
             "FACTLauncher {DisplayName} is ready to run and waits for user settings on {Pin}.",
@@ -156,6 +159,7 @@ public sealed class FACTLauncherNode : BaseNode
             _fsnImeiSlot = null;
         }
 
+        _topicBus = null;
         _logger = null;
         return Task.CompletedTask;
     }
@@ -366,7 +370,7 @@ public sealed class FACTLauncherNode : BaseNode
 
         try
         {
-            await TopicBus.Instance.PublishAsync(
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
                 RTSBroadcastSubscriptions.LauncherSettings,
                 BroadcastTopicMessage.FromSamples(samples),
                 ct: CancellationToken.None).ConfigureAwait(false);
@@ -460,7 +464,7 @@ public sealed class FACTLauncherNode : BaseNode
 
         try
         {
-            await TopicBus.Instance.PublishAsync(
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
                 RTSBroadcastSubscriptions.LauncherCommand,
                 BroadcastTopicMessage.FromSampleDictionary(commandSamples),
                 ct: CancellationToken.None).ConfigureAwait(false);
@@ -620,6 +624,9 @@ public sealed class FACTLauncherNode : BaseNode
 
         return displayName;
     }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
 

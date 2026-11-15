@@ -28,6 +28,7 @@ public sealed class PriFileParserNode : BaseNode
         new("output_string_json", DataType.STRING, PinDirection.Output);
 
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
 
     public PriFileParserNode()
     {
@@ -54,12 +55,14 @@ public sealed class PriFileParserNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         return Task.CompletedTask;
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         Running = true;
         _logger?.LogTrace("PRI File Parser is running.");
         return Task.CompletedTask;
@@ -69,6 +72,7 @@ public sealed class PriFileParserNode : BaseNode
     {
         Running = false;
         _logger?.LogTrace("PRI File Parser stopped.");
+        _topicBus = null;
         _logger = null;
         return Task.CompletedTask;
     }
@@ -240,7 +244,7 @@ public sealed class PriFileParserNode : BaseNode
 
         try
         {
-            await TopicBus.Instance.PublishAsync(
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
                 RTSBroadcastSubscriptions.PriFileSettings,
                 BroadcastTopicMessage.FromSampleDictionary(samplesByKey),
                 ct: CancellationToken.None).ConfigureAwait(false);
@@ -259,6 +263,9 @@ public sealed class PriFileParserNode : BaseNode
                 ex.Message);
         }
     }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     private sealed record PriFileParseResult(
         IReadOnlyDictionary<string, string> Settings,

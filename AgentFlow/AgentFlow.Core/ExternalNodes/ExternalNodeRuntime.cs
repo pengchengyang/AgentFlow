@@ -17,8 +17,8 @@ using Microsoft.Extensions.Logging;
 namespace AgentFlow.Core.ExternalNodes;
 
 /// <summary>
-/// Shared external-node runtime. It owns one Worker process per Package and bridges worker
-/// broadcasts through the host's process-wide TopicBus.
+/// Per-workflow external-node runtime. It owns one Worker process per Package and bridges
+/// Worker broadcasts through the ITopicBus supplied by the current workflow instance.
 /// </summary>
 public sealed class ExternalNodeRuntime : IAsyncDisposable
 {
@@ -97,7 +97,7 @@ public sealed class ExternalNodeRuntime : IAsyncDisposable
     }
 
     /// <summary>
-    /// Publish a Worker-originated message through the shared TopicBus. The exact payload object
+    /// Publish a Worker-originated message through the workflow TopicBus. The exact payload object
     /// is tagged with its source node so the bridge does not echo the message back to its sender.
     /// </summary>
     public async Task PublishBroadcastFromWorkerAsync(

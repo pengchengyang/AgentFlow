@@ -23,7 +23,7 @@ namespace AgentFlow.Services;
 /// </remarks>
 public sealed class BoolToPanelHeightConverter : IValueConverter
 {
-    /// <summary>Height of the log panel while it is docked at the bottom of the canvas area.</summary>
+    /// <summary>Height of the bottom Logs or Batch Run panel while it is docked at the bottom of the canvas area.</summary>
     public const double DockedHeight = 180d;
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)

@@ -49,6 +49,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
     private double _slotFYieldPercent;
 
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
     private ITopicSubscription? _resetSubscription;
 
     public PassFailTotalYieldNode()
@@ -79,6 +80,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
     public override async Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         var data = YieldSettingsStore.EnsureAndLoad(_logger);
 
         YieldSnapshot snapshot;
@@ -100,6 +102,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         Running = true;
         _logger?.LogTrace("PassFailTotalYield is running.");
         return Task.CompletedTask;
@@ -108,6 +111,9 @@ public sealed class PassFailTotalYieldNode : BaseNode
     public override Task Stop(INodeContext context, CancellationToken ct = default)
     {
         Running = false;
+        _resetSubscription?.Dispose();
+        _resetSubscription = null;
+        _topicBus = null;
         _logger?.LogTrace("PassFailTotalYield stopped.");
         return Task.CompletedTask;
     }
@@ -116,6 +122,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
     {
         _resetSubscription?.Dispose();
         _resetSubscription = null;
+        _topicBus = null;
         _logger = null;
         return Task.CompletedTask;
     }
@@ -126,7 +133,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
             return;
 
         _resetSubscription?.Dispose();
-        _resetSubscription = TopicBus.Instance.Subscribe(
+        _resetSubscription = (_topicBus ?? TopicBus.Instance).Subscribe(
             PassFailTotalYieldBroadcasts.Reset,
             OnResetBroadcast);
         _logger?.LogTrace(
@@ -431,7 +438,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
 
         try
         {
-            await TopicBus.Instance.PublishAsync(
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
                 RTSBroadcastSubscriptions.PassFailTotalYield,
                 BroadcastTopicMessage.FromSampleDictionary(samplesByKey),
                 ct: CancellationToken.None).ConfigureAwait(false);
@@ -454,6 +461,9 @@ public sealed class PassFailTotalYieldNode : BaseNode
                 ex.Message);
         }
     }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     private static Int64Sample CreateInt64Sample(string key, long value)
     {

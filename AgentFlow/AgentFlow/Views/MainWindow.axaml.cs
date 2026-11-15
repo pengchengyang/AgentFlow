@@ -271,9 +271,12 @@ public partial class MainWindow : Window
                 saveRequested = result == 2;
             }
 
-            // Stop first: saving while nodes run is rejected by the edit gate, and the window must
-            // never close while nodes still own ports/sockets/files.
-            await main.StopForShutdownAsync();
+            // Stop the editor workflow and every independent run-panel instance first: saving while
+            // nodes run is rejected by the edit gate, and the window must never close while nodes
+            // still own ports/sockets/files.
+            await Task.WhenAll(
+                main.StopForShutdownAsync(),
+                main.StopRunManagerForShutdownAsync());
             if (saveRequested && !await main.SaveCurrentAsync())
             {
                 // Save failed: keep the window, and let the user keep editing / start again.

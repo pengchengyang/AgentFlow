@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="Loc.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -17,6 +17,8 @@ public sealed class Loc : ObservableObject
     private static readonly Dictionary<string, (string En, string Zh)> Texts = new()
     {
         ["Run"] = ("Run", "运行"),
+        ["EditorRun"] = ("Editor Run", "画布运行"),
+        ["BatchRun"] = ("Batch Run", "批量运行"),
         ["Stop"] = ("Stop", "停止"),
         ["Save"] = ("Save", "保存"),
         ["Load"] = ("Load", "加载"),
@@ -79,6 +81,28 @@ public sealed class Loc : ObservableObject
         ["ConfirmApplyTitle"] = ("Unsaved Changes", "未保存的更改"),
         ["ConfirmApplyMessage"] = ("Apply your changes before switching zones?", "切换区域前是否应用当前改动？"),
         ["IncorrectPassword"] = ("Incorrect password.", "密码错误"),
+
+        // Batch run panel and log filters.
+        ["Start"] = ("Start", "启动"),
+        ["StartAll"] = ("Start All", "全部启动"),
+        ["StopAll"] = ("Stop All", "全部停止"),
+        ["Add"] = ("Add", "添加"),
+        ["Remove"] = ("Remove", "移除"),
+        ["Open"] = ("Open", "打开"),
+        ["Clear"] = ("Clear", "清空"),
+        ["RunIdFilter"] = ("Run ID filter...", "按 Run ID 筛选..."),
+        ["ClearRunIdFilter"] = ("Clear Run ID filter", "清除 Run ID 筛选"),
+        ["SearchLogs"] = ("Search logs...", "搜索日志..."),
+        ["InstanceCountTip"] = ("Instance count (1-50)", "实例数量（1-50）"),
+        ["BatchAddTooltip"] = ("Add a blank workflow row.", "添加一个空白工作流行。"),
+        ["BatchRemoveTooltip"] = ("Remove the bottom workflow row.", "移除最底部的工作流行。"),
+        ["BatchStartAllTooltip"] = ("Start all workflow rows.", "启动所有工作流行。"),
+        ["BatchStopAllTooltip"] = ("Stop all running workflow rows.", "停止所有正在运行的工作流行。"),
+        ["BatchClearTooltip"] = ("Clear every opened workflow path.", "清空所有已打开的工作流路径。"),
+        ["BatchStartTooltip"] = ("Start this workflow row.", "启动该工作流行。"),
+        ["BatchStopTooltip"] = ("Stop this workflow row.", "停止该工作流行。"),
+        ["BatchOpenTooltip"] = ("Select an .rw workflow file for this row.", "为该行选择 .rw 工作流文件。"),
+        ["SelectBatchWorkflow"] = ("Select Batch Workflow", "选择批量工作流"),
     };
     private string _lang = "en";
     public string CurrentLanguage => _lang;

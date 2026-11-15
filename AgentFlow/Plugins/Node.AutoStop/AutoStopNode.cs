@@ -24,6 +24,8 @@ public sealed class AutoStopNode : BaseNode
         new("input_string_stop", DataType.STRING, PinDirection.Input, required: false);
 
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
+    private IWorkflowStopRequestSink? _stopRequestSink;
 
     public AutoStopNode()
     {
@@ -48,12 +50,16 @@ public sealed class AutoStopNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
+        _stopRequestSink = context.GetService<IWorkflowStopRequestSink>();
         return Task.CompletedTask;
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
+        _stopRequestSink = context.GetService<IWorkflowStopRequestSink>();
         Running = true;
         return Task.CompletedTask;
     }
@@ -61,33 +67,47 @@ public sealed class AutoStopNode : BaseNode
     public override Task Stop(INodeContext context, CancellationToken ct = default)
     {
         Running = false;
+        _topicBus = null;
+        _stopRequestSink = null;
         _logger = null;
         return Task.CompletedTask;
     }
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (ReferenceEquals(pin, _stopPin) &&
-            value is StringSample input &&
-            string.Equals(input.StringValue, ExitMessage, StringComparison.Ordinal))
-        {
-            _logger?.LogInformation(
-                "AutoStop received stop message on {Pin}: {Message}",
-                pin.Name,
-                input.StringValue);
+        if (!ReferenceEquals(pin, _stopPin))
+            return;
 
-            _ = BroadcastExitAsync();
+        if (value is not StringSample input ||
+            input.StringValue is not { } inputText)
+        {
+            _logger?.LogError(
+                "AutoStop ignored invalid input on {Pin}: expected a non-empty StringSample.",
+                pin.Name);
+            return;
         }
+
+        if (!string.Equals(inputText, ExitMessage, StringComparison.Ordinal))
+            return;
+
+        _logger?.LogInformation(
+            "AutoStop received stop message on {Pin}: {Message}",
+            pin.Name,
+            inputText);
+
+        _ = BroadcastExitAsync();
     }
 
     private async Task BroadcastExitAsync()
     {
+        var topicBus = _topicBus ?? TopicBus.Instance;
+        var stopRequestSink = _stopRequestSink;
         try
         {
             var sample = StringSample.CreateSample();
             sample.SetValue(ExitPayload);
 
-            await TopicBus.Instance.PublishAsync(
+            await topicBus.PublishAsync(
                 RTSBroadcastSubscriptions.AutoStopExit,
                 BroadcastTopicMessage.FromSample(sample),
                 ct: CancellationToken.None).ConfigureAwait(false);
@@ -95,6 +115,17 @@ public sealed class AutoStopNode : BaseNode
             _logger?.LogTrace(
                 "AutoStop broadcast the exit signal on {Topic}.",
                 RTSBroadcastSubscriptions.AutoStopExit);
+
+            if (stopRequestSink is not null)
+            {
+                if (!stopRequestSink.RequestStop(Name, ExitMessage))
+                    _logger?.LogWarning("AutoStop stop request was not accepted by the current workflow host.");
+            }
+            else
+            {
+                _logger?.LogWarning(
+                    "AutoStop has no workflow stop sink in this host; only the exit broadcast was sent.");
+            }
         }
         catch (Exception ex)
         {
@@ -104,6 +135,9 @@ public sealed class AutoStopNode : BaseNode
                 RTSBroadcastSubscriptions.AutoStopExit);
         }
     }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     /// <summary>
     /// Final application-exit hook. Runtime resources were already released by Stop.

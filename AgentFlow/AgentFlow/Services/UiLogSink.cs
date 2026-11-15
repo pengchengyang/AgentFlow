@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using Hosting.Logging;
@@ -19,6 +20,12 @@ public sealed class UiLogEntry
     public required DateTimeOffset Timestamp { get; init; }
     public required string Level { get; init; }
     public required string Source { get; init; }
+
+    /// <summary>RunId tag carried by a tenant/run-scoped logger; empty for host-level logs.</summary>
+    public required string RunId { get; init; }
+
+    /// <summary>Raw tag text from Serilog, for example <c>[run-123]</c>.</summary>
+    public required string Tag { get; init; }
 
     /// <summary>Single-line message used for grid display (all whitespace flattened to one space).</summary>
     public required string Message { get; init; }
@@ -52,22 +59,94 @@ public sealed class UiLogEntry
 public static class UiLogStore
 {
     private const int MaxEntries = 2000;
+    private const int MaxErrorsPerRun = 50;
+
+    private static readonly ConcurrentQueue<UiLogEntry> PendingEntries = new();
+    private static readonly object ErrorGate = new();
+    private static readonly Dictionary<string, Queue<UiLogEntry>> RunErrors =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static int _flushScheduled;
 
     public static ObservableCollection<UiLogEntry> Entries { get; } = new();
 
     public static void Add(UiLogEntry entry)
     {
-        Dispatcher.UIThread.Post(() =>
+        PendingEntries.Enqueue(entry);
+        ScheduleFlush();
+    }
+
+    /// <summary>Return the retained error entries for one run, oldest first.</summary>
+    public static IReadOnlyList<UiLogEntry> GetRunErrors(string runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId))
+            return Array.Empty<UiLogEntry>();
+
+        lock (ErrorGate)
         {
-            Entries.Add(entry);
-            if (Entries.Count > MaxEntries)
-                Entries.RemoveAt(0);
-        });
+            return RunErrors.TryGetValue(runId, out var errors)
+                ? errors.ToArray()
+                : Array.Empty<UiLogEntry>();
+        }
     }
 
     public static void Clear()
     {
-        Dispatcher.UIThread.Post(() => Entries.Clear());
+        Dispatcher.UIThread.Post(() =>
+        {
+            while (PendingEntries.TryDequeue(out _)) { }
+            Entries.Clear();
+            lock (ErrorGate)
+                RunErrors.Clear();
+        });
+    }
+
+    private static void ScheduleFlush()
+    {
+        if (Interlocked.CompareExchange(ref _flushScheduled, 1, 0) != 0)
+            return;
+
+        Dispatcher.UIThread.Post(FlushPending, DispatcherPriority.Background);
+    }
+
+    private static void FlushPending()
+    {
+        try
+        {
+            while (PendingEntries.TryDequeue(out var entry))
+            {
+                Entries.Add(entry);
+                RetainRunError(entry);
+            }
+
+            while (Entries.Count > MaxEntries)
+                Entries.RemoveAt(0);
+        }
+        finally
+        {
+            Volatile.Write(ref _flushScheduled, 0);
+            if (!PendingEntries.IsEmpty)
+                ScheduleFlush();
+        }
+    }
+
+    private static void RetainRunError(UiLogEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.RunId)
+            || !string.Equals(entry.Level, "ERROR", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        lock (ErrorGate)
+        {
+            if (!RunErrors.TryGetValue(entry.RunId, out var errors))
+            {
+                errors = new Queue<UiLogEntry>();
+                RunErrors[entry.RunId] = errors;
+            }
+
+            errors.Enqueue(entry);
+            while (errors.Count > MaxErrorsPerRun)
+                errors.Dequeue();
+        }
     }
 }
 
@@ -86,12 +165,21 @@ public sealed class UiLogSink : ILogEventSink
     public void Emit(LogEvent logEvent)
     {
         var raw = logEvent.RenderMessage();
+        var tag = logEvent.Properties.TryGetValue("Tag", out var tagProperty)
+            ? tagProperty.ToString().Trim('"').Trim()
+            : "";
+        var runId = tag;
+        if (runId.StartsWith('[') && runId.EndsWith(']'))
+            runId = runId[1..^1].Trim();
+
         var entry = new UiLogEntry
         {
             Timestamp = logEvent.Timestamp,
             Level = LogLevelNames.From(logEvent.Level),
             Source = logEvent.Properties.TryGetValue("SourceContext", out var sc)
                 ? sc.ToString().Trim('"') : "",
+            RunId = runId,
+            Tag = tag,
             Message = UiLogEntry.Flatten(raw),
             RawMessage = raw,
         };

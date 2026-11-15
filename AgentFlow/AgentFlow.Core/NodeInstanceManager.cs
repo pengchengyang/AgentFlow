@@ -75,6 +75,12 @@ public sealed class NodeInstanceManager
     private long _initializedGeneration = -1;
     private IReadOnlyList<BaseNode> _initializedInstances = Array.Empty<BaseNode>();
 
+    /// <summary>Number of nodes that failed to stop during the most recent Stop call.</summary>
+    public int LastStopFailureCount { get; private set; }
+
+    /// <summary>Number of nodes that failed to shut down during the most recent Shutdown call.</summary>
+    public int LastShutdownFailureCount { get; private set; }
+
     public NodeInstanceManager(PluginLoader pluginLoader, ILogger? logger = null)
     {
         _pluginLoader = pluginLoader ?? throw new ArgumentNullException(nameof(pluginLoader));
@@ -781,8 +787,8 @@ public sealed class NodeInstanceManager
             var plan = TryBuildDependencyPlan("Shutdown plan");
             var nodes = plan?.ReverseOrder ?? Instances.Reverse().ToArray();
             LogDependencyPlan("Shutdown plan", plan, nodes);
-            await ShutdownNodesBestEffortAsync(nodes, contextFactory, ct)
-                .ConfigureAwait(false);
+            LastShutdownFailureCount = await ShutdownNodesBestEffortAsync(
+                nodes, contextFactory, ct).ConfigureAwait(false);
             InvalidateInitialization();
             _initializedInstances = Array.Empty<BaseNode>();
         }
@@ -809,13 +815,15 @@ public sealed class NodeInstanceManager
         var cts = _runCts;
         var healthMonitor = _healthMonitorTask;
         _healthMonitorTask = null;
+        LastStopFailureCount = 0;
         cts?.Cancel();
         try
         {
             var plan = TryBuildDependencyPlan("Stop plan");
             var nodesToStop = plan?.ReverseOrder ?? Instances.Reverse().ToArray();
             LogDependencyPlan("Stop plan", plan, nodesToStop);
-            await StopNodesBestEffortAsync(nodesToStop, contextFactory, ct).ConfigureAwait(false);
+            LastStopFailureCount = await StopNodesBestEffortAsync(
+                nodesToStop, contextFactory, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -823,6 +831,8 @@ public sealed class NodeInstanceManager
             var completed = true;
             if (runs.Count > 0)
                 completed = await WaitForRunsAsync(runs, RunTimeout).ConfigureAwait(false);
+            if (!completed)
+                LastStopFailureCount++;
 
             if (healthMonitor is not null)
             {
@@ -1342,6 +1352,3 @@ public sealed class NodeInstanceManager
     /// <summary>Whether at least one managed node failed to start / run.</summary>
     public bool IsFailed => Instances.Any(n => n.Failed);
 }
-
-
-

@@ -18,7 +18,7 @@
   </UserControl.KeyBindings>
   <Grid Background="{DynamicResource BrushCanvas}">
     <Grid RowDefinitions="*,28">
-      <!-- Top: canvas + collapsible log panel, right-side component sidebar -->
+      <!-- Top: canvas + independent Logs or Batch Run panels, right-side component sidebar -->
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
         <!-- The canvas and the log panel share one cell. While the panel is docked the canvas is
              inset by the docked height, so canvas content never hides behind the panel; while the
@@ -28,34 +28,53 @@
                 IsVisible="{Binding IsLogPanelExpanded, Converter={StaticResource InvertBool}}">
             <views:CanvasView DataContext="{Binding Canvas}"/>
           </Grid>
-          <!-- Log panel wrapper: owns the geometry so it reads the root view-model directly.
-               Docked at the bottom by default, stretched over the whole cell after a double-click. -->
+          <!-- Logs uses the same canvas cell geometry as Batch; its view supplies expanded-only chrome overrides. -->
           <Grid VerticalAlignment="{Binding IsLogPanelExpanded, Converter={StaticResource PanelAlign}}"
                 Height="{Binding IsLogPanelExpanded, Converter={StaticResource PanelHeight}}"
                 IsVisible="{Binding IsLogPanelOpen}">
             <views:LogPanelView DataContext="{Binding LogPanel}"/>
           </Grid>
+
+          <!-- Batch Run is an independent bottom panel; it never displays Logs or a shared tab bar. -->
+          <Grid VerticalAlignment="{Binding IsLogPanelExpanded, Converter={StaticResource PanelAlign}}"
+                Height="{Binding IsLogPanelExpanded, Converter={StaticResource PanelHeight}}"
+                IsVisible="{Binding IsBatchPanelOpen}">
+            <views:RunManagerView DataContext="{Binding RunManager}"/>
+          </Grid>
         </Grid>
-        <!-- Right-side node library -->
-        <views:NodeLibraryView Grid.Column="1" Width="288" DataContext="{Binding NodeLibrary}" IsVisible="{Binding IsSidebarVisible}"/>
+        <!-- Right-side workspace: node palette only. Batch Run lives in the bottom workspace. -->
+        <views:NodeLibraryView Grid.Column="1" Width="320"
+                               IsVisible="{Binding IsSidebarVisible}"
+                               DataContext="{Binding NodeLibrary}"/>
       </Grid>
 
       <!-- Bottom: status bar spanning the full window width to the far right -->
       <Border Grid.Row="1" Background="{DynamicResource BrushCard}"
               BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
         <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0">
-          <Button Grid.Column="0" Classes="ghost" Command="{Binding ToggleLogPanelCommand}"
-                  Padding="6,3" CornerRadius="7"
-                  ToolTip.Tip="{Binding [Log], Source={x:Static s:Loc.Instance}}">
-            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-              <Path Data="M3 5h1 M3 12h1 M3 19h1 M8 5h1 M8 12h1 M8 19h1 M13 5h8 M13 12h8 M13 19h8"
-                    Stretch="Uniform" Stroke="#FDE68A" StrokeThickness="2"
-                    StrokeLineCap="Round"
-                    Width="12" Height="12" VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding [Log], Source={x:Static s:Loc.Instance}}"
-                         FontSize="11" VerticalAlignment="Center"/>
-            </StackPanel>
-          </Button>
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+            <Button Classes="ghost" Command="{Binding ToggleLogPanelCommand}"
+                    Padding="6,3" CornerRadius="7"
+                    ToolTip.Tip="{Binding [Log], Source={x:Static s:Loc.Instance}}">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Path Data="M3 5h1 M3 12h1 M3 19h1 M8 5h1 M8 12h1 M8 19h1 M13 5h8 M13 12h8 M13 19h8"
+                      Stretch="Uniform" Stroke="{DynamicResource BrushWarning}" StrokeThickness="2"
+                      StrokeLineCap="Round"
+                      Width="12" Height="12" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding [Log], Source={x:Static s:Loc.Instance}}"
+                           FontSize="11" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button Classes="ghost" Command="{Binding ToggleBatchPanelCommand}"
+                    Padding="6,3" CornerRadius="7" ToolTip.Tip="Open Batch Run panel">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Path Data="M3 4h18v4H3z M3 11h18v4H3z M3 18h18v4H3z"
+                      Stretch="Uniform" Fill="{DynamicResource BrushBrand}"
+                      Width="12" Height="12" VerticalAlignment="Center"/>
+                <TextBlock Text="Batch" FontSize="11" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+          </StackPanel>
           <TextBlock Grid.Column="1" Text="{Binding CurrentFilePath}" FontSize="11"
                      Foreground="{DynamicResource BrushTextSecondary}"
                      VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>

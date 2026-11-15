@@ -113,6 +113,13 @@ public abstract class BaseNode
     public virtual bool IsReusable => true;
 
     /// <summary>
+    /// Whether this node intentionally remains active after its <see cref="Run"/> method returns.
+    /// Hosts use this capability to distinguish long-running workflows (TCP clients/servers and
+    /// similar services) from finite workflows that should complete after one run pass.
+    /// </summary>
+    public virtual bool RequiresPersistentHost => false;
+
+    /// <summary>
     /// Failure policy for this node. The default <see cref="NodeErrorPolicy.FailFast"/> stops the
     /// whole workflow exactly like the historical behaviour; <see cref="NodeErrorPolicy.Isolate"/>
     /// or <see cref="NodeErrorPolicy.Retry"/> opt into node-level isolation / retries.
@@ -819,9 +826,3 @@ public abstract class BaseNode
         }
     }
 }
-
-
-
-
-
-

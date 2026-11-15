@@ -51,6 +51,7 @@ public sealed class UserSettingsNode : BaseNode
     private const string SettingsFilePath = @"C:\AC710\UserSettings\UserSettings.ini";
 
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
     private IReadOnlyDictionary<string, IReadOnlyList<string>>? _settings;
 
     public UserSettingsNode()
@@ -104,6 +105,7 @@ public sealed class UserSettingsNode : BaseNode
     public override async Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
 
         var parser = new UserSettingsParser(_logger, SettingsDirectory, SettingsFilePath);
         if (!parser.TryLoad(out var settings))
@@ -122,6 +124,7 @@ public sealed class UserSettingsNode : BaseNode
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
 
         if (_settings is not { } settings)
         {
@@ -144,6 +147,7 @@ public sealed class UserSettingsNode : BaseNode
     {
         Running = false;
         _settings = null;
+        _topicBus = null;
         _logger = null;
         return Task.CompletedTask;
     }
@@ -275,7 +279,7 @@ public sealed class UserSettingsNode : BaseNode
 
         try
         {
-            await TopicBus.Instance.PublishAsync(
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
                 RTSBroadcastSubscriptions.LauncherSettings,
                 BroadcastTopicMessage.FromSampleListDictionary(sampleLists),
                 ct: ct).ConfigureAwait(false);
@@ -404,6 +408,9 @@ public sealed class UserSettingsNode : BaseNode
         payload["PORTHUB"] = new[] { assignment.PortHub };
         return JsonSerializer.Serialize(payload);
     }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
 

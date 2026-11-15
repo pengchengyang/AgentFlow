@@ -5,6 +5,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Text;
 using System.Text.Json;
 
 namespace AgentFlow.Services;
@@ -48,6 +49,21 @@ public sealed class UserSettings
     public void Save()
     {
         Directory.CreateDirectory(DirPath);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(_values, new JsonSerializerOptions { WriteIndented = true }));
+        var tempPath = FilePath + ".tmp";
+        var json = JsonSerializer.Serialize(_values, new JsonSerializerOptions { WriteIndented = true });
+
+        try
+        {
+            File.WriteAllText(tempPath, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Move(tempPath, FilePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                try { File.Delete(tempPath); }
+                catch { }
+            }
+        }
     }
 }

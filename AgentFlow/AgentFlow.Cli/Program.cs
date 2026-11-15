@@ -5,12 +5,10 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
-using System.Diagnostics;
+using System.Text.Json;
 using AgentFlow.Core;
-using AgentFlow.Core.ExternalNodes;
-using AgentFlow.Contracts;
-using Microsoft.Extensions.Logging;
 using Hosting.Logging;
+using Microsoft.Extensions.Logging;
 
 // AgentFlow.Cli - headless runner entry point.
 // Usage:
@@ -18,14 +16,13 @@ using Hosting.Logging;
 //   AgentFlow.Cli run.rw --instances 5
 //   AgentFlow.Cli --plugin-dir Plugins `
 //       --workflow a.workflow.rw --instances 3 `
-//       --workflow b.workflow.rw --instances 2
-//
-// --instances applies to the most recently declared workflow and defaults to 1.
-// Every configured instance is run independently in the same process.
+//       --workflow b.workflow.rw --instances 2 `
+//       --max-concurrency 4 --failure-policy ContinueOthers `
+//       --run-mode Auto --output-json results.json
 
 const string DefaultWorkflowPath = "sample.workflow.rw";
 
-if (!TryParseArguments(args, out var workflowSpecs, out var pluginDir, out var parseError, out var showHelp))
+if (!TryParseArguments(args, out var parsed, out var parseError))
 {
     Console.Error.WriteLine(parseError);
     Console.Error.WriteLine();
@@ -34,13 +31,14 @@ if (!TryParseArguments(args, out var workflowSpecs, out var pluginDir, out var p
     return;
 }
 
-if (showHelp)
+if (parsed.ShowHelp)
 {
     PrintUsage();
     Environment.ExitCode = 0;
     return;
 }
 
+var workflowSpecs = parsed.WorkflowSpecs;
 if (workflowSpecs.Count == 0)
 {
     // Keep the bundled JSON sample runnable while the repository transitions to .rw files.
@@ -51,7 +49,11 @@ if (workflowSpecs.Count == 0)
     workflowSpecs.Add(new WorkflowSpec(resolvedDefaultPath, 1));
 }
 
-pluginDir ??= Path.Combine(AppContext.BaseDirectory, "Plugins");
+var pluginDir = parsed.PluginDir ?? Path.Combine(AppContext.BaseDirectory, "Plugins");
+var runOptions = new WorkflowRunOptions(
+    parsed.MaxConcurrency,
+    parsed.FailurePolicy,
+    parsed.RunMode);
 
 // One log file for the whole CLI process (Core + all plugins): ./Logs/AgentFlow-Cli-.log
 AppLog.ConfigureHost("AgentFlow");
@@ -75,7 +77,8 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-IReadOnlyList<WorkflowInstanceResult> results = Array.Empty<WorkflowInstanceResult>();
+IReadOnlyList<WorkflowRunResult> results = Array.Empty<WorkflowRunResult>();
+var exitCode = 0;
 try
 {
     logger.LogInformation("Loading plugins from: {Dir}", pluginDir);
@@ -88,139 +91,119 @@ try
 
     var requests = BuildRequests(workflowSpecs);
     logger.LogInformation(
-        "Starting {InstanceCount} workflow instance(s) from {WorkflowCount} workflow configuration(s).",
-        requests.Count, workflowSpecs.Count);
+        "Starting {InstanceCount} workflow instance(s) from {WorkflowCount} workflow configuration(s). " +
+        "MaxConcurrency={MaxConcurrency}, FailurePolicy={FailurePolicy}, RunMode={RunMode}.",
+        requests.Count,
+        workflowSpecs.Count,
+        parsed.MaxConcurrency == 0 ? "unlimited" : parsed.MaxConcurrency,
+        parsed.FailurePolicy,
+        parsed.RunMode);
 
-    // Task.Run deliberately receives CancellationToken.None: each instance always returns a
-    // result record and performs its own Stop/Shutdown cleanup. The global token is passed to
-    // WorkflowEngine instead, so Ctrl+C cancels every instance without losing their records.
-    var tasks = requests
-        .Select(request => Task.Run(
-            () => RunWorkflowInstanceAsync(request, registry, cts.Token),
-            CancellationToken.None))
-        .ToList();
+    var manager = new WorkflowRunManager(
+        registry,
+        loggerFactory,
+        request => AppLog.CreateLoggerFactory(request.RunId),
+        runOptions);
 
-    results = await Task.WhenAll(tasks);
+    manager.SessionChanged += snapshot =>
+        logger.LogDebug(
+            "Workflow instance state changed: RunId={RunId}, Workflow={Workflow}, Ordinal={Ordinal}, " +
+            "State={State}, ExitCode={ExitCode}, Error={Error}, CleanupError={CleanupError}, EffectiveError={EffectiveError}",
+            snapshot.RunId,
+            snapshot.WorkflowSource,
+            snapshot.Ordinal,
+            snapshot.State,
+            snapshot.ExitCode,
+            snapshot.Error,
+            snapshot.CleanupError,
+            snapshot.EffectiveError);
+
+    results = await manager.RunAsync(requests, runOptions, cts.Token);
 
     foreach (var result in results)
     {
         logger.LogInformation(
-            "Workflow instance result: RunId={RunId}, Workflow={WorkflowPath}, Ordinal={Ordinal}, ExitCode={ExitCode}, StartedAt={StartedAt:O}, FinishedAt={FinishedAt:O}, Exception={Exception}",
+            "Workflow instance result: RunId={RunId}, Workflow={WorkflowPath}, Ordinal={Ordinal}, " +
+            "State={State}, ExitCode={ExitCode}, StartedAt={StartedAt:O}, FinishedAt={FinishedAt:O}, " +
+            "DurationMs={DurationMs}, Error={Error}, CleanupError={CleanupError}, EffectiveError={EffectiveError}",
             result.RunId,
-            result.WorkflowPath,
+            result.WorkflowSource,
             result.Ordinal,
+            result.State,
             result.ExitCode,
             result.StartedAt,
             result.FinishedAt,
-            result.Error);
+            result.Duration.TotalMilliseconds,
+            result.Error,
+            result.CleanupError,
+            result.EffectiveError);
     }
 
-    var succeeded = results.Count(r => r.ExitCode == 0);
-    var failed = results.Count(r => r.ExitCode != 0 && r.ExitCode != 130);
-    var cancelled = results.Count(r => r.ExitCode == 130);
+    var succeeded = results.Count(r => r.State == WorkflowRunState.Succeeded);
+    var failed = results.Count(r => r.State == WorkflowRunState.Failed);
+    var cancelled = results.Count(r => r.State == WorkflowRunState.Cancelled);
     logger.LogInformation(
-        "Workflow instance summary: Total={Total}, Succeeded={Succeeded}, Failed={Failed}, Cancelled={Cancelled}, CtrlCRequested={CtrlCRequested}",
-        results.Count, succeeded, failed, cancelled, stopRequests > 0);
+        "Workflow instance summary: Total={Total}, Succeeded={Succeeded}, Failed={Failed}, " +
+        "Cancelled={Cancelled}, FailurePolicy={FailurePolicy}, MaxConcurrency={MaxConcurrency}, RunMode={RunMode}.",
+        results.Count,
+        succeeded,
+        failed,
+        cancelled,
+        parsed.FailurePolicy,
+        parsed.MaxConcurrency == 0 ? "unlimited" : parsed.MaxConcurrency,
+        parsed.RunMode);
 
-    Environment.ExitCode = stopRequests > 0
+    exitCode = stopRequests > 0
         ? 130
-        : results.Any(r => r.ExitCode != 0) ? 1 : 0;
+        : results.All(r => r.State == WorkflowRunState.Succeeded && r.ExitCode == 0) ? 0 : 1;
 }
 catch (OperationCanceledException) when (cts.IsCancellationRequested)
 {
     logger.LogInformation("Workflow startup was cancelled by Ctrl+C.");
-    Environment.ExitCode = 130;
+    exitCode = 130;
 }
 catch (Exception ex)
 {
     logger.LogError(ex, "AgentFlow.Cli failed: {Message}", ex.Message);
-    Environment.ExitCode = 1;
+    exitCode = 1;
 }
 finally
 {
+    if (!string.IsNullOrWhiteSpace(parsed.OutputJsonPath))
+    {
+        try
+        {
+            await WriteResultsJsonAsync(parsed.OutputJsonPath!, results, runOptions, exitCode);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not write JSON result file '{Path}'.", parsed.OutputJsonPath);
+            if (exitCode == 0)
+                exitCode = 1;
+        }
+    }
+
+    Environment.ExitCode = exitCode;
     AppLog.Close();
 }
 
 
-static async Task<WorkflowInstanceResult> RunWorkflowInstanceAsync(
-    WorkflowInstanceRequest request,
-    NodeRegistry registry,
-    CancellationToken cancellationToken)
+static IReadOnlyList<WorkflowRunRequest> BuildRequests(IReadOnlyList<WorkflowSpec> specs)
 {
-    var startedAt = DateTimeOffset.Now;
-    var stopwatch = Stopwatch.StartNew();
-    using var instanceLoggerFactory = AppLog.CreateLoggerFactory(request.RunId);
-    var logger = instanceLoggerFactory.CreateLogger("AgentFlow.Cli.Instance");
-    var exitCode = 0;
-    string? error = null;
-
-    try
-    {
-        logger.LogInformation(
-            "Loading workflow for instance {RunId}: {WorkflowPath} (ordinal {Ordinal})",
-            request.RunId, request.WorkflowPath, request.Ordinal);
-
-        // A fresh graph and external Worker scope are required per instance. WorkflowEngine gives
-        // each node instance its own runtime pins and NodeInstanceManager; the scoped registry
-        // ensures external packages never share a Worker process across concurrent workflows.
-        await using var nodeScope = registry.CreateWorkflowScope(
-            instanceLoggerFactory.CreateLogger(nameof(ExternalNodeRuntime)));
-        var graph = EditorJsonLoader.Load(request.WorkflowPath, nodeScope.Registry);
-        var engine = new WorkflowEngine(nodeScope.Registry, instanceLoggerFactory);
-
-        logger.LogInformation(
-            "Executing workflow instance {RunId}: initialize -> run -> stop -> shutdown.",
-            request.RunId);
-        await engine.RunOnceAsync(graph, cancellationToken).ConfigureAwait(false);
-
-        logger.LogInformation("Workflow instance {RunId} completed successfully.", request.RunId);
-    }
-    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-    {
-        exitCode = 130;
-        error = "Cancelled by Ctrl+C.";
-        logger.LogInformation("Workflow instance {RunId} cancelled by Ctrl+C.", request.RunId);
-    }
-    catch (Exception ex)
-    {
-        exitCode = 1;
-        error = ex.GetType().Name + ": " + ex.Message;
-        logger.LogError(ex, "Workflow instance {RunId} failed: {Message}", request.RunId, ex.Message);
-    }
-    finally
-    {
-        stopwatch.Stop();
-    }
-
-    var finishedAt = DateTimeOffset.Now;
-    logger.LogInformation(
-        "Workflow instance finished: RunId={RunId}, ExitCode={ExitCode}, DurationMs={DurationMs}",
-        request.RunId, exitCode, stopwatch.ElapsedMilliseconds);
-
-    return new WorkflowInstanceResult(
-        request.RunId,
-        request.WorkflowPath,
-        request.Ordinal,
-        exitCode,
-        startedAt,
-        finishedAt,
-        error);
-}
-
-static IReadOnlyList<WorkflowInstanceRequest> BuildRequests(IReadOnlyList<WorkflowSpec> specs)
-{
-    var requests = new List<WorkflowInstanceRequest>();
+    var requests = new List<WorkflowRunRequest>();
     var runNumber = 0;
 
     foreach (var spec in specs)
     {
+        var fullPath = Path.GetFullPath(spec.WorkflowPath);
         for (var ordinal = 1; ordinal <= spec.InstanceCount; ordinal++)
         {
             runNumber++;
-            requests.Add(new WorkflowInstanceRequest(
+            requests.Add(WorkflowRunRequest.FromFile(
                 $"wf-{runNumber:00}",
-                Path.GetFullPath(spec.WorkflowPath),
-                ordinal));
+                fullPath,
+                ordinal,
+                $"{Path.GetFileName(fullPath)} #{ordinal}"));
         }
     }
 
@@ -229,15 +212,17 @@ static IReadOnlyList<WorkflowInstanceRequest> BuildRequests(IReadOnlyList<Workfl
 
 static bool TryParseArguments(
     string[] args,
-    out List<WorkflowSpec> workflowSpecs,
-    out string? pluginDir,
-    out string? parseError,
-    out bool showHelp)
+    out CliArguments parsed,
+    out string? parseError)
 {
-    workflowSpecs = new List<WorkflowSpec>();
-    pluginDir = null;
+    var specs = new List<WorkflowSpec>();
+    string? pluginDir = null;
+    var maxConcurrency = 0;
+    var failurePolicy = WorkflowRunFailurePolicy.ContinueOthers;
+    var runMode = WorkflowRunMode.RunOnce;
+    string? outputJsonPath = null;
+    var showHelp = false;
     parseError = null;
-    showHelp = false;
 
     for (var i = 0; i < args.Length; i++)
     {
@@ -247,58 +232,91 @@ static bool TryParseArguments(
             case "-h":
             case "--help":
                 showHelp = true;
-                return true;
+                break;
 
             case "--plugin-dir":
-                if (++i >= args.Length)
-                {
-                    parseError = "Missing value after --plugin-dir.";
-                    return false;
-                }
-                pluginDir = args[i];
+                if (!TryReadValue(args, ref i, arg, out pluginDir, out parseError))
+                    { parsed = default!; return false; }
                 break;
 
             case "-w":
             case "--workflow":
-                if (++i >= args.Length)
-                {
-                    parseError = $"Missing value after {arg}.";
-                    return false;
-                }
-                workflowSpecs.Add(new WorkflowSpec(args[i], 1));
+                if (!TryReadValue(args, ref i, arg, out var workflowPath, out parseError))
+                    { parsed = default!; return false; }
+                specs.Add(new WorkflowSpec(workflowPath!, 1));
                 break;
 
             case "-n":
             case "--instances":
-                if (++i >= args.Length)
-                {
-                    parseError = $"Missing value after {arg}.";
-                    return false;
-                }
-                if (workflowSpecs.Count == 0)
+                if (!TryReadValue(args, ref i, arg, out var instanceText, out parseError))
+                    { parsed = default!; return false; }
+                if (specs.Count == 0)
                 {
                     parseError = "--instances must follow a workflow path or --workflow.";
+                    parsed = default!;
                     return false;
                 }
-                if (!int.TryParse(args[i], out var instanceCount) || instanceCount <= 0)
+                if (!int.TryParse(instanceText, out var instanceCount) || instanceCount <= 0)
                 {
                     parseError = "--instances must be an integer greater than zero.";
+                    parsed = default!;
                     return false;
                 }
-                workflowSpecs[^1] = workflowSpecs[^1] with { InstanceCount = instanceCount };
+                specs[^1] = specs[^1] with { InstanceCount = instanceCount };
+                break;
+
+            case "-c":
+            case "--max-concurrency":
+                if (!TryReadValue(args, ref i, arg, out var concurrencyText, out parseError))
+                    { parsed = default!; return false; }
+                if (!int.TryParse(concurrencyText, out maxConcurrency) || maxConcurrency < 0)
+                {
+                    parseError = "--max-concurrency must be zero (unlimited) or a non-negative integer.";
+                    parsed = default!;
+                    return false;
+                }
+                break;
+
+            case "--failure-policy":
+                if (!TryReadValue(args, ref i, arg, out var policyText, out parseError))
+                    { parsed = default!; return false; }
+                if (!TryParseFailurePolicy(policyText, out failurePolicy))
+                {
+                    parseError = "--failure-policy must be ContinueOthers/continue or CancelBatch/cancel.";
+                    parsed = default!;
+                    return false;
+                }
+                break;
+
+            case "--run-mode":
+                if (!TryReadValue(args, ref i, arg, out var modeText, out parseError))
+                    { parsed = default!; return false; }
+                if (!TryParseRunMode(modeText, out runMode))
+                {
+                    parseError = "--run-mode must be RunOnce, Auto, or Persistent.";
+                    parsed = default!;
+                    return false;
+                }
+                break;
+
+            case "--output-json":
+                if (!TryReadValue(args, ref i, arg, out var jsonPath, out parseError))
+                    { parsed = default!; return false; }
+                outputJsonPath = jsonPath;
                 break;
 
             default:
                 if (arg.StartsWith("--", StringComparison.Ordinal))
                 {
                     parseError = $"Unknown option: {arg}";
+                    parsed = default!;
                     return false;
                 }
 
                 // Backward compatibility: AgentFlow.Cli <workflow.rw|workflow.json> [pluginDir].
-                if (workflowSpecs.Count == 0)
+                if (specs.Count == 0)
                 {
-                    workflowSpecs.Add(new WorkflowSpec(arg, 1));
+                    specs.Add(new WorkflowSpec(arg, 1));
                 }
                 else if (pluginDir is null)
                 {
@@ -307,13 +325,143 @@ static bool TryParseArguments(
                 else
                 {
                     parseError = $"Unexpected positional argument: {arg}";
+                    parsed = default!;
                     return false;
                 }
                 break;
         }
     }
 
+    parsed = new CliArguments(
+        specs,
+        pluginDir,
+        maxConcurrency,
+        failurePolicy,
+        runMode,
+        outputJsonPath,
+        showHelp);
     return true;
+}
+
+static bool TryReadValue(
+    string[] args,
+    ref int index,
+    string option,
+    out string? value,
+    out string? parseError)
+{
+    value = null;
+    parseError = null;
+    if (++index < args.Length)
+    {
+        value = args[index];
+        return true;
+    }
+
+    parseError = $"Missing value after {option}.";
+    return false;
+}
+
+static bool TryParseFailurePolicy(string? value, out WorkflowRunFailurePolicy policy)
+{
+    policy = WorkflowRunFailurePolicy.ContinueOthers;
+    if (string.IsNullOrWhiteSpace(value))
+        return false;
+
+    switch (value.Trim().ToLowerInvariant())
+    {
+        case "continue":
+        case "continueothers":
+        case "continue-others":
+            policy = WorkflowRunFailurePolicy.ContinueOthers;
+            return true;
+        case "cancel":
+        case "cancelbatch":
+        case "cancel-batch":
+            policy = WorkflowRunFailurePolicy.CancelBatch;
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool TryParseRunMode(string? value, out WorkflowRunMode mode)
+{
+    mode = WorkflowRunMode.RunOnce;
+    if (string.IsNullOrWhiteSpace(value))
+        return false;
+
+    switch (value.Trim().ToLowerInvariant())
+    {
+        case "runonce":
+        case "run-once":
+        case "oneshot":
+        case "one-shot":
+            mode = WorkflowRunMode.RunOnce;
+            return true;
+        case "auto":
+            mode = WorkflowRunMode.Auto;
+            return true;
+        case "persistent":
+        case "continuous":
+            mode = WorkflowRunMode.Persistent;
+            return true;
+        default:
+            return false;
+    }
+}
+
+static async Task WriteResultsJsonAsync(
+    string outputPath,
+    IReadOnlyList<WorkflowRunResult> results,
+    WorkflowRunOptions options,
+    int exitCode)
+{
+    var fullPath = Path.GetFullPath(outputPath);
+    var directory = Path.GetDirectoryName(fullPath);
+    if (!string.IsNullOrWhiteSpace(directory))
+        Directory.CreateDirectory(directory);
+
+    var payload = new
+    {
+        SchemaVersion = 1,
+        GeneratedAt = DateTimeOffset.UtcNow,
+        ExitCode = exitCode,
+        Options = new
+        {
+            MaxConcurrency = options.MaxConcurrency,
+            FailurePolicy = options.FailurePolicy.ToString(),
+            RunMode = options.RunMode.ToString()
+        },
+        Summary = new
+        {
+            Total = results.Count,
+            Succeeded = results.Count(r => r.State == WorkflowRunState.Succeeded),
+            Failed = results.Count(r => r.State == WorkflowRunState.Failed),
+            Cancelled = results.Count(r => r.State == WorkflowRunState.Cancelled)
+        },
+        Results = results.Select(result => new
+        {
+            RunId = result.RunId,
+            WorkflowSource = result.WorkflowSource,
+            Ordinal = result.Ordinal,
+            State = result.State.ToString(),
+            ExitCode = result.ExitCode,
+            StartedAt = result.StartedAt,
+            FinishedAt = result.FinishedAt,
+            DurationMs = (long)result.Duration.TotalMilliseconds,
+            Error = result.Error,
+            CleanupError = result.CleanupError,
+            EffectiveError = result.EffectiveError
+        }).ToArray()
+    };
+
+    await using var stream = File.Create(fullPath);
+    await JsonSerializer.SerializeAsync(
+        stream,
+        payload,
+        new JsonSerializerOptions { WriteIndented = true },
+        CancellationToken.None);
 }
 
 static void PrintUsage()
@@ -324,24 +472,26 @@ static void PrintUsage()
     Console.WriteLine("  AgentFlow.Cli --plugin-dir Plugins --workflow a.workflow.rw --instances 3 --workflow b.workflow.rw --instances 2");
     Console.WriteLine();
     Console.WriteLine("Options:");
-    Console.WriteLine("  -w, --workflow <path>    Add a workflow file. May be specified multiple times.");
-    Console.WriteLine("  -n, --instances <N>      Run N independent instances of the most recently added workflow.");
-    Console.WriteLine("                           Defaults to 1; reset after each new workflow.");
-    Console.WriteLine("      --plugin-dir <dir>   Plugin directory. Defaults to <app>/Plugins.");
-    Console.WriteLine("  -h, --help               Show this help.");
+    Console.WriteLine("  -w, --workflow <path>       Add a workflow file. May be specified multiple times.");
+    Console.WriteLine("  -n, --instances <N>         Run N independent instances of the most recent workflow.");
+    Console.WriteLine("                              Defaults to 1; reset after each new workflow.");
+    Console.WriteLine("  -c, --max-concurrency <N>   Maximum simultaneous instances; 0 = unlimited (default).");
+    Console.WriteLine("      --failure-policy <P>    ContinueOthers/continue (default) or CancelBatch/cancel.");
+    Console.WriteLine("      --run-mode <M>          RunOnce (default), Auto, or Persistent.");
+    Console.WriteLine("      --output-json <path>    Write one stable JSON result object for this batch.");
+    Console.WriteLine("      --plugin-dir <dir>      Plugin directory. Defaults to <app>/Plugins.");
+    Console.WriteLine("  -h, --help                  Show this help.");
     Console.WriteLine();
-    Console.WriteLine("Exit codes: 0 = all instances succeeded; 1 = at least one failed; 130 = Ctrl+C.");
+    Console.WriteLine("Exit codes: 0 = all instances succeeded; 1 = at least one failed/cancelled; 2 = invalid arguments; 130 = Ctrl+C.");
 }
 
 internal sealed record WorkflowSpec(string WorkflowPath, int InstanceCount);
 
-internal sealed record WorkflowInstanceRequest(string RunId, string WorkflowPath, int Ordinal);
-
-internal sealed record WorkflowInstanceResult(
-    string RunId,
-    string WorkflowPath,
-    int Ordinal,
-    int ExitCode,
-    DateTimeOffset StartedAt,
-    DateTimeOffset FinishedAt,
-    string? Error);
+internal sealed record CliArguments(
+    List<WorkflowSpec> WorkflowSpecs,
+    string? PluginDir,
+    int MaxConcurrency,
+    WorkflowRunFailurePolicy FailurePolicy,
+    WorkflowRunMode RunMode,
+    string? OutputJsonPath,
+    bool ShowHelp);

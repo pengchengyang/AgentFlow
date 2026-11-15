@@ -1,0 +1,220 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:AgentFlow.ViewModels"
+             xmlns:s="clr-namespace:AgentFlow.Services"
+             x:Class="AgentFlow.Views.RunManagerView"
+             x:DataType="vm:RunManagerViewModel">
+  <UserControl.Styles>
+    <Style Selector="Button.batchToolbar">
+      <Setter Property="Height" Value="23"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FontSize" Value="10.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.batchToolbar:pointerover">
+      <Setter Property="Opacity" Value="0.88"/>
+    </Style>
+    <Style Selector="Button.batchToolbar:pressed">
+      <Setter Property="Opacity" Value="0.72"/>
+    </Style>
+    <Style Selector="Button.batchToolbar:disabled">
+      <Setter Property="Opacity" Value="0.4"/>
+    </Style>
+
+    <Style Selector="Button.batchRowAction">
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="MinWidth" Value="46"/>
+      <Setter Property="Padding" Value="6,0"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.batchRowAction:pointerover">
+      <Setter Property="Opacity" Value="0.88"/>
+    </Style>
+    <Style Selector="Button.batchRowAction:pressed">
+      <Setter Property="Opacity" Value="0.72"/>
+    </Style>
+    <Style Selector="Button.batchRowAction:disabled">
+      <Setter Property="Opacity" Value="0.4"/>
+    </Style>
+
+    <Style Selector="Button.batchRun">
+      <Setter Property="Background" Value="{DynamicResource BrushSuccessBg}"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrushSuccess}"/>
+    </Style>
+    <Style Selector="Button.batchStop">
+      <Setter Property="Background" Value="{DynamicResource BrushStopBtnBg}"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrushStopBtnFg}"/>
+    </Style>
+    <Style Selector="Button.batchOpen">
+      <Setter Property="Background" Value="{DynamicResource BrushOpenBg}"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrushOpenFg}"/>
+    </Style>
+    <Style Selector="Button.batchClear">
+      <Setter Property="Background" Value="{DynamicResource BrushClearBg}"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrushClearFg}"/>
+    </Style>
+
+    <Style Selector="TextBox.rowPath">
+      <!-- Match the 24px batchRowAction button background exactly. -->
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="MinHeight" Value="24"/>
+      <Setter Property="MaxHeight" Value="24"/>
+      <Setter Property="Padding" Value="7,0"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBox.rowInstances">
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="Padding" Value="6,0"/>
+      <Setter Property="TextAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Border Background="{DynamicResource BrushCard}">
+    <DockPanel Margin="12,4,12,8">
+      <!-- Keep the same toolbar rhythm as Logs: 26px controls and a 6px gap before content. -->
+      <Grid DockPanel.Dock="Top" Margin="0,0,0,6" Height="26" ColumnDefinitions="Auto,*">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                    HorizontalAlignment="Left" VerticalAlignment="Center">
+          <Button Classes="batchToolbar batchOpen" Content="{Binding [Add], Source={x:Static s:Loc.Instance}}"
+                  Command="{Binding AddWorkflowRowCommand}"
+                  Click="AddWorkflowRow_Click"
+                  ToolTip.Tip="{Binding [BatchAddTooltip], Source={x:Static s:Loc.Instance}}"/>
+          <Button Classes="batchToolbar batchClear" Content="{Binding [Remove], Source={x:Static s:Loc.Instance}}"
+                  Command="{Binding RemoveBottomWorkflowRowCommand}"
+                  ToolTip.Tip="{Binding [BatchRemoveTooltip], Source={x:Static s:Loc.Instance}}"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button Classes="batchToolbar batchRun" Content="{Binding [StartAll], Source={x:Static s:Loc.Instance}}"
+                  Command="{Binding StartBatchCommand}"
+                  IsEnabled="{Binding CanStart}"
+                  ToolTip.Tip="{Binding [BatchStartAllTooltip], Source={x:Static s:Loc.Instance}}"/>
+          <Button Classes="batchToolbar batchStop" Content="{Binding [StopAll], Source={x:Static s:Loc.Instance}}"
+                  Command="{Binding StopAllCommand}"
+                  IsEnabled="{Binding CanStopAll}"
+                  ToolTip.Tip="{Binding [BatchStopAllTooltip], Source={x:Static s:Loc.Instance}}"/>
+          <Button Classes="batchToolbar batchClear" Content="{Binding [Clear], Source={x:Static s:Loc.Instance}}"
+                  Command="{Binding ClearCommand}"
+                  IsEnabled="{Binding CanClear}"
+                  ToolTip.Tip="{Binding [BatchClearTooltip], Source={x:Static s:Loc.Instance}}"/>
+        </StackPanel>
+      </Grid>
+
+      <Border Background="{DynamicResource BrushSurface}" CornerRadius="8" Padding="8,4">
+        <ListBox x:Name="WorkflowListBox" ItemsSource="{Binding WorkflowItems}"
+                 SelectedItem="{Binding SelectedWorkflowItem, Mode=TwoWay}"
+                 Background="Transparent" BorderThickness="0"
+                 SelectionMode="Single"
+                 ItemContainerTheme="{StaticResource BatchWorkflowListItemTheme}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.Resources>
+            <!-- Match Logs exactly: 24px minimum row, 6px horizontal padding, vertically centered. -->
+            <ControlTheme x:Key="BatchWorkflowListItemTheme" TargetType="ListBoxItem">
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="Padding" Value="6,0"/>
+              <Setter Property="CornerRadius" Value="6"/>
+              <Setter Property="MinHeight" Value="24"/>
+              <Setter Property="VerticalContentAlignment" Value="Center"/>
+              <Setter Property="Template">
+                <ControlTemplate TargetType="ListBoxItem">
+                  <ContentPresenter Name="PART_ContentPresenter"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="{TemplateBinding CornerRadius}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                    Content="{TemplateBinding Content}"
+                                    Padding="{TemplateBinding Padding}"
+                                    HorizontalContentAlignment="Stretch"
+                                    VerticalContentAlignment="Center"/>
+                </ControlTemplate>
+              </Setter>
+            </ControlTheme>
+          </ListBox.Resources>
+
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:RunBatchWorkflowItemViewModel">
+              <Grid ColumnDefinitions="Auto,*,76,28" VerticalAlignment="Center">
+                <!-- Row actions keep the toolbar colors/shape but use a 24px height to align with Logs. -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4"
+                            VerticalAlignment="Center">
+                  <Button Classes="batchRowAction batchRun" Content="{Binding [Start], Source={x:Static s:Loc.Instance}}"
+                          Command="{Binding RunCommand}"
+                          ToolTip.Tip="{Binding [BatchStartTooltip], Source={x:Static s:Loc.Instance}}"/>
+                  <Button Classes="batchRowAction batchStop" Content="{Binding [Stop], Source={x:Static s:Loc.Instance}}"
+                          Command="{Binding StopCommand}"
+                          ToolTip.Tip="{Binding [BatchStopTooltip], Source={x:Static s:Loc.Instance}}"/>
+                  <Button Classes="batchRowAction batchOpen" Content="{Binding [Open], Source={x:Static s:Loc.Instance}}"
+                          Click="OpenRowFile_Click"
+                          IsEnabled="{Binding !IsRunning}"
+                          ToolTip.Tip="{Binding [BatchOpenTooltip], Source={x:Static s:Loc.Instance}}"/>
+                </StackPanel>
+
+                <TextBox Grid.Column="1" Classes="rowPath"
+                         Text="{Binding PathText, Mode=OneWay}"
+                         IsReadOnly="True"
+                         ToolTip.Tip="{Binding PathText}"
+                         Margin="8,0,10,0"/>
+
+                <TextBox Grid.Column="2" Classes="rowInstances"
+                         Text="{Binding InstanceCountText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         KeyDown="InstanceCountBox_KeyDown"
+                         VerticalAlignment="Center"
+                         ToolTip.Tip="{Binding [InstanceCountTip], Source={x:Static s:Loc.Instance}}"/>
+
+                <Grid Grid.Column="3" Width="20" Height="20"
+                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                      ToolTip.Tip="{Binding StatusToolTip}">
+                  <Path Classes="batchIdleIcon"
+                        IsVisible="{Binding IsIdle}"
+                        Width="15" Height="15"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Data="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5"
+                        Stroke="{DynamicResource BrushTextTertiary}"
+                        StrokeThickness="1.7"
+                        Stretch="Uniform"/>
+
+                  <Path Classes="batchFailedIcon"
+                        IsVisible="{Binding IsFailed}"
+                        Width="15" Height="15"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Data="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5"
+                        Stroke="#EF4444"
+                        StrokeThickness="1.7"
+                        Stretch="Uniform"/>
+
+                  <Path Classes="batchRunningIcon"
+                        IsVisible="{Binding IsRunning}"
+                        Width="15" Height="15"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        RenderTransformOrigin="50%,50%"
+                        Data="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5"
+                        Stroke="{DynamicResource BrushSuccess}"
+                        StrokeThickness="1.7"
+                        Stretch="Uniform"/>
+                </Grid>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Border>
+    </DockPanel>
+  </Border>
+</UserControl>
+
+

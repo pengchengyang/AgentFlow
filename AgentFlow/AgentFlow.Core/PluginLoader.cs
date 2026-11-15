@@ -366,7 +366,8 @@ public sealed class PluginLoader : IDisposable
         alc.Resolving += (_, name) =>
         {
             // Host-owned shared assemblies always come from the default ALC. This is what lets
-            // plugins reference BroadcastKit and use the host's TopicBus.Instance singleton.
+            // plugins share BroadcastKit contracts while resolving the TopicBus supplied by the
+            // current Editor/Batch workflow run.
             if (name.Name is not null && SharedAssemblyNames.Contains(name.Name))
             {
                 try

@@ -75,6 +75,7 @@ public sealed class TcpClientNode : BaseNode
     public override string Name => "TCP Client";
     public override string DisplayName { get; set; } = "TCP Client";
     public override string Category => "Network";
+    public override bool RequiresPersistentHost => true;
 
     /// <summary>
     /// Runtime endpoint input in host:port format. It changes only the active connection target;
@@ -1033,5 +1034,3 @@ public sealed class TcpClientNode : BaseNode
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
 }
-
-
