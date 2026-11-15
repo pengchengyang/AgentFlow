@@ -1,0 +1,10 @@
+{
+  "language": "cpp",
+  "buildSystem": "cmake",
+  "entry": "Worker/Main.cpp",
+  "artifactName": "Node.CppUpper",
+  "outputDir": "dist",
+  "copyRuntimeDeps": true,
+  "extraArgs": []
+}
+

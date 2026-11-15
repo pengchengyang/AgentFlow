@@ -6,6 +6,8 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
+using AgentFlow.Core.ExternalNodes;
+using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Core;
 
@@ -33,6 +35,18 @@ public sealed record ParameterDescriptor(
     ParameterEditorKind Editor = ParameterEditorKind.Auto,
     IReadOnlyList<string>? Options = null);
 
+/// <summary>Package-level metadata used by the palette and node property panel.</summary>
+public sealed record NodePackageMetadata(
+    string PackageId,
+    string Version,
+    string? Publisher = null,
+    string? Author = null,
+    string? AuthorEmail = null,
+    string? Copyright = null,
+    string? License = null,
+    string? LicenseFile = null,
+    string? Homepage = null,
+    string? Repository = null);
 /// <summary>Node metadata discovered via reflection (used by the palette and property panel).</summary>
 public sealed class NodeDescriptor
 {
@@ -40,6 +54,15 @@ public sealed class NodeDescriptor
     public string DisplayName { get; }
     public string Category { get; }
     public Type NodeType { get; }
+
+    /// <summary>Optional factory used by dynamic node types such as external workers.</summary>
+    public Func<BaseNode>? Factory { get; }
+
+    /// <summary>Package metadata for external node types; null for internal C# plugins.</summary>
+    public NodePackageMetadata? PackageMetadata { get; }
+
+    /// <summary>Validated external package definition; null for internal C# plugins.</summary>
+    public ExternalNodeDefinition? ExternalDefinition { get; }
 
     /// <summary>UI-facing input pins (left-hand ports), no dependency on <see cref="AgentFlow.Contracts"/>.</summary>
     public IReadOnlyList<PinDescriptor> InputPins { get; }
@@ -60,12 +83,18 @@ public sealed class NodeDescriptor
         Type nodeType,
         IReadOnlyList<BasePin> inputPins,
         IReadOnlyList<BasePin> outputPins,
-        IReadOnlyList<ParameterDefinition> parameters)
+        IReadOnlyList<ParameterDefinition> parameters,
+        Func<BaseNode>? factory = null,
+        NodePackageMetadata? packageMetadata = null,
+        ExternalNodeDefinition? externalDefinition = null)
     {
         Name = name;
         DisplayName = displayName;
         Category = category;
         NodeType = nodeType;
+        Factory = factory;
+        PackageMetadata = packageMetadata;
+        ExternalDefinition = externalDefinition;
 
         var runtime = inputPins.Concat(outputPins).ToList();
         InputPins = inputPins
@@ -92,6 +121,20 @@ public sealed class NodeRegistry
 
     public IReadOnlyCollection<NodeDescriptor> Nodes => _nodes.Values;
 
+    /// <summary>Create a node from its registered factory, or by reflection when no factory is provided.</summary>
+    public BaseNode CreateInstance(NodeDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        var node = descriptor.Factory is { } factory
+            ? factory()
+            : (BaseNode)(Activator.CreateInstance(descriptor.NodeType)
+                ?? throw new InvalidOperationException($"Cannot instantiate node: {descriptor.Name}"));
+        if (!string.Equals(node.Name, descriptor.Name, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Node type '{descriptor.Name}' instantiated an object whose Name is '{node.Name}'.");
+        return node;
+    }
+
     public void Register(NodeDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -107,6 +150,43 @@ public sealed class NodeRegistry
 
     public bool Contains(string name) => _nodes.ContainsKey(name);
 
+    /// <summary>
+    /// Build a per-workflow registry view. Internal node descriptors are reused, but external
+    /// descriptors get a fresh <see cref="ExternalNodeRuntime"/> so each concurrent workflow owns
+    /// independent Worker processes and node-instance routing.
+    /// </summary>
+    public NodeRegistryScope CreateWorkflowScope(ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        var scoped = new NodeRegistry();
+        ExternalNodeRuntime? runtime = null;
+
+        foreach (var descriptor in _nodes.Values)
+        {
+            if (descriptor.ExternalDefinition is not { } definition)
+            {
+                scoped.Register(descriptor);
+                continue;
+            }
+
+            runtime ??= new ExternalNodeRuntime(logger);
+            var capturedRuntime = runtime;
+            scoped.Register(new NodeDescriptor(
+                descriptor.Name,
+                descriptor.DisplayName,
+                descriptor.Category,
+                descriptor.NodeType,
+                definition.InputPins,
+                definition.OutputPins,
+                definition.Parameters,
+                () => new ExternalNodeProxy(definition, capturedRuntime),
+                descriptor.PackageMetadata,
+                definition));
+        }
+
+        return new NodeRegistryScope(scoped, runtime);
+    }
+
     /// <summary>Remove every registered type (used when unloading plugins).</summary>
     public void Clear() => _nodes.Clear();
 
@@ -118,12 +198,7 @@ public sealed class NodeRegistry
     public BaseNode CreateInstance(string name)
     {
         var descriptor = Get(name);
-        var node = (BaseNode)(Activator.CreateInstance(descriptor.NodeType)
-            ?? throw new InvalidOperationException($"Cannot instantiate node: {name}"));
-        if (!string.Equals(node.Name, descriptor.Name, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException(
-                $"Node type '{descriptor.Name}' instantiated an object whose Name is '{node.Name}'.");
-
+        var node = CreateInstance(descriptor);
         foreach (var pin in descriptor.InputPins)
         {
             if (!node.InputPins.Any(p => p.Name == pin.Name))
@@ -144,6 +219,23 @@ public sealed class NodeRegistry
     }
 }
 
+/// <summary>Owns a per-workflow node registry and its isolated external Worker runtime.</summary>
+public sealed class NodeRegistryScope : IAsyncDisposable
+{
+    private ExternalNodeRuntime? _runtime;
 
+    internal NodeRegistryScope(NodeRegistry registry, ExternalNodeRuntime? runtime)
+    {
+        Registry = registry;
+        _runtime = runtime;
+    }
 
+    public NodeRegistry Registry { get; }
 
+    public async ValueTask DisposeAsync()
+    {
+        var runtime = Interlocked.Exchange(ref _runtime, null);
+        if (runtime is not null)
+            await runtime.DisposeAsync().ConfigureAwait(false);
+    }
+}

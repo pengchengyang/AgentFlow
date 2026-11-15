@@ -1,0 +1,10 @@
+{
+  "language": "c",
+  "buildSystem": "cmake",
+  "entry": "Worker/Main.c",
+  "artifactName": "Node.CUpper",
+  "outputDir": "dist",
+  "copyRuntimeDeps": true,
+  "extraArgs": []
+}
+

@@ -9,6 +9,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using AgentFlow.Contracts;
+using AgentFlow.Core;
 using AgentFlow.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -150,6 +151,38 @@ public partial class NodeParamDlgViewModel : ViewModelBase
             AddRow(zones, groupsByZone, DefaultZone, DefaultGroup, row);
         }
 
+        // 3. External Package metadata is read-only and shown in its own zone.
+        if (node.PackageMetadata is { } metadata)
+        {
+            var rows = new (string Label, string Value, string Description)[]
+            {
+                ("Package ID", metadata.PackageId, "External Package identifier."),
+                ("Version", metadata.Version, "Package version from plugin.json."),
+                ("Publisher", metadata.Publisher ?? "", "Package publisher."),
+                ("Author", metadata.Author ?? "", "Package author."),
+                ("Author email", metadata.AuthorEmail ?? "", "Package author contact."),
+                ("Copyright", metadata.Copyright ?? "", "Copyright notice from the Package manifest."),
+                ("License", metadata.License ?? "", "SPDX license identifier or license name."),
+                ("License file", metadata.LicenseFile ?? "", "Package-relative license file."),
+                ("Homepage", metadata.Homepage ?? "", "Project homepage."),
+                ("Repository", metadata.Repository ?? "", "Source repository.")
+            };
+
+            foreach (var item in rows)
+            {
+                if (string.IsNullOrWhiteSpace(item.Value))
+                    continue;
+                AddRow(zones, groupsByZone, "Package", "Package", new ParameterEditRow(
+                    item.Label,
+                    item.Label,
+                    item.Value,
+                    "string",
+                    source: null,
+                    isEditable: false,
+                    description: item.Description));
+            }
+        }
+
         foreach (var z in zones.Values)
             Zones.Add(z);
 
@@ -274,6 +307,9 @@ public partial class NodeParamDlgViewModel : ViewModelBase
     {
         foreach (var row in Zones.SelectMany(z => z.Groups).SelectMany(g => g.Children))
         {
+            if (!row.IsEditable)
+                continue;
+
             var target = Node.Parameters.FirstOrDefault(p => p.Key == row.Key);
             if (target is not null)
                 target.Value = row.Value;

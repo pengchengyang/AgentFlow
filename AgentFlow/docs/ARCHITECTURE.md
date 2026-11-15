@@ -17,7 +17,7 @@ desktop, CLI, headless, or future web hosts.
 | `AgentFlow.Cli` | Headless workflow entry point. |
 | `Hosting.Logging` | Shared Serilog-compatible logging integration. |
 | `AgentFlow.Shared` | GUI-neutral shared declarations grouped per concrete project (for example `RTS/Broadcasts`, `Errors`, `Results`), including error/result contracts and broadcast subscription names. |
-| `plugins/*` | Dynamically loaded node implementations and demo nodes. |
+| `Plugins/*` | Dynamically loaded node implementations and demo nodes. |
 | `BroadcastKit*` | Optional process-local broadcast transport and shared topic/message contracts, including ordered sample batches, keyed Sample dictionaries, keyed Sample-list dictionaries, and correlated request/reply. |
 
 ## Dependency Direction
@@ -81,7 +81,7 @@ process. A workflow may be repeated, and different workflow files may be mixed:
 ```powershell
 AgentFlow.Cli run.workflow.json --instances 5
 
-AgentFlow.Cli --plugin-dir plugins `
+AgentFlow.Cli --plugin-dir Plugins `
   --workflow a.workflow.json --instances 3 `
   --workflow b.workflow.json --instances 2
 ```
@@ -249,9 +249,9 @@ Actual runtime faults remain at `ERROR`:
 ## Build
 
 Plugin binaries are configuration- and platform-specific. AnyCPU builds read from
-`plugins/<PluginName>/bin/<Configuration>/net8.0`, while x64 builds read from
-`plugins/<PluginName>/bin/x64/<Configuration>/net8.0`. The host build clears and
-repopulates its own `plugins` directory after the plugin projects finish building,
+`Plugins/<PluginName>/bin/<Configuration>/net8.0`, while x64 builds read from
+`Plugins/<PluginName>/bin/x64/<Configuration>/net8.0`. The host build clears and
+repopulates its own `Plugins` directory after the plugin projects finish building,
 so an old copy from another platform/configuration cannot silently be used.
 
 Build the full solution with Visual Studio MSBuild:
@@ -272,14 +272,16 @@ Build the desktop host:
 Before rebuilding or starting a test run, close the running AgentFlow desktop
 process. A loaded plugin DLL is locked on Windows; the build must fail rather than
 keep serving an older assembly. After a successful build, the source plugin DLL
-and `AgentFlow.Desktop/bin/x64/Debug/net8.0/plugins` copy should have the same
+and `AgentFlow.Desktop/bin/x64/Debug/net8.0/Plugins` copy should have the same
 SHA-256 hash. Release x64 follows the same layout under `bin/x64/Release`.
 
-The desktop publish profile uses the `win-x64` runtime identifier and self-contained
-single-file publishing. `AgentFlow.Desktop.csproj` therefore declares `win-x64`
-in `RuntimeIdentifiers`, so a normal restore produces the runtime-specific assets
-required by the publish profile. The published `plugins` directory remains beside
-the executable and is refreshed with the same plugin assemblies used by the build.
+The desktop publish profile still defaults to `win-x64` and self-contained
+single-file publishing. `AgentFlow.Desktop.csproj` and `AgentFlow.Cli.csproj`
+declare the standard RIDs `win-x64;win-arm64;linux-x64;linux-arm64;linux-arm`
+so runtime-specific assets can be restored for the target host. External-language
+packages are copied to `Plugins/External/<RID>` and the current process only scans
+the matching RID directory. The published `Plugins` directory remains beside the
+executable and is refreshed with the same plugin assemblies used by the build.
 
 During publish, the host explicitly builds every plugin project with the active
 configuration and platform before copying plugin assemblies. This is required because
@@ -313,37 +315,47 @@ Two SDK packaging scripts are kept for different distribution models:
 
 - `package-sdk-src.bat` builds the source-based SDK. It copies the public shared project
   sources under `src` and packages plugin assemblies separately for Debug and Release.
-- `package-sdk-dll.bat` builds the binary-only SDK. It does not include shared source
-  code. External projects reference the prebuilt assemblies under `SharedDlls` instead.
+- `package-sdk-dll.py` builds the binary SDK. It does not include AgentFlow platform
+  source code, but it includes the minimal `Demo.Cli` and `Demo.Desktop` runner source
+  projects. External projects reference the prebuilt assemblies under `SharedDlls`.
 
 The binary SDK layout is configuration-isolated:
 
 ```text
 AgentFlow.Sdk.Binaries/
-└─ SharedDlls/
-   └─ x64/
-      ├─ Debug/
-      │  ├─ *.dll / *.pdb
-      │  └─ plugins/
-      └─ Release/
-         ├─ *.dll
-         └─ plugins/
+├─ SharedDlls/
+│  └─ x64/
+│     ├─ Debug/
+│     │  ├─ *.dll / *.pdb
+│     │  └─ Plugins/
+│     │     └─ External/<RID>/
+│     └─ Release/
+│        ├─ *.dll
+│        └─ Plugins/
+│           └─ External/<RID>/
+├─ Demo.Cli/
+└─ Demo.Desktop/
 ```
 
-`SharedDlls/x64/<Configuration>/plugins` contains only node plugin assemblies. Debug
+`SharedDlls/x64/<Configuration>/Plugins` contains C# node plugin assemblies; external
+language packages are under `Plugins/External/<RID>`; supported standard RIDs are
+`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, and `linux-arm`. Debug
 plugin builds also include PDB files, while Release plugin builds exclude them.
 `Node.Broadcast.Demo` remains Debug-only. `SharedDlls/x64/<Configuration>` contains the
 shared AgentFlow assemblies, plugin runtime dependencies, their PDB files in Debug,
 and the NuGet runtime dependencies required to compile and run against the SDK.
-Consumers must use matching Debug or Release assemblies and must not copy the shared
-assemblies into the plugin folder; keeping one central copy preserves shared type
-identity and process-local services such as the broadcast bus.
+`Demo.Cli` and `Demo.Desktop` are minimal source projects for opening and running
+workflows; they intentionally do not include graph editing. They reference the SDK
+configuration selected by their build (`Debug` or `Release`) and copy `Plugins` beside
+their output. Consumers must use matching Debug or Release assemblies and must not copy
+the shared assemblies into the plugin folder; keeping one central copy preserves shared
+type identity and process-local services such as the broadcast bus.
 
 The binary package is written to
 `artifacts/AgentFlow.Sdk.Binaries.zip` by running:
 
 ```powershell
-.\package-sdk-dll.bat
+python .\package-sdk-dll.py
 ```
 
 ## Bundled Plugin Skeletons

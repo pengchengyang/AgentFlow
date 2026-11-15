@@ -7,6 +7,7 @@
 
 using System.Diagnostics;
 using AgentFlow.Core;
+using AgentFlow.Core.ExternalNodes;
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
 using Hosting.Logging;
@@ -15,7 +16,7 @@ using Hosting.Logging;
 // Usage:
 //   AgentFlow.Cli [workflow.rw] [pluginDir]
 //   AgentFlow.Cli run.rw --instances 5
-//   AgentFlow.Cli --plugin-dir plugins `
+//   AgentFlow.Cli --plugin-dir Plugins `
 //       --workflow a.workflow.rw --instances 3 `
 //       --workflow b.workflow.rw --instances 2
 //
@@ -50,7 +51,7 @@ if (workflowSpecs.Count == 0)
     workflowSpecs.Add(new WorkflowSpec(resolvedDefaultPath, 1));
 }
 
-pluginDir ??= Path.Combine(AppContext.BaseDirectory, "plugins");
+pluginDir ??= Path.Combine(AppContext.BaseDirectory, "Plugins");
 
 // One log file for the whole CLI process (Core + all plugins): ./Logs/AgentFlow-Cli-.log
 AppLog.ConfigureHost("AgentFlow");
@@ -79,7 +80,8 @@ try
 {
     logger.LogInformation("Loading plugins from: {Dir}", pluginDir);
     var registry = new NodeRegistry();
-    new PluginLoader(loggerFactory.CreateLogger(nameof(PluginLoader))).LoadFromDirectory(pluginDir, registry);
+    using var pluginLoader = new PluginLoader(loggerFactory.CreateLogger(nameof(PluginLoader)));
+    pluginLoader.LoadFromDirectory(pluginDir, registry);
     logger.LogInformation("Registered {Count} node types", registry.Nodes.Count);
     if (registry.Nodes.Count == 0)
         throw new InvalidOperationException($"No node types were loaded from '{pluginDir}'.");
@@ -158,10 +160,13 @@ static async Task<WorkflowInstanceResult> RunWorkflowInstanceAsync(
             "Loading workflow for instance {RunId}: {WorkflowPath} (ordinal {Ordinal})",
             request.RunId, request.WorkflowPath, request.Ordinal);
 
-        // A fresh graph is required per instance: WorkflowEngine gives each node instance its own
-        // runtime pins and NodeInstanceManager. Never share a loaded graph across instances.
-        var graph = EditorJsonLoader.Load(request.WorkflowPath, registry);
-        var engine = new WorkflowEngine(registry, instanceLoggerFactory);
+        // A fresh graph and external Worker scope are required per instance. WorkflowEngine gives
+        // each node instance its own runtime pins and NodeInstanceManager; the scoped registry
+        // ensures external packages never share a Worker process across concurrent workflows.
+        await using var nodeScope = registry.CreateWorkflowScope(
+            instanceLoggerFactory.CreateLogger(nameof(ExternalNodeRuntime)));
+        var graph = EditorJsonLoader.Load(request.WorkflowPath, nodeScope.Registry);
+        var engine = new WorkflowEngine(nodeScope.Registry, instanceLoggerFactory);
 
         logger.LogInformation(
             "Executing workflow instance {RunId}: initialize -> run -> stop -> shutdown.",
@@ -316,13 +321,13 @@ static void PrintUsage()
     Console.WriteLine("Usage:");
     Console.WriteLine("  AgentFlow.Cli [workflow.rw] [pluginDir]");
     Console.WriteLine("  AgentFlow.Cli run.json --instances 5");
-    Console.WriteLine("  AgentFlow.Cli --plugin-dir plugins --workflow a.workflow.rw --instances 3 --workflow b.workflow.rw --instances 2");
+    Console.WriteLine("  AgentFlow.Cli --plugin-dir Plugins --workflow a.workflow.rw --instances 3 --workflow b.workflow.rw --instances 2");
     Console.WriteLine();
     Console.WriteLine("Options:");
     Console.WriteLine("  -w, --workflow <path>    Add a workflow file. May be specified multiple times.");
     Console.WriteLine("  -n, --instances <N>      Run N independent instances of the most recently added workflow.");
     Console.WriteLine("                           Defaults to 1; reset after each new workflow.");
-    Console.WriteLine("      --plugin-dir <dir>   Plugin directory. Defaults to <app>/plugins.");
+    Console.WriteLine("      --plugin-dir <dir>   Plugin directory. Defaults to <app>/Plugins.");
     Console.WriteLine("  -h, --help               Show this help.");
     Console.WriteLine();
     Console.WriteLine("Exit codes: 0 = all instances succeeded; 1 = at least one failed; 130 = Ctrl+C.");

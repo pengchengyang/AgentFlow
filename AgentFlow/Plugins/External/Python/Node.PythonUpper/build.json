@@ -1,0 +1,13 @@
+{
+  "language": "python",
+  "buildSystem": "pyinstaller",
+  "entry": "Worker/Main.py",
+  "artifactName": "Node.PythonUpper",
+  "packageMode": "onedir",
+  "requirements": "Worker/requirements.txt",
+  "pythonVersion": "3.14",
+  "outputDir": "dist",
+  "copyRuntimeDeps": true,
+  "extraArgs": []
+}
+

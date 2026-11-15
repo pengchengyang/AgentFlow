@@ -202,6 +202,7 @@ public partial class NodeViewModel : ViewModelBase
     /// <summary>Canvas title: user-editable display name falls back to the type id (Name).</summary>
     public string Title => string.IsNullOrWhiteSpace(DisplayName) ? Model.Name : DisplayName;
     public string Category => Model.Category;
+    public NodePackageMetadata? PackageMetadata => Model.PackageMetadata;
 
     /// <summary>Category accent color (header icon dot / header tint).</summary>
     public SolidColorBrush Accent { get; }

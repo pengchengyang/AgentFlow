@@ -3,6 +3,18 @@
   <PropertyGroup>
     <!-- Platform-specific plugin output folders use bin\<Platform>\<Configuration> on MSBuild. -->
     <PluginPlatformOutputPath Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != 'Any CPU'">$(Platform)\</PluginPlatformOutputPath>
+    <AgentFlowExternalNodeScript>$(MSBuildThisFileDirectory)Scripts\build_external_nodes.py</AgentFlowExternalNodeScript>
+    <AgentFlowExternalNodeSupportedRids>win-x64;win-arm64;linux-x64;linux-arm64;linux-arm</AgentFlowExternalNodeSupportedRids>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' == 'Windows_NT' and '$(Platform)' == 'x64'">win-x64</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' == 'Windows_NT' and '$(Platform)' == 'ARM64'">win-arm64</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(Platform)' == 'AnyCPU' and '$(NETCoreSdkPortableRuntimeIdentifier)' != ''">$(NETCoreSdkPortableRuntimeIdentifier)</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' == 'Windows_NT' and '$(Platform)' == 'AnyCPU'">win-x64</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' != 'Windows_NT' and ('$(Platform)' == 'x64' or '$(Platform)' == 'AnyCPU')">linux-x64</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' != 'Windows_NT' and '$(Platform)' == 'ARM64'">linux-arm64</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRid Condition="'$(AgentFlowExternalNodeRid)' == '' and '$(OS)' != 'Windows_NT' and '$(Platform)' == 'ARM'">linux-arm</AgentFlowExternalNodeRid>
+    <AgentFlowExternalNodeRidIsSupported Condition="'$(AgentFlowExternalNodeRid)' != ''">$([System.String]::Copy(';$(AgentFlowExternalNodeSupportedRids);').Contains(';$(AgentFlowExternalNodeRid);'))</AgentFlowExternalNodeRidIsSupported>
+    <AgentFlowExternalNodeStamp>$(MSBuildThisFileDirectory)artifacts\External-Build\source-stamps\$(Configuration).$(AgentFlowExternalNodeRid).sha256</AgentFlowExternalNodeStamp>
   </PropertyGroup>
   <Target Name="ValidateAgentFlowVersionMetadata" BeforeTargets="CoreCompile">
     <Error Condition="'$(AgentFlowHasVersionProps)' != 'true'"
@@ -15,12 +27,14 @@
     Plugin distribution
     ================================================================================
     A host project opts in with <PluginHost>true</PluginHost> and lists every plugin
-    project in @(PluginProjects). The host owns its plugins/ output folder:
+    project in @(PluginProjects). The host owns its Plugins/ output folder:
 
       * ordinary build:
           - plugin projects are built through their normal ProjectReferences;
-          - the host's $(OutDir)plugins folder is emptied and refilled with exactly
+          - the host's $(OutDir)Plugins folder is emptied and refilled with exactly
             the plugin assemblies produced for the active configuration/platform.
+          - external-language source packages under Plugins/External are built only when
+            their source fingerprint changed, then copied under $(OutDir)Plugins\External\<RID>.
 
       * publish:
           - after the SDK publish completes, the host explicitly builds every plugin
@@ -28,7 +42,8 @@
           - publish-only properties such as RuntimeIdentifier, SelfContained,
             PublishSingleFile, PublishProfile and PublishDir are removed for those
             plugin builds;
-          - $(PublishDir)plugins and $(OutDir)plugins are then emptied and refilled.
+          - $(PublishDir)Plugins and $(OutDir)Plugins are then emptied and refilled.
+          - external-language packages are copied to both Plugins\External folders.
 
     The explicit publish-time plugin build is required because Visual Studio's publish
     pipeline can evaluate project references separately. Removing plugin outputs at the
@@ -54,10 +69,10 @@
            Text="$(MSBuildProjectName) has PluginHost=true but @(PluginProjects) is empty: no plugin assemblies to copy." />
     <Error Condition="'@(_BuildMissingPluginDlls)' != ''"
            Text="Plugin assemblies were not produced by this build: @(_BuildMissingPluginDlls). Build $(MSBuildProjectName) (or the solution) without the no build switch, and keep the plugin project name equal to its assembly name." />
-    <RemoveDir Directories="$(OutDir)plugins" Condition="Exists('$(OutDir)plugins')" />
-    <MakeDir Directories="$(OutDir)plugins" />
-    <Copy SourceFiles="@(_BuildPluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="false" />
-    <Message Importance="normal" Text="Copied plugin assemblies to $(OutDir)plugins" />
+    <RemoveDir Directories="$(OutDir)Plugins" Condition="Exists('$(OutDir)Plugins')" />
+    <MakeDir Directories="$(OutDir)Plugins" />
+    <Copy SourceFiles="@(_BuildPluginDlls)" DestinationFolder="$(OutDir)Plugins" SkipUnchangedFiles="false" />
+    <Message Importance="normal" Text="Copied plugin assemblies to $(OutDir)Plugins" />
   </Target>
 
   <Target Name="PublishFreshPlugins"
@@ -84,15 +99,44 @@
     </ItemGroup>
     <Error Condition="'@(_PublishMissingPluginDlls)' != ''"
            Text="Plugin assemblies are missing when publishing: @(_PublishMissingPluginDlls)." />
-    <RemoveDir Directories="$(PublishDir)plugins" Condition="Exists('$(PublishDir)plugins')" />
-    <MakeDir Directories="$(PublishDir)plugins" />
-    <Copy SourceFiles="@(_PublishPluginDlls)" DestinationFolder="$(PublishDir)plugins" SkipUnchangedFiles="false" />
+    <RemoveDir Directories="$(PublishDir)Plugins" Condition="Exists('$(PublishDir)Plugins')" />
+    <MakeDir Directories="$(PublishDir)Plugins" />
+    <Copy SourceFiles="@(_PublishPluginDlls)" DestinationFolder="$(PublishDir)Plugins" SkipUnchangedFiles="false" />
 
     <!-- Keep the host's own build output (the exe run directly from bin) in sync too. -->
-    <RemoveDir Directories="$(OutDir)plugins" Condition="Exists('$(OutDir)')" />
-    <MakeDir Directories="$(OutDir)plugins" Condition="Exists('$(OutDir)')" />
-    <Copy SourceFiles="@(_PublishPluginDlls)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="false" Condition="Exists('$(OutDir)')" />
+    <RemoveDir Directories="$(OutDir)Plugins" Condition="Exists('$(OutDir)')" />
+    <MakeDir Directories="$(OutDir)Plugins" Condition="Exists('$(OutDir)')" />
+    <Copy SourceFiles="@(_PublishPluginDlls)" DestinationFolder="$(OutDir)Plugins" SkipUnchangedFiles="false" Condition="Exists('$(OutDir)')" />
 
-    <Message Importance="High" Text="Published plugin assemblies to $(PublishDir)plugins" />
+    <Message Importance="High" Text="Published plugin assemblies to $(PublishDir)Plugins" />
+  </Target>
+
+  <Target Name="SyncExternalNodesToBuildOutput"
+          AfterTargets="CopyPluginsToBuildOutput"
+          Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' != 'true'">
+    <PropertyGroup>
+      <_AgentFlowBuildExternalDestination>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine($(MSBuildProjectDirectory),$(OutDir),Plugins,External))))</_AgentFlowBuildExternalDestination>
+    </PropertyGroup>
+    <Error Condition="'$(AgentFlowExternalNodeRid)' == ''"
+           Text="Unable to resolve AgentFlowExternalNodeRid. Set RuntimeIdentifier or AgentFlowExternalNodeRid explicitly." />
+    <Error Condition="'$(AgentFlowExternalNodeRid)' != '' and '$(AgentFlowExternalNodeRidIsSupported)' != 'true'"
+           Text="Unsupported AgentFlowExternalNodeRid '$(AgentFlowExternalNodeRid)'. Supported values: $(AgentFlowExternalNodeSupportedRids)." />
+    <Exec Command="python &quot;$(AgentFlowExternalNodeScript)&quot; sync --all --config &quot;$(Configuration)&quot; --rid &quot;$(AgentFlowExternalNodeRid)&quot; --destination &quot;$(_AgentFlowBuildExternalDestination)&quot; --stamp &quot;$(AgentFlowExternalNodeStamp)&quot; --incremental"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" />
+  </Target>
+
+  <Target Name="SyncExternalNodesToPublishOutput"
+          AfterTargets="PublishFreshPlugins"
+          Condition="'$(PluginHost)' == 'true'">
+    <PropertyGroup>
+      <_AgentFlowPublishExternalDestination>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine($(MSBuildProjectDirectory),$(PublishDir),Plugins,External))))</_AgentFlowPublishExternalDestination>
+      <_AgentFlowBuildExternalDestination>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine($(MSBuildProjectDirectory),$(OutDir),Plugins,External))))</_AgentFlowBuildExternalDestination>
+    </PropertyGroup>
+    <Error Condition="'$(AgentFlowExternalNodeRid)' == ''"
+           Text="Unable to resolve AgentFlowExternalNodeRid. Set RuntimeIdentifier or AgentFlowExternalNodeRid explicitly." />
+    <Error Condition="'$(AgentFlowExternalNodeRid)' != '' and '$(AgentFlowExternalNodeRidIsSupported)' != 'true'"
+           Text="Unsupported AgentFlowExternalNodeRid '$(AgentFlowExternalNodeRid)'. Supported values: $(AgentFlowExternalNodeSupportedRids)." />
+    <Exec Command="python &quot;$(AgentFlowExternalNodeScript)&quot; sync --all --config &quot;$(Configuration)&quot; --rid &quot;$(AgentFlowExternalNodeRid)&quot; --destination &quot;$(_AgentFlowPublishExternalDestination)&quot; --destination &quot;$(_AgentFlowBuildExternalDestination)&quot; --stamp &quot;$(AgentFlowExternalNodeStamp)&quot; --incremental"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" />
   </Target>
 </Project>

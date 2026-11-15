@@ -40,6 +40,12 @@ public interface IWorkflowReadOnlyHost
     /// <summary>Load a workflow document from a file.</summary>
     void LoadWorkflowFile(string path);
 
+    /// <summary>
+    /// Start external Worker processes used by the loaded graph without creating node instances.
+    /// Editors should call this after loading a workflow so load-stage broadcasts can be received.
+    /// </summary>
+    Task PrepareExternalNodesAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Validate the current workflow before it is initialized or started.</summary>
     IReadOnlyList<string> Validate();
 
@@ -113,7 +119,8 @@ public sealed record WorkflowNodeTypeInfo(
     string Category,
     IReadOnlyList<WorkflowPinInfo> InputPins,
     IReadOnlyList<WorkflowPinInfo> OutputPins,
-    IReadOnlyList<WorkflowParameterInfo> Parameters);
+    IReadOnlyList<WorkflowParameterInfo> Parameters,
+    NodePackageMetadata? PackageMetadata = null);
 
 /// <summary>Immutable pin metadata used by hosts and product GUIs.</summary>
 public sealed record WorkflowPinInfo(
@@ -290,6 +297,12 @@ public sealed class WorkflowHost : IWorkflowEditorHost
     public IReadOnlyList<string> Validate() =>
         WorkflowValidation.Validate(_registry, _graph.ToWorkflowGraph());
 
+    public async Task PrepareExternalNodesAsync(CancellationToken cancellationToken = default)
+    {
+        await _pluginLoader.PrepareExternalNodesAsync(cancellationToken).ConfigureAwait(false);
+        _logger.LogTrace("WorkflowHost prepared external Worker processes.");
+    }
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         var errors = Validate();
@@ -297,6 +310,7 @@ public sealed class WorkflowHost : IWorkflowEditorHost
             throw new InvalidOperationException(
                 $"Workflow validation failed:{Environment.NewLine}{string.Join(Environment.NewLine, errors)}");
 
+        await PrepareExternalNodesAsync(cancellationToken).ConfigureAwait(false);
         await _nodeManager
             .InitializeAsync(_graph.CreateContext, cancellationToken)
             .ConfigureAwait(false);
@@ -523,7 +537,8 @@ public sealed class WorkflowHost : IWorkflowEditorHost
                     null,
                     p.Editor,
                     p.Options ?? Array.Empty<string>()))
-                .ToList());
+                .ToList(),
+            descriptor.PackageMetadata);
 
     private static WorkflowPinInfo ToPinInfo(PinDescriptor pin) =>
         new(pin.Name, pin.DataType.ToString(), pin.Direction == PinDirection.Input, pin.Required);
@@ -647,5 +662,3 @@ public sealed class WorkflowHost : IWorkflowEditorHost
                 $"Expected {description} to be {expected}, but found {element.ValueKind}.");
     }
 }
-
-

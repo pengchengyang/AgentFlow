@@ -482,7 +482,7 @@ public partial class MainViewModel : ViewModelBase
     }
     private void LoadPlugins()
     {
-        var pluginDir = Path.Combine(AppContext.BaseDirectory, "plugins");
+        var pluginDir = Path.Combine(AppContext.BaseDirectory, "Plugins");
         _workflowHost.LoadPlugins(pluginDir);
         var nodeTypes = _workflowHost.GetNodeTypes();
         foreach (var d in nodeTypes)
@@ -794,9 +794,11 @@ public partial class MainViewModel : ViewModelBase
             if (string.IsNullOrEmpty(json)) return;
             var doc = GraphDeserializer.Deserialize(json);
             LoadGraphFromDocument(doc);
+            var externalWorkersReady = await PrepareExternalNodesAfterLoadAsync();
             ClearHistory();
             loaded = true;
-            StatusText = $"{L["LoadedFrom"]}: {_store.Description}";
+            if (externalWorkersReady)
+                StatusText = $"{L["LoadedFrom"]}: {_store.Description}";
         }
         catch (Exception ex)
         {
@@ -1617,6 +1619,27 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
     }
+    /// <summary>
+    /// Start external Worker processes after a workflow document becomes active. Failure is
+    /// reported but does not discard the loaded graph; InitializeAsync will retry before Run.
+    /// </summary>
+    private async Task<bool> PrepareExternalNodesAfterLoadAsync()
+    {
+        try
+        {
+            await _workflowHost.PrepareExternalNodesAsync();
+            _logger.LogTrace("Prepared external Worker processes after workflow load.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"{L["ErrorPrefix"]}: {ex.Message}";
+            Log($"[{L["ErrorPrefix"]}] {ex.Message}", "ERROR");
+            _logger.LogError(ex, "Preparing external Worker processes after workflow load failed.");
+            return false;
+        }
+    }
+
     /// <summary>Raised when the user clicks the Open button; the View layer opens a file picker.</summary>
     public event EventHandler? OpenRequested;
     /// <summary>Open: raise an event so the View layer can show a native file-open picker.</summary>
@@ -1648,6 +1671,7 @@ public partial class MainViewModel : ViewModelBase
             IsDirty = false;
             StatusText = $"{L["LoadedFrom"]}: {path}";
             _logger.LogTrace("Loaded graph from {Path} ({NodeCount} nodes)", path, Nodes.Count);
+            _ = PrepareExternalNodesAfterLoadAsync();
         }
         catch (Exception ex)
         {

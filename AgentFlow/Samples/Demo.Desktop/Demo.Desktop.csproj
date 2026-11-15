@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AgentFlowTargetFramework Condition="'$(AgentFlowTargetFramework)' == ''">net10.0</AgentFlowTargetFramework>
+    <AvaloniaVersion Condition="'$(AvaloniaVersion)' == ''">12.0.5</AvaloniaVersion>
+    <TargetFramework>$(AgentFlowTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <Platforms>AnyCPU;x64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-arm</RuntimeIdentifiers>
+    <AgentFlowSdkRoot>$(MSBuildThisFileDirectory)..\SharedDlls\x64\$(Configuration)</AgentFlowSdkRoot>
+    <AgentFlowDemoUsesSdk Condition="Exists('$(AgentFlowSdkRoot)\AgentFlow.Core.dll')">true</AgentFlowDemoUsesSdk>
+    <AgentFlowDemoUsesSdk Condition="'$(AgentFlowDemoUsesSdk)' == ''">false</AgentFlowDemoUsesSdk>
+    <PluginHost Condition="'$(AgentFlowDemoUsesSdk)' != 'true'">true</PluginHost>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(AgentFlowDemoUsesSdk)' == 'true'">
+    <Reference Include="AgentFlow.Contracts">
+      <HintPath>$(AgentFlowSdkRoot)\AgentFlow.Contracts.dll</HintPath>
+    </Reference>
+    <Reference Include="AgentFlow.Core">
+      <HintPath>$(AgentFlowSdkRoot)\AgentFlow.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="AgentFlow.Shared">
+      <HintPath>$(AgentFlowSdkRoot)\AgentFlow.Shared.dll</HintPath>
+    </Reference>
+    <Reference Include="BroadcastKit">
+      <HintPath>$(AgentFlowSdkRoot)\BroadcastKit.dll</HintPath>
+    </Reference>
+    <Reference Include="BroadcastKit.Contracts">
+      <HintPath>$(AgentFlowSdkRoot)\BroadcastKit.Contracts.dll</HintPath>
+    </Reference>
+    <Reference Include="Hosting.Logging">
+      <HintPath>$(AgentFlowSdkRoot)\Hosting.Logging.dll</HintPath>
+    </Reference>
+    <Reference Include="Serilog">
+      <HintPath>$(AgentFlowSdkRoot)\Serilog.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(AgentFlowDemoUsesSdk)' != 'true'">
+    <ProjectReference Include="..\..\AgentFlow.Core\AgentFlow.Core.csproj" />
+    <ProjectReference Include="..\..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
+    <ProjectReference Include="..\..\AgentFlow.Shared\AgentFlow.Shared.csproj" />
+    <ProjectReference Include="..\..\BroadcastKit\BroadcastKit.csproj" />
+    <ProjectReference Include="..\..\BroadcastKit.Contracts\BroadcastKit.Contracts.csproj" />
+    <ProjectReference Include="..\..\Hosting.Logging\Hosting.Logging.csproj" />
+    <PluginProjects Include="..\..\Plugins\**\*.csproj" Exclude="..\..\Plugins\External\**\*.csproj" />
+    <ProjectReference Include="@(PluginProjects)" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(AgentFlowDemoUsesSdk)' == 'true' and Exists('$(AgentFlowSdkRoot)\Plugins')">
+    <Content Include="$(AgentFlowSdkRoot)\Plugins\**\*">
+      <Link>Plugins\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(AgentFlowDemoUsesSdk)' == 'true'">
+    <Content Include="$(AgentFlowSdkRoot)\*.dll">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+  </ItemGroup>
+
+</Project>

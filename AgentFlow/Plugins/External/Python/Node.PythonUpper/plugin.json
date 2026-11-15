@@ -1,0 +1,87 @@
+{
+  "manifestVersion": 1,
+  "packageId": "Node.PythonUpper",
+  "displayName": "Python Upper",
+  "version": "0.1.0",
+  "description": "Complete Python external-node demo with two inputs, two outputs, lifecycle callbacks, and broadcasts.",
+  "metadata": {
+    "publisher": "Damon Yang",
+    "author": "Damon Yang",
+    "authorEmail": "damon_ypc@126.com",
+    "copyright": "Copyright (c) 2026 Damon Yang. All rights reserved.",
+    "license": "MIT",
+    "licenseFile": "Licenses/LICENSE",
+    "repository": "https://github.com/example/agentflow-external"
+  },
+  "worker": {
+    "protocolVersion": 1,
+    "executable": "Worker/Node.PythonUpper.cmd",
+    "arguments": [
+      "--endpoint",
+      "${WORKER_ENDPOINT}",
+      "--token",
+      "${WORKER_TOKEN}",
+      "--package-root",
+      "${PACKAGE_ROOT}"
+    ],
+    "workingDirectory": "Worker",
+    "startTimeoutMs": 30000,
+    "heartbeatIntervalMs": 5000,
+    "heartbeatTimeoutMs": 15000,
+    "commandTimeoutMs": 30000,
+    "maxLineBytes": 1048576,
+    "capabilities": [
+      "pin",
+      "broadcast",
+      "log",
+      "lifecycle"
+    ]
+  },
+  "nodeTypes": [
+    {
+      "nodeType": "Node.PythonUpper",
+      "displayName": "Python Upper",
+      "category": "External Demo",
+      "description": "Convert uppercase or lowercase STRING inputs and append the configured suffix.",
+      "pins": [
+        {
+          "name": "input_string_toupper",
+          "direction": "input",
+          "dataType": "STRING",
+          "required": true
+        },
+        {
+          "name": "input_string_tolower",
+          "direction": "input",
+          "dataType": "STRING",
+          "required": true
+        },
+        {
+          "name": "output_string_toupper",
+          "direction": "output",
+          "dataType": "STRING",
+          "required": true
+        },
+        {
+          "name": "output_string_tolower",
+          "direction": "output",
+          "dataType": "STRING",
+          "required": true
+        }
+      ],
+      "parameters": [
+        {
+          "name": "Suffix",
+          "type": "string",
+          "displayName": "Suffix",
+          "defaultValue": ":py",
+          "editable": true,
+          "editor": "text"
+        }
+      ],
+      "subscriptions": [
+        "Demo.External.Ping"
+      ]
+    }
+  ]
+}

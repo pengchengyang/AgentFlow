@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(Node.CUpper LANGUAGES C)
+set(AGENTFLOW_SDK_C "${CMAKE_CURRENT_LIST_DIR}/../../../../../SDK/C")
+add_subdirectory("${AGENTFLOW_SDK_C}" AgentFlow_SDK_C)
+add_executable(Node.CUpper Main.c)
+target_link_libraries(Node.CUpper PRIVATE AgentFlowWorker)

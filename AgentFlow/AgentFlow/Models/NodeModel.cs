@@ -6,6 +6,8 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
+using AgentFlow.Core;
+using AgentFlow.Core.ExternalNodes;
 
 namespace AgentFlow.Models;
 
@@ -25,6 +27,10 @@ public sealed class NodeModel
     public string Name => Node.Name;
     public string Category => Node.Category;
     public int InstanceId => Node.InstanceId;
+
+    /// <summary>External Package metadata; null for built-in C# nodes.</summary>
+    public NodePackageMetadata? PackageMetadata =>
+        Node is ExternalNodeProxy proxy ? proxy.Definition.PackageMetadata : null;
 
     public IReadOnlyList<PinModel> Inputs { get; }
     public IReadOnlyList<PinModel> Outputs { get; }

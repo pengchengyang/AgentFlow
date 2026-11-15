@@ -58,10 +58,10 @@ flowchart TD
 | `AgentFlow.Contracts` | 节点契约：`BaseNode`、`BasePin`、`Sample` 类型体系、`DataType`、`INodeContext`、参数与 ID 池 | 仅日志抽象，无 UI |
 | `AgentFlow.Core` | 插件加载、节点实例容器、图结构、运行时 Pin、工作流引擎、逻辑序列化、日志适配 | Contracts |
 | `AgentFlow` | Avalonia UI 库：自绘画布、节点库、对话框、MVVM（Views/ViewModels/Models）、GUI 序列化 | Core |
-| `AgentFlow.Desktop` | 桌面宿主入口，插件 DLL 复制到 `plugins/` | AgentFlow UI |
+| `AgentFlow.Desktop` | 桌面宿主入口，插件 DLL 复制到 `Plugins/` | AgentFlow UI |
 | `AgentFlow.Cli` | 无界面宿主，加载 workflow.json 运行同一套 Core 引擎 | Core、Contracts |
 | `AgentFlow.Web` | `net10.0-browser` WASM 宿主，复用同一 UI 库，经 HTTP 后端存取工作流 | AgentFlow UI |
-| `plugins/*` | 一个 DLL 一个节点（`IsPlugin=true`），只引用契约层 | Contracts |
+| `Plugins/*` | 一个 DLL 一个节点（`IsPlugin=true`），只引用契约层 | Contracts |
 | `SeriLog.Bin` | 外部 `Rolling.Logging` 组件（基于 Serilog，控制台 + 滚动文件） | 独立组件 |
 
 ## 4. 关键设计
@@ -82,9 +82,9 @@ Pin 的 `ConnectedPin` 引用中，节点之间不直接持有彼此。
 
 ### 4.3 插件与实例管理
 
-- `PluginLoader` 扫描 `plugins/` 目录，经反射发现节点类型并登记到 `NodeRegistry`。
+- `PluginLoader` 扫描 `Plugins/` 目录，经反射发现节点类型并登记到 `NodeRegistry`。
 - 节点实例由 Core 统一容器管理，实例 ID 位于 1000–10000，分配最小可用 ID，删除后回收。
-- 插件工程仅引用契约层，MSBuild 目标自动把产物 DLL 复制到各宿主的 `plugins/` 目录。
+- 插件工程仅引用契约层，MSBuild 目标自动把产物 DLL 复制到各宿主的 `Plugins/` 目录。
 
 ### 4.4 分层序列化
 
@@ -121,5 +121,9 @@ dotnet build AgentFlow.sln
 dotnet run --project AgentFlow.Cli -- sample.workflow.json
 ```
 
-插件工程构建后由 MSBuild 目标自动复制到 Desktop / Cli / UI 的 `plugins/` 输出目录，
+插件工程构建后由 MSBuild 目标自动复制到 Desktop / Cli / UI 的 `Plugins/` 输出目录，
 无需手工拷贝。
+
+外部多语言节点源码位于 `Plugins/External` 下的语言分类目录，例如
+`Plugins/External/Python/Node.PythonUpper`。宿主 Build/Publish 时会按源码指纹增量构建，
+并按当前标准 RID 把产物复制到输出目录的 `Plugins/External/<RID>`；源码未变化时只复制已有产物，不重复编译。

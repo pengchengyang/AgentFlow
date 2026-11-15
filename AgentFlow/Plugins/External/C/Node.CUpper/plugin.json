@@ -1,0 +1,39 @@
+{
+  "manifestVersion": 1,
+  "packageId": "Node.CUpper",
+  "displayName": "C Upper",
+  "version": "0.1.0",
+  "metadata": {
+    "publisher": "Damon Yang",
+    "author": "Damon Yang",
+    "copyright": "Copyright (c) 2026 Damon Yang. All rights reserved.",
+    "license": "MIT",
+    "licenseFile": "Licenses/LICENSE"
+  },
+  "worker": {
+    "protocolVersion": 1,
+    "executable": "Worker/Node.CUpper.exe",
+    "arguments": ["--endpoint", "${WORKER_ENDPOINT}", "--token", "${WORKER_TOKEN}", "--package-root", "${PACKAGE_ROOT}"],
+    "workingDirectory": "Worker",
+    "heartbeatIntervalMs": 5000,
+    "heartbeatTimeoutMs": 15000,
+    "commandTimeoutMs": 30000,
+    "maxLineBytes": 1048576,
+    "capabilities": ["pin", "broadcast", "log", "lifecycle"]
+  },
+  "nodeTypes": [{
+    "nodeType": "Node.CUpper",
+    "displayName": "C Upper",
+    "category": "External Demo",
+    "pins": [
+      {"name": "input_string_toupper", "direction": "input", "dataType": "STRING", "required": true},
+      {"name": "input_string_tolower", "direction": "input", "dataType": "STRING", "required": true},
+      {"name": "output_string_toupper", "direction": "output", "dataType": "STRING", "required": true},
+      {"name": "output_string_tolower", "direction": "output", "dataType": "STRING", "required": true}
+    ],
+    "parameters": [
+      {"name": "Suffix", "type": "string", "displayName": "Suffix", "defaultValue": ":c", "editable": true, "editor": "text"}
+    ],
+    "subscriptions": ["Demo.External.Ping"]
+  }]
+}

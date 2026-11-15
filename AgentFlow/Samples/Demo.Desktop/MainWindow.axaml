@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Demo.Desktop.MainWindow"
+        Width="900" Height="620"
+        MinWidth="640" MinHeight="420"
+        Title="AgentFlow Demo - Workflow Runner">
+  <Grid RowDefinitions="Auto,*" Margin="16">
+    <StackPanel Grid.Row="0" Spacing="10">
+      <TextBlock Text="AgentFlow Workflow Runner"
+                 FontSize="22" FontWeight="SemiBold" />
+      <TextBlock Text="This demo only opens and runs a workflow. It does not edit the graph."
+                 Opacity="0.75" />
+      <WrapPanel Orientation="Horizontal">
+        <Button x:Name="OpenButton" Content="Open Workflow" Click="OpenButton_OnClick" Margin="0,0,8,0" />
+        <Button x:Name="RunButton" Content="Run" Click="RunButton_OnClick" IsEnabled="False" Margin="0,0,8,0" />
+        <Button x:Name="StopButton" Content="Stop" Click="StopButton_OnClick" IsEnabled="False" Margin="0,0,8,0" />
+        <Button x:Name="ClearButton" Content="Clear Log" Click="ClearButton_OnClick" />
+      </WrapPanel>
+      <TextBlock x:Name="WorkflowPathText" Text="No workflow selected." TextWrapping="Wrap" />
+      <TextBlock x:Name="StatusText" Text="Idle." Foreground="#1F5F99" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Border Grid.Row="1" Margin="0,14,0,0" BorderBrush="#B8C5D6" BorderThickness="1" CornerRadius="4">
+      <TextBox x:Name="LogTextBox"
+               Margin="8"
+               IsReadOnly="True"
+               AcceptsReturn="True"
+               TextWrapping="Wrap"
+               ScrollViewer.VerticalScrollBarVisibility="Auto"
+               ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+    </Border>
+  </Grid>
+</Window>

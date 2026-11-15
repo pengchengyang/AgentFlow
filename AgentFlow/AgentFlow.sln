@@ -13,55 +13,65 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AgentFlow.Core", "AgentFlow
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AgentFlow.Cli", "AgentFlow.Cli\AgentFlow.Cli.csproj", "{34DF79B2-B0D8-4282-AF32-AD6E8B0A5733}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "plugins", "plugins", "{4A77872D-FF2F-4D54-8D09-5C057487114B}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Plugins", "Plugins", "{4A77872D-FF2F-4D54-8D09-5C057487114B}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.TcpServer", "plugins\Node.TcpServer\Node.TcpServer.csproj", "{89A828FD-8D63-4FD8-8226-6694443469F2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.TcpServer", "Plugins\Node.TcpServer\Node.TcpServer.csproj", "{89A828FD-8D63-4FD8-8226-6694443469F2}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.TcpClient", "plugins\Node.TcpClient\Node.TcpClient.csproj", "{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.TcpClient", "Plugins\Node.TcpClient\Node.TcpClient.csproj", "{57AAAF3C-674B-4FD0-832E-DB6B986B9AE9}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.ReActAgent", "plugins\Node.ReActAgent\Node.ReActAgent.csproj", "{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Node.ReActAgent", "Plugins\Node.ReActAgent\Node.ReActAgent.csproj", "{93A8AA3A-8BD3-4A96-8752-D6766A5B61D0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hosting.Logging", "Hosting.Logging\Hosting.Logging.csproj", "{AB7902BD-7423-4613-B1DB-16DF755D1D0E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BroadcastKit", "BroadcastKit\BroadcastKit.csproj", "{72D270DA-F102-491F-8FCD-8C7EA8EB20DD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Broadcast.Demo", "plugins\Node.Broadcast.Demo\Node.Broadcast.Demo.csproj", "{F031BE31-2E4B-4163-A7B6-756D802C4F36}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Broadcast.Demo", "Plugins\Node.Broadcast.Demo\Node.Broadcast.Demo.csproj", "{F031BE31-2E4B-4163-A7B6-756D802C4F36}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BroadcastKit.Contracts", "BroadcastKit.Contracts\BroadcastKit.Contracts.csproj", "{EF6DA301-7A43-46C7-BCB6-548044E4D140}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Enlarger", "plugins\Node.Enlarger\Node.Enlarger.csproj", "{D54CCE3B-D4A3-4AB5-B358-D740426B4161}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Enlarger", "Plugins\Node.Enlarger\Node.Enlarger.csproj", "{D54CCE3B-D4A3-4AB5-B358-D740426B4161}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Shrinker", "plugins\Node.Shrinker\Node.Shrinker.csproj", "{7CCD03DC-3FB6-4E5D-B759-70836AE7B290}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Shrinker", "Plugins\Node.Shrinker\Node.Shrinker.csproj", "{7CCD03DC-3FB6-4E5D-B759-70836AE7B290}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Sender", "plugins\Node.Sender\Node.Sender.csproj", "{B6DB42BF-4F68-455D-8A41-796AE918898D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Sender", "Plugins\Node.Sender\Node.Sender.csproj", "{B6DB42BF-4F68-455D-8A41-796AE918898D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Receiver", "plugins\Node.Receiver\Node.Receiver.csproj", "{D0B83762-77B5-4D89-B2C8-331BBDD99BB1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Receiver", "Plugins\Node.Receiver\Node.Receiver.csproj", "{D0B83762-77B5-4D89-B2C8-331BBDD99BB1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.FACTLauncher", "plugins\Node.FACTLauncher\Node.FACTLauncher.csproj", "{FAB90E02-C4C6-4FB6-A0D3-DBB748BCF22B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.FACTLauncher", "Plugins\Node.FACTLauncher\Node.FACTLauncher.csproj", "{FAB90E02-C4C6-4FB6-A0D3-DBB748BCF22B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.FACTLogCollector", "plugins\Node.FACTLogCollector\Node.FACTLogCollector.csproj", "{845AF4B2-6246-487D-A63D-5591F18AF4A6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.FACTLogCollector", "Plugins\Node.FACTLogCollector\Node.FACTLogCollector.csproj", "{845AF4B2-6246-487D-A63D-5591F18AF4A6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.DatabaseWriter", "plugins\Node.DatabaseWriter\Node.DatabaseWriter.csproj", "{33C89FE8-60DB-4C79-BC61-FA53496C4761}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.DatabaseWriter", "Plugins\Node.DatabaseWriter\Node.DatabaseWriter.csproj", "{33C89FE8-60DB-4C79-BC61-FA53496C4761}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.AutoStart", "plugins\Node.AutoStart\Node.AutoStart.csproj", "{3E5456BD-DE6F-4F1D-99A3-152E8328C606}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.AutoStart", "Plugins\Node.AutoStart\Node.AutoStart.csproj", "{3E5456BD-DE6F-4F1D-99A3-152E8328C606}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.ProcessRunner", "plugins\Node.ProcessRunner\Node.ProcessRunner.csproj", "{58936BED-3B90-0F00-7F1E-B54A6598756E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.ProcessRunner", "Plugins\Node.ProcessRunner\Node.ProcessRunner.csproj", "{58936BED-3B90-0F00-7F1E-B54A6598756E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentFlow.Shared", "AgentFlow.Shared\AgentFlow.Shared.csproj", "{F4BE65DB-BE1C-4426-AFB1-7D989379BEFC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.AutoStop", "plugins\Node.AutoStop\Node.AutoStop.csproj", "{E7881DF9-1E35-48E2-8162-E0BEB6109316}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.AutoStop", "Plugins\Node.AutoStop\Node.AutoStop.csproj", "{E7881DF9-1E35-48E2-8162-E0BEB6109316}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.UserSettings", "plugins\Node.UserSettings\Node.UserSettings.csproj", "{D5E23740-ACE8-4F26-874D-8D43A8E2085E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.UserSettings", "Plugins\Node.UserSettings\Node.UserSettings.csproj", "{D5E23740-ACE8-4F26-874D-8D43A8E2085E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.FACTFlatFileParser", "plugins\Node.FACTFlatFileParser\Node.FACTFlatFileParser.csproj", "{BB0FA4DF-1107-492B-A43E-D2C9C2262116}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.FACTFlatFileParser", "Plugins\Node.FACTFlatFileParser\Node.FACTFlatFileParser.csproj", "{BB0FA4DF-1107-492B-A43E-D2C9C2262116}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.WorkflowFileConverter", "plugins\Node.WorkflowFileConverter\Node.WorkflowFileConverter.csproj", "{591EFA1F-5ACA-4CA0-9B0D-7FE6D8C49B8C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.WorkflowFileConverter", "Plugins\Node.WorkflowFileConverter\Node.WorkflowFileConverter.csproj", "{591EFA1F-5ACA-4CA0-9B0D-7FE6D8C49B8C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.PriFileParser", "plugins\Node.PriFileParser\Node.PriFileParser.csproj", "{9AF353FF-9379-459B-A63C-CD70FB988361}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.PriFileParser", "Plugins\Node.PriFileParser\Node.PriFileParser.csproj", "{9AF353FF-9379-459B-A63C-CD70FB988361}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.PassFailTotalYield", "plugins\Node.PassFailTotalYield\Node.PassFailTotalYield.csproj", "{13DA7583-E056-421C-A125-AD34AB42C72B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.PassFailTotalYield", "Plugins\Node.PassFailTotalYield\Node.PassFailTotalYield.csproj", "{13DA7583-E056-421C-A125-AD34AB42C72B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Heartbeat", "plugins\Node.Heartbeat\Node.Heartbeat.csproj", "{83D6C364-A174-429D-BD1C-F6F5237EB694}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.Heartbeat", "Plugins\Node.Heartbeat\Node.Heartbeat.csproj", "{83D6C364-A174-429D-BD1C-F6F5237EB694}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExternalWorkerTestClient", "Tools\ExternalWorkerTestClient\ExternalWorkerTestClient.csproj", "{77AE3105-46C2-4833-B032-AA8491EDE14F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Samples", "Samples", "{5D20AA90-6969-D8BD-9DCD-8634F4692FDA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Demo.Cli", "Samples\Demo.Cli\Demo.Cli.csproj", "{3D48E367-52F4-4569-9E4C-F847841539A8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Demo.Desktop", "Samples\Demo.Desktop\Demo.Desktop.csproj", "{C6A48730-E14C-4D62-A3F7-A8746D7773E9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -421,6 +431,42 @@ Global
 		{83D6C364-A174-429D-BD1C-F6F5237EB694}.Release|x64.Build.0 = Release|x64
 		{83D6C364-A174-429D-BD1C-F6F5237EB694}.Release|x86.ActiveCfg = Release|Any CPU
 		{83D6C364-A174-429D-BD1C-F6F5237EB694}.Release|x86.Build.0 = Release|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Debug|x64.ActiveCfg = Debug|x64
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Debug|x64.Build.0 = Debug|x64
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Debug|x86.Build.0 = Debug|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Release|x64.ActiveCfg = Release|x64
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Release|x64.Build.0 = Release|x64
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Release|x86.ActiveCfg = Release|Any CPU
+		{77AE3105-46C2-4833-B032-AA8491EDE14F}.Release|x86.Build.0 = Release|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Debug|x64.ActiveCfg = Debug|x64
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Debug|x64.Build.0 = Debug|x64
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Debug|x86.Build.0 = Debug|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Release|x64.ActiveCfg = Release|x64
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Release|x64.Build.0 = Release|x64
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Release|x86.ActiveCfg = Release|Any CPU
+		{3D48E367-52F4-4569-9E4C-F847841539A8}.Release|x86.Build.0 = Release|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Debug|x64.ActiveCfg = Debug|x64
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Debug|x64.Build.0 = Debug|x64
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Debug|x86.Build.0 = Debug|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Release|x64.ActiveCfg = Release|x64
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Release|x64.Build.0 = Release|x64
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Release|x86.ActiveCfg = Release|Any CPU
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -446,6 +492,9 @@ Global
 		{9AF353FF-9379-459B-A63C-CD70FB988361} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
 		{13DA7583-E056-421C-A125-AD34AB42C72B} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
 		{83D6C364-A174-429D-BD1C-F6F5237EB694} = {4A77872D-FF2F-4D54-8D09-5C057487114B}
+		{77AE3105-46C2-4833-B032-AA8491EDE14F} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{3D48E367-52F4-4569-9E4C-F847841539A8} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
+		{C6A48730-E14C-4D62-A3F7-A8746D7773E9} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {DDD9FFFC-D0FD-416D-A2BB-0B7583FBE8BD}

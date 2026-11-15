@@ -28,7 +28,7 @@ if errorlevel 1 (
 )
 
 for /f "usebackq delims=" %%T in (`dotnet msbuild "%ROOT%\AgentFlow.Contracts\AgentFlow.Contracts.csproj" -nologo -getProperty:AgentFlowTargetFramework`) do set "AGENTFLOW_TARGET_FRAMEWORK=%%T"
-for /f "usebackq delims=" %%T in (`dotnet msbuild "%ROOT%\plugins\Node.AutoStart\Node.AutoStart.csproj" -nologo -getProperty:PluginTargetFramework`) do set "AGENTFLOW_PLUGIN_TARGET_FRAMEWORK=%%T"
+for /f "usebackq delims=" %%T in (`dotnet msbuild "%ROOT%\Plugins\Node.AutoStart\Node.AutoStart.csproj" -nologo -getProperty:PluginTargetFramework`) do set "AGENTFLOW_PLUGIN_TARGET_FRAMEWORK=%%T"
 if not defined AGENTFLOW_TARGET_FRAMEWORK (
     echo ERROR: AgentFlowTargetFramework is not defined.
     exit /b 1
@@ -41,8 +41,8 @@ if exist "%STAGING%" rmdir /s /q "%STAGING%"
 if exist "%BUILD_ROOT%" rmdir /s /q "%BUILD_ROOT%"
 if exist "%ZIP%" del /f /q "%ZIP%"
 
-mkdir "%STAGING%\x64\Debug\plugins" >nul 2>&1
-mkdir "%STAGING%\x64\Release\plugins" >nul 2>&1
+mkdir "%STAGING%\x64\Debug\Plugins" >nul 2>&1
+mkdir "%STAGING%\x64\Release\Plugins" >nul 2>&1
 mkdir "%BUILD_ROOT%" >nul 2>&1
 
 echo.
@@ -54,7 +54,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo Building and packaging Debug plugins...
-for /D %%D in ("%ROOT%\plugins\*") do (
+for /D %%D in ("%ROOT%\Plugins\*") do (
     set "PLUGIN_NAME=%%~nxD"
     if exist "%%~fD\!PLUGIN_NAME!.csproj" (
         call :BuildPlugin "!PLUGIN_NAME!" Debug Debug
@@ -64,7 +64,7 @@ for /D %%D in ("%ROOT%\plugins\*") do (
 
 echo.
 echo Building and packaging Release plugins...
-for /D %%D in ("%ROOT%\plugins\*") do (
+for /D %%D in ("%ROOT%\Plugins\*") do (
     set "PLUGIN_NAME=%%~nxD"
     if /I not "!PLUGIN_NAME!"=="Node.Broadcast.Demo" (
         if exist "%%~fD\!PLUGIN_NAME!.csproj" (
@@ -76,16 +76,16 @@ for /D %%D in ("%ROOT%\plugins\*") do (
 
 echo.
 echo Validating binary version metadata...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\build\Verify-BinaryVersions.ps1" -Root "%STAGING%" -Output "%STAGING%\BinaryVersions.json"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\Scripts\Verify-BinaryVersions.ps1" -Root "%STAGING%" -Output "%STAGING%\BinaryVersions.json"
 if errorlevel 1 goto :fail
 (
     echo AgentFlow SDK
     echo.
     echo This archive contains two complete variants:
     echo   x64\Debug\src      Public project source code
-    echo   x64\Debug\plugins  Debug plugin assemblies and PDB files
+    echo   x64\Debug\Plugins  Debug plugin assemblies and PDB files
     echo   x64\Release\src    Public project source code
-    echo   x64\Release\plugins Release plugin assemblies
+    echo   x64\Release\Plugins Release plugin assemblies
     echo.
     echo BinaryVersions.json contains the file and assembly versions of every packaged AgentFlow binary.
     echo Node.Broadcast.Demo is included only in the Debug variant.
@@ -147,9 +147,9 @@ exit /b 0
 set "PLUGIN_NAME=%~1"
 set "CONFIGURATION=%~2"
 set "TARGET_VARIANT=%~3"
-set "PROJECT=%ROOT%\plugins\%PLUGIN_NAME%\%PLUGIN_NAME%.csproj"
+set "PROJECT=%ROOT%\Plugins\%PLUGIN_NAME%\%PLUGIN_NAME%.csproj"
 set "BUILD_OUT=%BUILD_ROOT%\%TARGET_VARIANT%\%PLUGIN_NAME%"
-set "PLUGIN_DEST=%STAGING%\x64\%TARGET_VARIANT%\plugins"
+set "PLUGIN_DEST=%STAGING%\x64\%TARGET_VARIANT%\Plugins"
 
 echo   [%CONFIGURATION%] %PLUGIN_NAME%
 dotnet build "%PROJECT%" -c "%CONFIGURATION%" -o "%BUILD_OUT%" -v:minimal

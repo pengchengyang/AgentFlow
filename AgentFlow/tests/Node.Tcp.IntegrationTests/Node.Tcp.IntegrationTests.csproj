@@ -8,8 +8,8 @@
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\plugins\Node.TcpClient\Node.TcpClient.csproj" />
-    <ProjectReference Include="..\..\plugins\Node.TcpServer\Node.TcpServer.csproj" />
+    <ProjectReference Include="..\..\Plugins\Node.TcpClient\Node.TcpClient.csproj" />
+    <ProjectReference Include="..\..\Plugins\Node.TcpServer\Node.TcpServer.csproj" />
     <ProjectReference Include="..\..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
   </ItemGroup>
 </Project>

@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
 using AgentFlow.Contracts;
+using AgentFlow.Core.ExternalNodes;
 using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Core;
@@ -23,7 +24,7 @@ namespace AgentFlow.Core;
 /// (<see cref="BaseNode.InstanceId"/>); the smallest unused id is allocated sequentially and freed ids are recycled so the set stays small while nodes
 /// are added/removed dynamically. The editor graph routes its add/remove through this class.
 /// </summary>
-public sealed class PluginLoader
+public sealed class PluginLoader : IDisposable
 {
     private readonly ILogger _logger;
     private readonly List<AssemblyLoadContext> _contexts = new();
@@ -31,6 +32,7 @@ public sealed class PluginLoader
     private readonly object _gate = new();
     private readonly NodeIdPool _nodeIds = new();
     private NodeRegistry? _registry;
+    private ExternalNodeRuntime? _externalNodeRuntime;
 
     /// <summary>
     /// Assemblies that must resolve from the host's default ALC. Plugins may reference these
@@ -47,6 +49,14 @@ public sealed class PluginLoader
 
 
     public PluginLoader(ILogger logger) => _logger = logger;
+
+    /// <summary>Release the external Worker runtime while leaving loaded C# assemblies intact.</summary>
+    public void Dispose()
+    {
+        var runtime = _externalNodeRuntime;
+        _externalNodeRuntime = null;
+        runtime?.Dispose();
+    }
 
     /// <summary>All managed node instances (live view, single source of truth).</summary>
     /// <remarks>Instances are returned in dependency order: a node appears after any node it depends on.</remarks>
@@ -67,31 +77,21 @@ public sealed class PluginLoader
     public void LoadFromDirectory(string pluginDir, NodeRegistry registry)
     {
         _registry = registry;
+        _externalNodeRuntime?.Dispose();
+        _externalNodeRuntime = null;
+
         var fullDir = Path.GetFullPath(pluginDir);
         if (!Directory.Exists(fullDir))
         {
             _logger.LogError(
-                "Plugin directory not found: {Dir}. No node types are available; check that the deployment contains the plugins folder.",
-                fullDir);
-            return;
-        }
-
-        var dlls = new List<string>();
-        foreach (var dll in Directory.EnumerateFiles(fullDir, "*.dll"))
-        {
-            dlls.Add(dll);
-        }
-
-        if (dlls.Count == 0)
-        {
-            _logger.LogError(
-                "Plugin directory is empty: {Dir}. No node types are available; check that the deployment contains the plugins folder.",
+                "Plugin directory not found: {Dir}. No node types are available; check that the deployment contains the Plugins folder.",
                 fullDir);
             return;
         }
 
         var nodeTypesBefore = registry.Nodes.Count;
         var failedDlls = new List<string>();
+        var dlls = Directory.EnumerateFiles(fullDir, "*.dll").ToList();
         foreach (var dll in dlls)
         {
             try
@@ -105,26 +105,26 @@ public sealed class PluginLoader
             }
         }
 
+        var external = ExternalNodeCatalog.RegisterFromDirectory(
+            Path.Combine(fullDir, "External"), registry, _logger);
+        _externalNodeRuntime = external.Runtime;
+
         var nodeTypesLoaded = registry.Nodes.Count - nodeTypesBefore;
         if (nodeTypesLoaded == 0)
         {
-            // Every assembly failed, or the folder holds assemblies that are not plugin assemblies.
             _logger.LogError(
-                "No node types were registered from the {DllCount} plugin assemblies in {Dir} ({FailedCount} failed to load). The application has no usable components.",
-                dlls.Count, fullDir, failedDlls.Count);
+                "No node types were registered from plugin directory {Dir}; {DllCount} DLLs were present and {FailedCount} failed to load.",
+                fullDir, dlls.Count, failedDlls.Count);
             return;
         }
 
         if (failedDlls.Count > 0)
         {
-            // Some plugins failed while others work: still an error, because a workflow that needs the
-            // broken component cannot be loaded or run, and the cause must not drown in a passing run.
             _logger.LogError(
                 "Loaded {NodeTypes} node types from {Dir}, but {FailedCount} of {DllCount} plugin assemblies failed to load: {FailedDlls}",
                 nodeTypesLoaded, fullDir, failedDlls.Count, dlls.Count, string.Join(", ", failedDlls));
         }
     }
-
     /// <summary>
     /// Create a managed node instance, assign it a compact <see cref="int"/>
     /// <see cref="BaseNode.InstanceId"/> (reusing a freed id when available) and track it.
@@ -199,12 +199,20 @@ public sealed class PluginLoader
     /// <returns>True if the instance was found and removed.</returns>
     public bool DeleteNodeInstance(int instanceId)
     {
+        BaseNode? instance;
         lock (_gate)
         {
-            int idx = _instances.FindIndex(i => i.InstanceId == instanceId);
-            if (idx < 0) return false;
-            var instance = _instances[idx];
-            _instances.RemoveAt(idx);
+            instance = _instances.FirstOrDefault(i => i.InstanceId == instanceId);
+            if (instance is null) return false;
+        }
+
+        // Release the Worker-side node before recycling its instance id. Otherwise an old
+        // asynchronous cleanup could remove a newly created node that reused the same id.
+        ReleaseExternalNode(instance as ExternalNodeProxy);
+
+        lock (_gate)
+        {
+            if (!_instances.Remove(instance)) return false;
             _nodeIds.Release(instance.InstanceId);
             ReleasePins(instance);
         }
@@ -216,6 +224,13 @@ public sealed class PluginLoader
     /// <returns>True if the instance was found and removed.</returns>
     public bool DeleteNodeInstance(BaseNode instance)
     {
+        lock (_gate)
+        {
+            if (!_instances.Contains(instance)) return false;
+        }
+
+        ReleaseExternalNode(instance as ExternalNodeProxy);
+
         lock (_gate)
         {
             if (!_instances.Remove(instance)) return false;
@@ -273,13 +288,47 @@ public sealed class PluginLoader
             pin.ResetRuntimeState();
     }
 
+    /// <summary>
+    /// Start every external Worker process referenced by the current instances without
+    /// creating worker-side node instances. This makes load-stage subscription and process
+    /// startup explicit before the normal Initialize/Run lifecycle.
+    /// </summary>
+    public async Task PrepareExternalNodesAsync(CancellationToken cancellationToken = default)
+    {
+        List<ExternalNodeProxy> proxies;
+        lock (_gate)
+            proxies = _instances.OfType<ExternalNodeProxy>().ToList();
+
+        foreach (var proxy in proxies)
+            await proxy.PrepareAsync(cancellationToken).ConfigureAwait(false);
+    }
     /// <summary>Remove all managed node instances (e.g. before loading a fresh workflow).</summary>
     public void ClearInstances()
     {
+        List<ExternalNodeProxy> external;
+        lock (_gate)
+            external = _instances.OfType<ExternalNodeProxy>().ToList();
+        foreach (var proxy in external)
+            ReleaseExternalNode(proxy);
+
         lock (_gate)
         {
             _instances.Clear();
             _nodeIds.Reset();
+        }
+    }
+
+    private void ReleaseExternalNode(ExternalNodeProxy? proxy)
+    {
+        if (proxy is null)
+            return;
+        try
+        {
+            proxy.ReleaseAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to release external node #{InstanceId}.", proxy.InstanceId);
         }
     }
 
@@ -368,5 +417,3 @@ public sealed class PluginLoader
         }
     }
 }
-
-

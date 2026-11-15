@@ -1,0 +1,1 @@
+# The Worker SDK currently uses only the Python standard library.

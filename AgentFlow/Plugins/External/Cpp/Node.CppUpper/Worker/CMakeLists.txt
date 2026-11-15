@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(Node.CppUpper LANGUAGES C CXX)
+set(AGENTFLOW_SDK_C "${CMAKE_CURRENT_LIST_DIR}/../../../../../SDK/C")
+add_subdirectory("${AGENTFLOW_SDK_C}" AgentFlow_SDK_C)
+add_executable(Node.CppUpper Main.cpp)
+target_compile_features(Node.CppUpper PRIVATE cxx_std_17)
+target_include_directories(Node.CppUpper PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../../../../../SDK/Cpp/Include")
+target_link_libraries(Node.CppUpper PRIVATE AgentFlowWorker)

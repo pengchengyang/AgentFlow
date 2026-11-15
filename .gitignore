@@ -78,9 +78,9 @@ connectionstrings.json
 # ============ 本项目的插件 / Native 输出 ============
 
 # 插件构建产物
-plugins/**/bin/
-plugins/**/obj/
-plugins/**/artifacts/
+Plugins/**/bin/
+Plugins/**/obj/
+Plugins/**/artifacts/
 
 # Native AOT / C ABI 插件构建产物
 *.a
@@ -92,9 +92,13 @@ plugins/**/artifacts/
 *.pdb
 
 # 如果要提交预编译的官方/第三方插件 DLL，请用白名单放开，例如：
-# !plugins/vendor/**/*.dll
-# !plugins/runtime/**/*.so
+# !Plugins/vendor/**/*.dll
+# !Plugins/runtime/**/*.so
 !*.bat
 
 # 本机构建覆盖（不同电脑可各自选择 .NET 目标框架）
 Directory.Build.local.props
+
+# External-language runtime packages are copied into host output folders only.
+AgentFlow/Plugins/External/win-*/
+AgentFlow/Plugins/External/linux-*/
