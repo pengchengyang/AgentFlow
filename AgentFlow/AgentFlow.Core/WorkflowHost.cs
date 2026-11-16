@@ -242,11 +242,52 @@ public sealed class WorkflowHost : IWorkflowEditorHost
     }
 
     /// <summary>Load plugin assemblies from a directory and replace the registered node types.</summary>
-    public void LoadPlugins(string pluginDirectory)
+    public void LoadPlugins(string pluginDirectory) =>
+        LoadPlugins(pluginDirectory, requestedNodeTypes: null);
+
+    /// <summary>
+    /// Load only the plugin assemblies needed for the requested node types when a filter is supplied.
+    /// </summary>
+    public void LoadPlugins(
+        string pluginDirectory,
+        IReadOnlyCollection<string>? requestedNodeTypes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginDirectory);
-        _registry.Clear();
-        _pluginLoader.LoadFromDirectory(pluginDirectory, _registry);
+
+        // Build the complete catalog in a staging registry first. The live registry is only
+        // replaced after the scan finishes, so one bad package cannot expose a half-loaded palette.
+        var stagedRegistry = new NodeRegistry();
+        try
+        {
+            _pluginLoader.LoadFromDirectory(
+                pluginDirectory,
+                stagedRegistry,
+                requestedNodeTypes,
+                deferRuntimeCommit: true);
+
+            if (stagedRegistry.Nodes.Count == 0 && _registry.Nodes.Count > 0)
+            {
+                _pluginLoader.DiscardPendingExternalRuntime();
+                _logger.LogWarning(
+                    "Plugin loading produced no node types; keeping the previous catalog from {PluginDirectory}.",
+                    pluginDirectory);
+            }
+            else
+            {
+                _registry.ReplaceWith(stagedRegistry.Nodes);
+                _pluginLoader.CommitExternalRuntime();
+            }
+        }
+        catch
+        {
+            _pluginLoader.DiscardPendingExternalRuntime();
+            throw;
+        }
+        finally
+        {
+            _pluginLoader.UseRegistry(_registry);
+        }
+
         _nodeManager.InvalidateInitialization();
     }
 
@@ -428,6 +469,12 @@ public sealed class WorkflowHost : IWorkflowEditorHost
     public void LoadWorkflowJson(string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
+
+        // Preflight the complete document before touching the current graph. The temporary
+        // graph validates node types, saved pin tables, and connection endpoints without
+        // mutating the live editor or plugin instance list.
+        _ = EditorJsonLoader.FromJson(json, _registry);
+
         _nodeManager.InvalidateInitialization();
         _graph.Clear();
         try
@@ -486,6 +533,35 @@ public sealed class WorkflowHost : IWorkflowEditorHost
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         LoadWorkflowJson(ReadWorkflowJsonFile(path));
+    }
+
+    /// <summary>Read the unique node type names used by a workflow file without loading the graph.</summary>
+    public static IReadOnlyCollection<string> ReadWorkflowNodeTypeNames(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        using var document = JsonDocument.Parse(ReadWorkflowJsonFile(path));
+        var root = document.RootElement;
+        RequireKind(root, JsonValueKind.Object, "workflow document");
+
+        var nodeTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nodes = ReadArray(root, "nodes", "Nodes");
+        foreach (var nodeElement in nodes.EnumerateArray())
+        {
+            RequireKind(nodeElement, JsonValueKind.Object, "node");
+            var logicElement = nodeElement.TryGetProperty("logic", out var logic) ||
+                               nodeElement.TryGetProperty("Logic", out logic)
+                ? logic
+                : throw new InvalidDataException("A workflow node is missing logic.");
+            RequireKind(logicElement, JsonValueKind.Object, "node logic");
+
+            var typeName = ReadString(logicElement, "name", "Name");
+            if (!string.IsNullOrWhiteSpace(typeName))
+            {
+                nodeTypes.Add(typeName);
+            }
+        }
+
+        return nodeTypes.ToArray();
     }
 
     private void LoadNode(JsonElement nodeElement)

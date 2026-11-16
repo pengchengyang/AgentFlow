@@ -8,7 +8,7 @@ using System.Text.Json;
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
-using AgentFlow.Shared.RTS.Broadcasts;
+using AgentFlow.Shared.RTS.CFG.Broadcasts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.UserSettings;
@@ -280,7 +280,7 @@ public sealed class UserSettingsNode : BaseNode
         try
         {
             await (_topicBus ?? TopicBus.Instance).PublishAsync(
-                RTSBroadcastSubscriptions.LauncherSettings,
+                CFGBroadcastSubscriptions.CFGLauncherSettings,
                 BroadcastTopicMessage.FromSampleListDictionary(sampleLists),
                 ct: ct).ConfigureAwait(false);
 

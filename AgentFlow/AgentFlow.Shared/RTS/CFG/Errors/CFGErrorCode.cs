@@ -1,10 +1,10 @@
-namespace AgentFlow.Shared.RTS.Errors;
+namespace AgentFlow.Shared.RTS.CFG.Errors;
 
 /// <summary>
 /// Shared RTS business error codes. Zero always means success; positive values identify failures.
 /// Node-specific ranges keep independently owned errors from colliding.
 /// </summary>
-public enum RTSErrorCode
+public enum CFGErrorCode
 {
     Success = 0,
 

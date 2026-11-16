@@ -5,7 +5,7 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
-using AgentFlow.Shared.RTS.Broadcasts;
+using AgentFlow.Shared.RTS.CFG.Broadcasts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
@@ -134,11 +134,11 @@ public sealed class PassFailTotalYieldNode : BaseNode
 
         _resetSubscription?.Dispose();
         _resetSubscription = (_topicBus ?? TopicBus.Instance).Subscribe(
-            PassFailTotalYieldBroadcasts.Reset,
+            CFGPassFailTotalYieldBroadcasts.CFGReset,
             OnResetBroadcast);
         _logger?.LogTrace(
             "PassFailTotalYield subscribed to reset broadcasts on {Topic}.",
-            PassFailTotalYieldBroadcasts.Reset);
+            CFGPassFailTotalYieldBroadcasts.CFGReset);
     }
 
     public override void ReceiveSample(BasePin pin, Sample? value)
@@ -439,14 +439,14 @@ public sealed class PassFailTotalYieldNode : BaseNode
         try
         {
             await (_topicBus ?? TopicBus.Instance).PublishAsync(
-                RTSBroadcastSubscriptions.PassFailTotalYield,
+                CFGBroadcastSubscriptions.CFGPassFailTotalYield,
                 BroadcastTopicMessage.FromSampleDictionary(samplesByKey),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
             _logger?.LogTrace(
                 "PassFailTotalYield broadcast {Count} values on {Topic}: P={Pass}, F={Fail}, T={Total}, Y={Yield}.",
                 samplesByKey.Count,
-                RTSBroadcastSubscriptions.PassFailTotalYield,
+                CFGBroadcastSubscriptions.CFGPassFailTotalYield,
                 snapshot.PassTotal,
                 snapshot.FailTotal,
                 snapshot.Total,
@@ -457,7 +457,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
             _logger?.LogError(
                 ex,
                 "PassFailTotalYield failed to broadcast snapshot on {Topic}: {Message}",
-                RTSBroadcastSubscriptions.PassFailTotalYield,
+                CFGBroadcastSubscriptions.CFGPassFailTotalYield,
                 ex.Message);
         }
     }

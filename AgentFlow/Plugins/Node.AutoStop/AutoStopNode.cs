@@ -5,7 +5,7 @@
 // -----------------------------------------------------------------------
 
 using AgentFlow.Contracts;
-using AgentFlow.Shared.RTS.Broadcasts;
+using AgentFlow.Shared.RTS.CFG.Broadcasts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
@@ -108,13 +108,13 @@ public sealed class AutoStopNode : BaseNode
             sample.SetValue(ExitPayload);
 
             await topicBus.PublishAsync(
-                RTSBroadcastSubscriptions.AutoStopExit,
+                CFGBroadcastSubscriptions.CFGAutoStopExit,
                 BroadcastTopicMessage.FromSample(sample),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
             _logger?.LogTrace(
                 "AutoStop broadcast the exit signal on {Topic}.",
-                RTSBroadcastSubscriptions.AutoStopExit);
+                CFGBroadcastSubscriptions.CFGAutoStopExit);
 
             if (stopRequestSink is not null)
             {
@@ -132,7 +132,7 @@ public sealed class AutoStopNode : BaseNode
             _logger?.LogError(
                 ex,
                 "AutoStop failed to broadcast the exit signal on {Topic}.",
-                RTSBroadcastSubscriptions.AutoStopExit);
+                CFGBroadcastSubscriptions.CFGAutoStopExit);
         }
     }
 

@@ -92,6 +92,7 @@ public sealed class Loc : ObservableObject
         ["Clear"] = ("Clear", "清空"),
         ["RunIdFilter"] = ("Run ID filter...", "按 Run ID 筛选..."),
         ["ClearRunIdFilter"] = ("Clear Run ID filter", "清除 Run ID 筛选"),
+        ["ClearSearch"] = ("Clear search", "清除搜索"),
         ["SearchLogs"] = ("Search logs...", "搜索日志..."),
         ["InstanceCountTip"] = ("Instance count (1-50)", "实例数量（1-50）"),
         ["BatchAddTooltip"] = ("Add a blank workflow row.", "添加一个空白工作流行。"),

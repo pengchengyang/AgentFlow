@@ -57,10 +57,15 @@
 								Command="{Binding ClearRunIdFilterCommand}"
 								ToolTip.Tip="{Binding [ClearRunIdFilter], Source={x:Static s:Loc.Instance}}"/>
 					</StackPanel>
-					<TextBox Classes="logsearch"
-							 PlaceholderText="{Binding [SearchLogs], Source={x:Static s:Loc.Instance}}"
-							 Text="{Binding SearchText, Mode=TwoWay}" FontSize="11"
-							 VerticalAlignment="Center" Width="140" Height="26" MinHeight="0" Padding="6,0"/>
+					<StackPanel Orientation="Horizontal" Spacing="4">
+						<TextBox Classes="logsearch"
+								 PlaceholderText="{Binding [SearchLogs], Source={x:Static s:Loc.Instance}}"
+								 Text="{Binding SearchText, Mode=TwoWay}" FontSize="11"
+								 VerticalAlignment="Center" Width="140" Height="26" MinHeight="0" Padding="6,0"/>
+						<Button Classes="ghost" Content="×" FontSize="11" Padding="6,2"
+								Command="{Binding ClearSearchCommand}"
+								ToolTip.Tip="{Binding [ClearSearch], Source={x:Static s:Loc.Instance}}"/>
+					</StackPanel>
 					<Button Classes="ghost"
 							Content="{Binding [Clear], Source={x:Static s:Loc.Instance}}"
 							FontSize="11" Padding="8,2"
@@ -116,9 +121,9 @@
 						<DataTemplate x:DataType="s:UiLogEntry">
 							<Grid ColumnDefinitions="156,48,96,190,*" Margin="0,0">
 								<TextBlock Text="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd HH:mm:ss.fff}}" Foreground="{DynamicResource BrushTextTertiary}" VerticalAlignment="Center"/>
-								<Border Grid.Column="1" CornerRadius="3" Padding="6,1" HorizontalAlignment="Center" VerticalAlignment="Center"
+								<Border Grid.Column="1" Width="44" Height="18" CornerRadius="3" Padding="0" HorizontalAlignment="Center" VerticalAlignment="Center"
 										Background="{Binding Level, Converter={StaticResource LevelBg}}">
-									<TextBlock Text="{Binding Level}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+									<TextBlock Text="{Binding Level}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Stretch" VerticalAlignment="Center" TextAlignment="Center"
 											   Foreground="{Binding Level, Converter={StaticResource LevelFg}}"/>
 								</Border>
 								<TextBlock Grid.Column="2" Text="{Binding Source}" Foreground="{DynamicResource BrushTextTertiary}" FontSize="10"

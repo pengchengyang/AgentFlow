@@ -35,7 +35,7 @@ Each received sample increments exactly one counter on the matching Slot.
 
 GUI hosts request a selective reset by publishing to:
 
-`PassFailTotalYieldBroadcasts.Reset` (`Pass.Fail.Total.Yield.Reset`)
+`CFGPassFailTotalYieldBroadcasts.CFGReset` (`Pass.Fail.Total.Yield.Reset.70CBA995-4A34-4CC8-8789-F0E29F5058C0`)
 
 The payload must be a `BroadcastTopicMessage.FromSampleDictionary(...)` containing one
 `StringSample` per requested slot. Keys are `A`, `B`, `C`, `D`, or `F`, and every value
@@ -60,7 +60,7 @@ After a valid request, the node:
 - Recalculates per-slot Yield and aggregate `P`, `F`, `T`, and `Y`.
 - Atomically rewrites `Yield.ini`.
 - Updates in-memory state only after the file save succeeds.
-- Publishes the complete latest snapshot on `Pass.Fail.Total.Yield`.
+- Publishes the complete latest snapshot on `Pass.Fail.Total.Yield.0314C9D4-964F-4520-AC02-8E1A8729754A`.
 
 The Reset subscription is created during `Initialize` and remains active until `Shutdown`,
 independent of `Run` and `Stop`.
@@ -122,8 +122,8 @@ using midpoint-away-from-zero rounding. A zero denominator produces `0.0`.
 
 ## Broadcast
 
-- Output topic: `RTSBroadcastSubscriptions.PassFailTotalYield` (`Pass.Fail.Total.Yield`)
-- Reset input topic: `PassFailTotalYieldBroadcasts.Reset` (`Pass.Fail.Total.Yield.Reset`)
+- Output topic: `CFGBroadcastSubscriptions.CFGPassFailTotalYield` (`Pass.Fail.Total.Yield.0314C9D4-964F-4520-AC02-8E1A8729754A`)
+- Reset input topic: `CFGPassFailTotalYieldBroadcasts.CFGReset` (`Pass.Fail.Total.Yield.Reset.70CBA995-4A34-4CC8-8789-F0E29F5058C0`)
 - Payload: `BroadcastTopicMessage.FromSampleDictionary`
 - Keys:
   - `slotA_Pass`, `slotA_Fail`: `Int64Sample`

@@ -25,8 +25,8 @@ When the exact input is received, the node publishes one `StringSample` with thi
 {"Request":"Exit"}
 ```
 
-It is sent on `RTSBroadcastSubscriptions.AutoStopExit`, whose wire value is
-`Workflow.AutoStop.Exit`. The node does not stop the workflow itself; subscribers decide
+It is sent on `CFGBroadcastSubscriptions.CFGAutoStopExit`, whose wire value is
+`Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8`. The node does not stop the workflow itself; subscribers decide
 how to handle the exit signal.
 
 ## Contract Surface

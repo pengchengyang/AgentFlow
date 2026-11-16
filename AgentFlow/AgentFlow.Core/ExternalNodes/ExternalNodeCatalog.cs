@@ -19,7 +19,8 @@ public static class ExternalNodeCatalog
     public static ExternalNodeCatalogResult RegisterFromDirectory(
         string externalDirectory,
         NodeRegistry registry,
-        ILogger logger)
+        ILogger logger,
+        IReadOnlyCollection<string>? requestedNodeTypes = null)
     {
         if (!Directory.Exists(externalDirectory))
             return new ExternalNodeCatalogResult(0, null);
@@ -48,41 +49,75 @@ public static class ExternalNodeCatalog
             runtimeIdentifier,
             platformDirectory);
 
-        ExternalNodeRuntime? runtime = null;
-        var registered = 0;
-        foreach (var packageDirectory in packageDirectories)
+        var loadedPackages = new ExternalPackageLoadResult[packageDirectories.Count];
+        Parallel.For(0, packageDirectories.Count, index =>
         {
+            var packageDirectory = packageDirectories[index];
             try
             {
                 var definitions = ExternalManifestLoader.LoadPackage(packageDirectory);
-                runtime ??= new ExternalNodeRuntime(logger);
-                foreach (var definition in definitions)
-                {
-                    registry.Register(new NodeDescriptor(
-                        definition.NodeType.NodeType,
-                        definition.NodeType.DisplayName,
-                        definition.NodeType.Category,
-                        typeof(ExternalNodeProxy),
-                        definition.InputPins,
-                        definition.OutputPins,
-                        definition.Parameters,
-                        () => new ExternalNodeProxy(definition, runtime),
-                        definition.PackageMetadata,
-                        definition));
-                    registered++;
-                    logger.LogInformation(
-                        "Registered external node {NodeType} from package {PackageId} {Version}.",
-                        definition.NodeType.NodeType,
-                        definition.PackageId,
-                        definition.Manifest.Version);
-                }
+                loadedPackages[index] = new ExternalPackageLoadResult(
+                    packageDirectory,
+                    definitions,
+                    null);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to load external node Package: {PackageDirectory}", packageDirectory);
+                loadedPackages[index] = new ExternalPackageLoadResult(
+                    packageDirectory,
+                    Array.Empty<ExternalNodeDefinition>(),
+                    ex);
+            }
+        });
+
+        var requestedTypeSet = requestedNodeTypes is null
+            ? null
+            : new HashSet<string>(requestedNodeTypes, StringComparer.OrdinalIgnoreCase);
+        ExternalNodeRuntime? runtime = null;
+        var registered = 0;
+        foreach (var package in loadedPackages.OrderBy(item => item.PackageDirectory, StringComparer.OrdinalIgnoreCase))
+        {
+            if (package.Error is not null)
+            {
+                logger.LogError(
+                    package.Error,
+                    "Failed to load external node Package: {PackageDirectory}",
+                    package.PackageDirectory);
+                continue;
+            }
+
+            foreach (var definition in package.Definitions)
+            {
+                if (requestedTypeSet is not null && !requestedTypeSet.Contains(definition.NodeType.NodeType))
+                    continue;
+
+                runtime ??= new ExternalNodeRuntime(logger);
+                registry.Register(new NodeDescriptor(
+                    definition.NodeType.NodeType,
+                    definition.NodeType.DisplayName,
+                    definition.NodeType.Category,
+                    typeof(ExternalNodeProxy),
+                    definition.InputPins,
+                    definition.OutputPins,
+                    definition.Parameters,
+                    () => new ExternalNodeProxy(definition, runtime),
+                    definition.PackageMetadata,
+                    definition));
+                registered++;
+                logger.LogInformation(
+                    "Registered external node {NodeType} from package {PackageId} {Version}.",
+                    definition.NodeType.NodeType,
+                    definition.PackageId,
+                    definition.Manifest.Version);
             }
         }
 
         return new ExternalNodeCatalogResult(registered, registered > 0 ? runtime : null);
     }
+
+    private sealed record ExternalPackageLoadResult(
+        string PackageDirectory,
+        IReadOnlyList<ExternalNodeDefinition> Definitions,
+        Exception? Error);
+
 }

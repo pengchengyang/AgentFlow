@@ -5,6 +5,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -17,12 +18,14 @@ namespace AgentFlow.Contracts;
 public static class WorkflowFileCrypto
 {
     public const string RwExtension = ".rw";
+    public const string BackupExtension = ".bak";
 
     private const int NonceSize = 12;
     private const int TagSize = 16;
     private static readonly byte[] Magic = Encoding.ASCII.GetBytes("RW01");
     private static readonly byte[] Key = SHA256.HashData(
         Encoding.UTF8.GetBytes("AgentFlow RW Workflow Encryption v1"));
+    private static readonly ConcurrentDictionary<string, object> PathGates = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Return true when <paramref name="path"/> uses the encrypted workflow extension.</summary>
     public static bool HasRwExtension(string path) =>
@@ -87,44 +90,81 @@ public static class WorkflowFileCrypto
 
     /// <summary>
     /// Read a workflow file as JSON. Encrypted .rw files are decrypted; legacy .json files
-    /// remain readable for compatibility and developer conversion.
+    /// remain readable for compatibility and developer conversion. When the primary file is
+    /// missing, the last atomically-created backup is used as a recovery point.
     /// </summary>
     public static string ReadWorkflowJsonFile(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!File.Exists(path))
-            throw new FileNotFoundException("Workflow file not found.", path);
+        var primaryPath = path;
+        if (!File.Exists(primaryPath))
+        {
+            var backupPath = GetBackupPath(primaryPath);
+            if (File.Exists(backupPath))
+                primaryPath = backupPath;
+            else
+                throw new FileNotFoundException("Workflow file not found.", path);
+        }
 
-        var payload = File.ReadAllBytes(path);
-        return HasRwExtension(path) || IsEncrypted(payload)
+        var payload = File.ReadAllBytes(primaryPath);
+        return HasRwExtension(primaryPath) || IsEncrypted(payload)
             ? Decrypt(payload)
             : Encoding.UTF8.GetString(payload);
     }
 
-    /// <summary>Write workflow JSON to disk as .rw, or as plain JSON when explicitly requested.</summary>
+    /// <summary>
+    /// Write workflow JSON to disk as .rw, or as plain JSON when explicitly requested.
+    /// Existing destinations are replaced atomically and the previous file is retained as
+    /// a sibling .bak recovery copy. Serialization uses a unique temporary file and cleans
+    /// it up on every failure path.
+    /// </summary>
     public static void WriteWorkflowFile(string path, string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentException.ThrowIfNullOrEmpty(json);
 
-        if (!HasRwExtension(path))
-        {
-            WriteAtomicText(path, json);
-            return;
-        }
-
-        var payload = Encrypt(json);
-        var temp = path + ".tmp";
-        File.WriteAllBytes(temp, payload);
-        File.Move(temp, path, overwrite: true);
+        var bytes = HasRwExtension(path) ? Encrypt(json) : Encoding.UTF8.GetBytes(json);
+        WriteAtomicBytes(path, bytes);
     }
 
-    private static void WriteAtomicText(string path, string text)
+    private static string GetBackupPath(string path) => path + BackupExtension;
+
+    private static void WriteAtomicBytes(string path, byte[] payload)
     {
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, text);
-        File.Move(temp, path, overwrite: true);
+        var fullPath = Path.GetFullPath(path);
+        var gate = PathGates.GetOrAdd(fullPath, static _ => new object());
+        lock (gate)
+        {
+            var directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+
+            var tempPath = Path.Combine(
+                directory ?? Directory.GetCurrentDirectory(),
+                $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+            var backupPath = GetBackupPath(fullPath);
+
+            try
+            {
+                using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    stream.Write(payload);
+                    stream.Flush(flushToDisk: true);
+                }
+
+                if (File.Exists(fullPath))
+                    File.Replace(tempPath, fullPath, backupPath, ignoreMetadataErrors: true);
+                else
+                    File.Move(tempPath, fullPath);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); }
+                    catch { /* Best-effort cleanup; the unique temp name is safe to leave behind. */ }
+                }
+            }
+        }
     }
 }
-
-

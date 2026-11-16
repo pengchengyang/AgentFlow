@@ -192,6 +192,28 @@ public sealed class NodeRegistry
     public void Clear() => _nodes.Clear();
 
     /// <summary>
+    /// Replace the registry contents only after a complete staged load has finished. The
+    /// caller must supply a duplicate-free set so a failed plugin scan cannot expose a
+    /// half-populated node catalog.
+    /// </summary>
+    public void ReplaceWith(IEnumerable<NodeDescriptor> descriptors)
+    {
+        ArgumentNullException.ThrowIfNull(descriptors);
+        var staged = new Dictionary<string, NodeDescriptor>(StringComparer.OrdinalIgnoreCase);
+        foreach (var descriptor in descriptors)
+        {
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (!staged.TryAdd(descriptor.Name, descriptor))
+                throw new InvalidOperationException(
+                    $"Duplicate node type '{descriptor.Name}' in staged plugin registry.");
+        }
+
+        _nodes.Clear();
+        foreach (var pair in staged)
+            _nodes.Add(pair.Key, pair.Value);
+    }
+
+    /// <summary>
     /// Create a node instance and make sure it owns every pin declared by its descriptor. The
     /// plugin loader does this defensively for GUI-created instances; headless callers (CLI /
     /// WorkflowEngine) go through the registry directly and must get the same pin set.

@@ -5,6 +5,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
@@ -28,11 +29,14 @@ public sealed class PluginLoader : IDisposable
 {
     private readonly ILogger _logger;
     private readonly List<AssemblyLoadContext> _contexts = new();
+    private readonly HashSet<string> _loadedAssemblyPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<BaseNode> _instances = new();
     private readonly object _gate = new();
     private readonly NodeIdPool _nodeIds = new();
+    private static readonly TimeSpan ExternalReleaseTimeout = TimeSpan.FromSeconds(3);
     private NodeRegistry? _registry;
     private ExternalNodeRuntime? _externalNodeRuntime;
+    private ExternalNodeRuntime? _pendingExternalNodeRuntime;
 
     /// <summary>
     /// Assemblies that must resolve from the host's default ALC. Plugins may reference these
@@ -50,6 +54,26 @@ public sealed class PluginLoader : IDisposable
 
     public PluginLoader(ILogger logger) => _logger = logger;
 
+    /// <summary>Bind the loader to the live registry after a staged plugin load is committed.</summary>
+    internal void UseRegistry(NodeRegistry registry) =>
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+
+    /// <summary>Commit the staged external Worker runtime after the node catalog is swapped.</summary>
+    internal void CommitExternalRuntime()
+    {
+        var previous = _externalNodeRuntime;
+        _externalNodeRuntime = _pendingExternalNodeRuntime;
+        _pendingExternalNodeRuntime = null;
+        previous?.Dispose();
+    }
+
+    /// <summary>Discard a staged external Worker runtime when the staged catalog is not committed.</summary>
+    internal void DiscardPendingExternalRuntime()
+    {
+        var pending = _pendingExternalNodeRuntime;
+        _pendingExternalNodeRuntime = null;
+        pending?.Dispose();
+    }
     /// <summary>Release the external Worker runtime while leaving loaded C# assemblies intact.</summary>
     public void Dispose()
     {
@@ -74,11 +98,18 @@ public sealed class PluginLoader : IDisposable
     /// is unusable (empty palette, an empty workflow cannot run, and a saved workflow cannot be
     /// restored), so this must be visible in the log rather than a silent no-op.
     /// </remarks>
-    public void LoadFromDirectory(string pluginDir, NodeRegistry registry)
+    public void LoadFromDirectory(
+        string pluginDir,
+        NodeRegistry registry,
+        IReadOnlyCollection<string>? requestedNodeTypes = null,
+        bool deferRuntimeCommit = false)
     {
         _registry = registry;
-        _externalNodeRuntime?.Dispose();
-        _externalNodeRuntime = null;
+        if (requestedNodeTypes is null && !deferRuntimeCommit)
+        {
+            _externalNodeRuntime?.Dispose();
+            _externalNodeRuntime = null;
+        }
 
         var fullDir = Path.GetFullPath(pluginDir);
         if (!Directory.Exists(fullDir))
@@ -92,30 +123,58 @@ public sealed class PluginLoader : IDisposable
         var nodeTypesBefore = registry.Nodes.Count;
         var failedDlls = new List<string>();
         var dlls = Directory.EnumerateFiles(fullDir, "*.dll").ToList();
-        foreach (var dll in dlls)
+
+        if (requestedNodeTypes is null)
         {
-            try
-            {
-                LoadAssembly(Path.GetFullPath(dll), registry);
-            }
-            catch (Exception ex)
-            {
-                failedDlls.Add(Path.GetFileName(dll));
-                _logger.LogError(ex, "Failed to load plugin: {Dll}", dll);
-            }
+            LoadAssemblies(dlls, registry, failedDlls);
+        }
+        else
+        {
+            LoadAssembliesForNodeTypes(dlls, registry, requestedNodeTypes, failedDlls);
         }
 
         var external = ExternalNodeCatalog.RegisterFromDirectory(
-            Path.Combine(fullDir, "External"), registry, _logger);
-        _externalNodeRuntime = external.Runtime;
+            Path.Combine(fullDir, "External"),
+            registry,
+            _logger,
+            requestedNodeTypes);
+        if (deferRuntimeCommit)
+        {
+            _pendingExternalNodeRuntime = external.Runtime;
+        }
+        else if (external.Runtime is not null)
+        {
+            _externalNodeRuntime = external.Runtime;
+        }
+
+        if (requestedNodeTypes is not null)
+        {
+            LoadRemainingAssembliesForMissingNodeTypes(dlls, registry, requestedNodeTypes, failedDlls);
+        }
 
         var nodeTypesLoaded = registry.Nodes.Count - nodeTypesBefore;
         if (nodeTypesLoaded == 0)
         {
+            if (requestedNodeTypes is { Count: 0 })
+                return;
+
             _logger.LogError(
                 "No node types were registered from plugin directory {Dir}; {DllCount} DLLs were present and {FailedCount} failed to load.",
                 fullDir, dlls.Count, failedDlls.Count);
             return;
+        }
+
+        if (requestedNodeTypes is not null)
+        {
+            var missing = requestedNodeTypes
+                .Where(typeName => !registry.Contains(typeName))
+                .ToArray();
+            if (missing.Length > 0)
+            {
+                _logger.LogError(
+                    "On-demand plugin loading could not register requested node type(s): {NodeTypes}.",
+                    string.Join(", ", missing));
+            }
         }
 
         if (failedDlls.Count > 0)
@@ -125,6 +184,113 @@ public sealed class PluginLoader : IDisposable
                 nodeTypesLoaded, fullDir, failedDlls.Count, dlls.Count, string.Join(", ", failedDlls));
         }
     }
+
+    private void LoadAssemblies(
+        IReadOnlyList<string> dlls,
+        NodeRegistry registry,
+        List<string> failedDlls)
+    {
+        foreach (var dll in dlls)
+            TryLoadAssembly(dll, registry, failedDlls);
+    }
+
+    private void LoadAssembliesForNodeTypes(
+        IReadOnlyList<string> dlls,
+        NodeRegistry registry,
+        IReadOnlyCollection<string> requestedNodeTypes,
+        List<string> failedDlls)
+    {
+        var requestedKeys = requestedNodeTypes
+            .Select(NormalizeNodeKey)
+            .Where(key => key.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+        var candidates = ScanAssemblyCandidates(dlls)
+            .Where(candidate => requestedKeys.Contains(candidate.NodeKey))
+            .ToArray();
+
+        _logger.LogInformation(
+            "On-demand plugin prescan selected {CandidateCount}/{DllCount} managed plugin assemblies for {NodeTypeCount} requested node type(s).",
+            candidates.Length,
+            dlls.Count,
+            requestedNodeTypes.Count);
+
+        foreach (var candidate in candidates)
+            TryLoadAssembly(candidate.Path, registry, failedDlls);
+    }
+
+    private void LoadRemainingAssembliesForMissingNodeTypes(
+        IReadOnlyList<string> dlls,
+        NodeRegistry registry,
+        IReadOnlyCollection<string> requestedNodeTypes,
+        List<string> failedDlls)
+    {
+        if (requestedNodeTypes.All(registry.Contains))
+            return;
+
+        foreach (var dll in dlls)
+        {
+            if (requestedNodeTypes.All(registry.Contains))
+                break;
+
+            var fullPath = Path.GetFullPath(dll);
+            if (failedDlls.Contains(Path.GetFileName(dll), StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            TryLoadAssembly(fullPath, registry, failedDlls);
+        }
+    }
+
+    private void TryLoadAssembly(string dll, NodeRegistry registry, List<string> failedDlls)
+    {
+        var fullPath = Path.GetFullPath(dll);
+        if (_loadedAssemblyPaths.Contains(fullPath))
+            return;
+
+        try
+        {
+            LoadAssembly(fullPath, registry);
+            _loadedAssemblyPaths.Add(fullPath);
+        }
+        catch (Exception ex)
+        {
+            var fileName = Path.GetFileName(dll);
+            if (!failedDlls.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                failedDlls.Add(fileName);
+            _logger.LogError(ex, "Failed to load plugin: {Dll}", dll);
+        }
+    }
+
+    private static IReadOnlyList<PluginAssemblyCandidate> ScanAssemblyCandidates(
+        IReadOnlyList<string> dlls)
+    {
+        var candidates = new ConcurrentBag<PluginAssemblyCandidate>();
+        Parallel.ForEach(dlls, dll =>
+        {
+            try
+            {
+                var assemblyName = AssemblyName.GetAssemblyName(Path.GetFullPath(dll));
+                var key = NormalizeNodeKey(assemblyName.Name ?? Path.GetFileNameWithoutExtension(dll));
+                if (key.StartsWith("node", StringComparison.Ordinal))
+                    key = key[4..];
+                if (key.Length > 0)
+                    candidates.Add(new PluginAssemblyCandidate(Path.GetFullPath(dll), key));
+            }
+            catch
+            {
+                // The full loading pass reports malformed assemblies when they are actually loaded.
+            }
+        });
+
+        return candidates
+            .OrderBy(candidate => candidate.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string NormalizeNodeKey(string value) =>
+        new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+    private sealed record PluginAssemblyCandidate(string Path, string NodeKey);
+
     /// <summary>
     /// Create a managed node instance, assign it a compact <see cref="int"/>
     /// <see cref="BaseNode.InstanceId"/> (reusing a freed id when available) and track it.
@@ -318,13 +484,38 @@ public sealed class PluginLoader : IDisposable
         }
     }
 
+    /// <summary>
+    /// Release an external node with a bounded wait. If the Worker does not cooperate within
+    /// the timeout, its process tree is terminated by process id and the failure is logged.
+    /// </summary>
     private void ReleaseExternalNode(ExternalNodeProxy? proxy)
     {
         if (proxy is null)
             return;
+
+        var releaseTask = proxy.ReleaseAsync();
         try
         {
-            proxy.ReleaseAsync().GetAwaiter().GetResult();
+            releaseTask.WaitAsync(ExternalReleaseTimeout).GetAwaiter().GetResult();
+        }
+        catch (TimeoutException)
+        {
+            var processId = proxy.WorkerProcessId;
+            var killed = proxy.ForceKillWorkerProcess();
+            _logger.LogError(
+                "External node #{InstanceId} did not release within {TimeoutMs} ms; forced worker termination pid={Pid} result={Killed}.",
+                proxy.InstanceId,
+                ExternalReleaseTimeout.TotalMilliseconds,
+                processId,
+                killed);
+            _ = releaseTask.ContinueWith(
+                task => _logger.LogError(
+                    task.Exception,
+                    "External node #{InstanceId} release failed after forced worker termination.",
+                    proxy.InstanceId),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
         catch (Exception ex)
         {
@@ -352,6 +543,7 @@ public sealed class PluginLoader : IDisposable
             catch (Exception ex) { _logger.LogError(ex, "Failed to unload plugin context: {Name}", context.Name); }
         }
         _contexts.Clear();
+        _loadedAssemblyPaths.Clear();
         _registry?.Clear();
         _registry = null;
     }

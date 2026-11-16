@@ -21,7 +21,7 @@ are provided by the workspace libraries.
 `Initialize` captures the node logger, loads and parses the fixed INI file, caches the
 parsed sections on the node instance, publishes the parsed settings JSON through
 `output_string_settings` when connected, and publishes a complete initialization snapshot to
-`FACT.Launcher.Settings`. The snapshot is a `SampleListsByKey` dictionary whose outer keys
+`FACT.Launcher.Settings.48D865B9-AB18-4DD0-A7A8-0F79D63EEDBB`. The snapshot is a `SampleListsByKey` dictionary whose outer keys
 are INI section names and whose values are ordered `StringSample` lists. A GUI must subscribe
 before workflow startup to receive this one-shot initialization broadcast.
 
@@ -74,7 +74,7 @@ original casing and order.
 ## Initialization Broadcast Contract
 
 `Initialize` publishes `BroadcastTopicMessage.FromSampleListDictionary(...)` on
-`RTSBroadcastSubscriptions.LauncherSettings`. For example, the following INI content:
+`CFGBroadcastSubscriptions.CFGLauncherSettings`. For example, the following INI content:
 
 ```ini
 [CMD]

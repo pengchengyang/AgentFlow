@@ -6,7 +6,7 @@
 
 using System.Text.Json;
 using AgentFlow.Contracts;
-using AgentFlow.Shared.RTS.Broadcasts;
+using AgentFlow.Shared.RTS.CFG.Broadcasts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
@@ -371,7 +371,7 @@ public sealed class FACTLauncherNode : BaseNode
         try
         {
             await (_topicBus ?? TopicBus.Instance).PublishAsync(
-                RTSBroadcastSubscriptions.LauncherSettings,
+                CFGBroadcastSubscriptions.CFGLauncherSettings,
                 BroadcastTopicMessage.FromSamples(samples),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
@@ -465,7 +465,7 @@ public sealed class FACTLauncherNode : BaseNode
         try
         {
             await (_topicBus ?? TopicBus.Instance).PublishAsync(
-                RTSBroadcastSubscriptions.LauncherCommand,
+                CFGBroadcastSubscriptions.CFGLauncherCommand,
                 BroadcastTopicMessage.FromSampleDictionary(commandSamples),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
@@ -473,7 +473,7 @@ public sealed class FACTLauncherNode : BaseNode
                 "FACTLauncher {DisplayName} broadcast command for position {Position} on {Topic}: {Command}",
                 DisplayName,
                 position,
-                RTSBroadcastSubscriptions.LauncherCommand,
+                CFGBroadcastSubscriptions.CFGLauncherCommand,
                 commandSample.StringValue);
         }
         catch (Exception ex)
@@ -483,7 +483,7 @@ public sealed class FACTLauncherNode : BaseNode
                 "FACTLauncher {DisplayName} failed to broadcast command for position {Position} on {Topic}: {Message}",
                 DisplayName,
                 position,
-                RTSBroadcastSubscriptions.LauncherCommand,
+                CFGBroadcastSubscriptions.CFGLauncherCommand,
                 ex.Message);
         }
     }

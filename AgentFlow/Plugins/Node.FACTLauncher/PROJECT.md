@@ -110,7 +110,7 @@ produce no settings broadcast.
 
 ## Launcher Settings Broadcast
 
-The launcher publishes `RTSBroadcastSubscriptions.LauncherSettings` using
+The launcher publishes `CFGBroadcastSubscriptions.CFGLauncherSettings` using
 `BroadcastTopicMessage.FromSamples(...)` with samples in this order:
 
 | Index | Sample key | Value |
@@ -120,14 +120,14 @@ The launcher publishes `RTSBroadcastSubscriptions.LauncherSettings` using
 | `2` | `SLOT` | `_slot` |
 | `3` | `PORTHUB` | `_porthub` |
 
-`Node.AutoStop` owns the `RTSBroadcastSubscriptions.LauncherStop` broadcast.
+`Node.AutoStop` owns the `CFGBroadcastSubscriptions.CFGLauncherStop` broadcast.
 
 ## Launcher Command Broadcast
 
 When `SendCommand` successfully dispatches the full FACT command to
 `output_string_cmd`, the launcher publishes a keyed Sample dictionary to:
 
-`RTSBroadcastSubscriptions.LauncherCommand` (`FACT.Launcher.Command`)
+`CFGBroadcastSubscriptions.CFGLauncherCommand` (`FACT.Launcher.Command.C3578D71-A049-43B8-AFE1-2482C1D0FFDD`)
 
 The payload is:
 
@@ -142,7 +142,7 @@ position without relying on subscription order.
 
 The broadcast is sent only when `SendSampleWithDispatchLog(...)` returns `true`. If the
 command output pin is disconnected or dispatch fails, GUI consumers receive no command
-broadcast. GUI handlers should subscribe to `FACT.Launcher.Command` and read
+broadcast. GUI handlers should subscribe to `FACT.Launcher.Command.C3578D71-A049-43B8-AFE1-2482C1D0FFDD` and read
 `BroadcastTopicMessage.SamplesByKey`.
 
 ## JSON Key/Value Parsing

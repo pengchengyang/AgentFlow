@@ -51,6 +51,12 @@ public sealed class ExternalNodeProxy : BaseNode
     public override string Category => _definition.NodeType.Category;
     public ExternalNodeDefinition Definition => _definition;
 
+    /// <summary>Live Worker process id used for diagnostics and forced recovery.</summary>
+    public int? WorkerProcessId => _worker?.ProcessId;
+
+    /// <summary>Force-terminate the Worker process tree when cooperative release does not complete.</summary>
+    public bool ForceKillWorkerProcess() => _worker?.KillProcess() ?? false;
+
     protected override void AddParam()
     {
         base.AddParam();
@@ -368,7 +374,3 @@ public sealed class ExternalNodeProxy : BaseNode
             parameter.Value = value;
     }
 }
-
-
-
-

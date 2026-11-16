@@ -19,6 +19,7 @@ public partial class MainView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        SizeChanged += OnSizeChanged;
     }
 
     private void OnDataContextChanged(object? sender, System.EventArgs e)
@@ -43,7 +44,14 @@ public partial class MainView : UserControl
             vm.SaveAsRequested += OnSaveAsRequested;
             vm.OpenRequested += OnOpenRequested;
             _viewModel = vm;
+            vm.UpdateSidebarWidth(Bounds.Width);
         }
+    }
+
+    /// <summary>Keep the node-library sidebar responsive as the main view width changes.</summary>
+    private void OnSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        _viewModel?.UpdateSidebarWidth(e.NewSize.Width);
     }
 
     /// <summary>Open the node parameter dialog above the top-level window. Presentation and window lifecycle only; no business logic.</summary>

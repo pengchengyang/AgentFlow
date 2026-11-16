@@ -83,6 +83,8 @@ Pin 的 `ConnectedPin` 引用中，节点之间不直接持有彼此。
 ### 4.3 插件与实例管理
 
 - `PluginLoader` 扫描 `Plugins/` 目录，经反射发现节点类型并登记到 `NodeRegistry`。
+- `PluginLoader.LoadFromDirectory` 支持传入当前 workflow 的节点类型集合：传入集合时先并行读取 DLL 元数据，只加载匹配的插件；不传集合时保持原有全量扫描，供编辑器节点库使用。
+- `ExternalNodeCatalog.RegisterFromDirectory` 并行预扫描外部节点 `plugin.json`，并按请求类型只注册匹配的外部节点；只有注册成功时才创建外部 Worker Runtime。
 - 节点实例由 Core 统一容器管理，实例 ID 位于 1000–10000，分配最小可用 ID，删除后回收。
 - 插件工程仅引用契约层，MSBuild 目标自动把产物 DLL 复制到各宿主的 `Plugins/` 目录。
 
@@ -116,7 +118,7 @@ UI 通过 `IWorkflowStore` 存取工作流：桌面端使用本地文件实现�
 
 全平台统一使用 `Microsoft.Extensions.Logging.ILogger` 抽象，Core 提供
 `RollingLoggerProvider` 把日志转发到 `Rolling.Logging`（Serilog），输出到控制台与滚动文件；
-桌面端额外保留 UI 日志面板的 Provider。
+桌面端额外保留 UI 日志面板的 Provider。`Hosting.Logging.AppLog.CreateLoggerFactory(LogLevel)` 允许宿主设置最低日志级别；RTS 使用 `Information`，同时通过 Serilog `LoggingLevelSwitch` 限制 sink 输出级别。
 
 ## 5. 运行形态
 

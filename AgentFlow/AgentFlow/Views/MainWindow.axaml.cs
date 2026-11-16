@@ -257,6 +257,11 @@ public partial class MainWindow : Window
         var main = mvm.Main;
         try
         {
+            // Finish startup loading and any debounced/in-flight auto-save before evaluating the
+            // dirty flag or closing node resources.
+            await main.WaitForStartupLoadAsync();
+            await main.WaitForPendingAutoSaveAsync();
+
             // Ask about unsaved changes first; the workflow keeps running while the user decides.
             bool saveRequested = false;
             if (main.IsDirty)
@@ -304,5 +309,3 @@ public partial class MainWindow : Window
         }
     }
 }
-
-

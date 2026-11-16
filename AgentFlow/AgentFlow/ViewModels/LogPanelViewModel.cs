@@ -35,6 +35,9 @@ public sealed partial class LogPanelViewModel : ViewModelBase
     [RelayCommand]
     private void ClearRunIdFilter() => RunIdFilter = "";
 
+    [RelayCommand]
+    private void ClearSearch() => SearchText = "";
+
     /// <summary>Currently selected level filters. "ALL" means show everything.</summary>
     public ObservableCollection<string> SelectedLevels { get; } = new() { "ALL" };
 

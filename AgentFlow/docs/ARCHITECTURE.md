@@ -16,7 +16,7 @@ desktop, CLI, headless, or future web hosts.
 | `AgentFlow.Desktop` | Desktop entry point and host logging setup. |
 | `AgentFlow.Cli` | Headless workflow entry point. |
 | `Hosting.Logging` | Shared Serilog-compatible logging integration. |
-| `AgentFlow.Shared` | GUI-neutral shared declarations grouped per concrete project (for example `RTS/Broadcasts`, `Errors`, `Results`), including error/result contracts and broadcast subscription names. |
+| `AgentFlow.Shared` | GUI-neutral shared declarations grouped per concrete project (for example `RTS/CFG/Broadcasts`, `RTS/CFG/Errors`, `RTS/CFG/Results`), including error/result contracts and broadcast subscription names. |
 | `Plugins/*` | Dynamically loaded node implementations and demo nodes. |
 | `BroadcastKit*` | Optional process-local broadcast transport and shared topic/message contracts, including ordered sample batches, keyed Sample dictionaries, keyed Sample-list dictionaries, and correlated request/reply. |
 
@@ -246,6 +246,24 @@ Actual runtime faults remain at `ERROR`:
   Normal Save, Save As, AutoSave, and CLI runs use `.rw`; plain JSON is only produced
   by explicit developer conversion.
 
+## Stability Safeguards
+
+- Editor persistence supports draft auto-save even when the graph is temporarily not runnable.
+  Run-time validation remains the authority for launch preflight checks.
+- Workflow writes use a unique temporary file in the destination directory, flush to disk,
+  replace the destination atomically, and retain the previous workflow as `<file>.bak`.
+- Workflow loading validates the complete document through `EditorJsonLoader` before the
+  live graph is cleared, so malformed JSON, unknown node types, invalid pin ids, and bad
+  connections do not destroy the currently loaded graph.
+- Plugin discovery is staged in a temporary registry and external Worker runtime. The live
+  node catalog and Worker runtime are swapped only after the scan completes.
+- External node release has a bounded cooperative timeout. Unresponsive Worker processes are
+  force-terminated by process id and reported at `ERROR`.
+- UI log retention is bounded to 2000 entries and 50 retained errors per run.
+- Desktop installs handlers for Avalonia dispatcher, AppDomain, and unobserved task exceptions;
+  fatal failures are written to the rolling log established by `AppLog`.
+- `Node.ProcessRunner` always attempts temporary-file cleanup and terminates the active process
+  tree on cancellation or failure.
 ## Build
 
 Plugin binaries are configuration- and platform-specific. AnyCPU builds read from
@@ -369,8 +387,8 @@ and receive hooks without implementing final business behavior yet:
 | `Node.UserSettings` | Standalone INI settings reader that loads during initialization, publishes parsed settings JSON through `output_string_settings`, broadcasts the complete keyed snapshot to GUI consumers, and publishes runtime endpoint/SLOT outputs during Run | `input_string_ready` string input; `output_string_slotA/B/C/D/F`, `output_string_endpoint`, and `output_string_settings` string outputs |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
 | `Node.FACTFlatFileParser` | Parses FACT XML logs and publishes original XML plus normalized JSON with the legacy FlatFile row split into indexed fields | `input_string_path` string input; `output_string_raw_xml` and `output_string_json` string outputs |
-| `Node.PriFileParser` | Resolves direct PRI paths or `/P` paths from FACT commands, parses PRI configuration files into a JSON dictionary, publishes it through `output_string_json` when connected, and broadcasts the keyed dictionary on `Pri.File.Settings` | `input_string_path` string input; `output_string_json` string output |
-| `Node.PassFailTotalYield` | Maintains per-slot pass/fail/yield counters in `C:\AC710\UserSettings\Yield.ini` and broadcasts keyed slot and aggregate calculations; `0` records a pass and any non-zero RET records a fail | `input_int64_retA/B/C/D/F` INT64 inputs; no output pins; GUI reset via `PassFailTotalYieldBroadcasts.Reset` |
+| `Node.PriFileParser` | Resolves direct PRI paths or `/P` paths from FACT commands, parses PRI configuration files into a JSON dictionary, publishes it through `output_string_json` when connected, and broadcasts the keyed dictionary on `Pri.File.Settings.00850D6A-1F19-4040-B2D2-BA4E3E8E0F93` | `input_string_path` string input; `output_string_json` string output |
+| `Node.PassFailTotalYield` | Maintains per-slot pass/fail/yield counters in `C:\AC710\UserSettings\Yield.ini` and broadcasts keyed slot and aggregate calculations; `0` records a pass and any non-zero RET records a fail | `input_int64_retA/B/C/D/F` INT64 inputs; no output pins; GUI reset via `CFGPassFailTotalYieldBroadcasts.CFGReset` |
 | `Node.WorkflowFileConverter` | Developer-only conversion between encrypted `.rw` workflows and readable JSON files | `input_string_rw` and `input_string_json` string inputs; `output_string_json` and `output_string_rw` string outputs |
 | `Node.AutoStart` | Workflow start trigger and SLOT router; requires semicolon-prefixed batches, validates semicolon-terminated groups, and routes valid groups to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
 | `Node.AutoStop` | Workflow stop trigger with input validation and launcher-stop publication | `input_string_stop` string input; no output pins |
@@ -380,7 +398,7 @@ and receive hooks without implementing final business behavior yet:
 
 `Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. It loads and caches settings during `Initialize`, publishes parsed settings JSON through `output_string_settings`, publishes a complete keyed `SampleListsByKey` snapshot to GUI consumers, and publishes runtime endpoint/SLOT Pin values during `Run`. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
 
-`Node.PassFailTotalYield` subscribes to `PassFailTotalYieldBroadcasts.Reset` (`Pass.Fail.Total.Yield.Reset`) during `Initialize` and retains the subscription until `Shutdown`, independent of `Run`/`Stop`. Reset payloads contain `A/B/C/D/F` keys with exact `StringSample` values of `Reset`; valid requests clear only selected slots, persist `Yield.ini`, then publish a complete `Pass.Fail.Total.Yield` snapshot. Input pins accept only INT64 RET results and do not accept reset commands.
+`Node.PassFailTotalYield` subscribes to `CFGPassFailTotalYieldBroadcasts.CFGReset` (`Pass.Fail.Total.Yield.Reset.70CBA995-4A34-4CC8-8789-F0E29F5058C0`) during `Initialize` and retains the subscription until `Shutdown`, independent of `Run`/`Stop`. Reset payloads contain `A/B/C/D/F` keys with exact `StringSample` values of `Reset`; valid requests clear only selected slots, persist `Yield.ini`, then publish a complete `Pass.Fail.Total.Yield.0314C9D4-964F-4520-AC02-8E1A8729754A` snapshot. Input pins accept only INT64 RET results and do not accept reset commands.
 
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.

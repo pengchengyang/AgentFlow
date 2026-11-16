@@ -43,7 +43,7 @@
           </Grid>
         </Grid>
         <!-- Right-side workspace: node palette only. Batch Run lives in the bottom workspace. -->
-        <views:NodeLibraryView Grid.Column="1" Width="320"
+        <views:NodeLibraryView Grid.Column="1" Width="{Binding SidebarWidth}" MinWidth="220" MaxWidth="280"
                                IsVisible="{Binding IsSidebarVisible}"
                                DataContext="{Binding NodeLibrary}"/>
       </Grid>

@@ -50,6 +50,8 @@ public partial class MainViewModel : ViewModelBase
     private bool _isUntitled;
     private bool _autoSaveInFlight;
     private bool _autoSavePending;
+    private Task _activeAutoSaveTask = Task.CompletedTask;
+    private Task _startupLoadTask = Task.CompletedTask;
     private readonly DispatcherTimer _autoSaveTimer;
     private readonly IWorkflowStore _store;
     /// <summary>Optional override store; the Web (WASM) host sets this before the app starts.</summary>
@@ -213,7 +215,7 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>Restore a snapshot and keep the graph dirty so the restored state is persisted.</summary>
-    private void ApplyHistorySnapshot(string snapshot)
+    private async Task ApplyHistorySnapshotAsync(string snapshot)
     {
         _autoSaveTimer.Stop();
         _isApplyingHistory = true;
@@ -228,12 +230,12 @@ public partial class MainViewModel : ViewModelBase
         }
 
         MarkDirty();
-        AutoSaveNow();
+        await AutoSaveNowAsync();
     }
 
     /// <summary>Restore the most recent snapshot from the undo stack.</summary>
     [RelayCommand]
-    private void Undo()
+    private async Task Undo()
     {
         if (!CanUndo || !CanEditGraphNow())
             return;
@@ -257,7 +259,7 @@ public partial class MainViewModel : ViewModelBase
         var previousSnapshot = _undoHistory[^1];
         try
         {
-            ApplyHistorySnapshot(previousSnapshot);
+            await ApplyHistorySnapshotAsync(previousSnapshot);
             _undoHistory.RemoveAt(_undoHistory.Count - 1);
             _redoHistory.Add(currentSnapshot);
             TrimHistory(_redoHistory);
@@ -275,7 +277,7 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Reapply the most recently undone snapshot.</summary>
     [RelayCommand]
-    private void Redo()
+    private async Task Redo()
     {
         if (!CanRedo || !CanEditGraphNow())
             return;
@@ -299,7 +301,7 @@ public partial class MainViewModel : ViewModelBase
         var nextSnapshot = _redoHistory[^1];
         try
         {
-            ApplyHistorySnapshot(nextSnapshot);
+            await ApplyHistorySnapshotAsync(nextSnapshot);
             _redoHistory.RemoveAt(_redoHistory.Count - 1);
             _undoHistory.Add(currentSnapshot);
             TrimHistory(_undoHistory);
@@ -436,10 +438,17 @@ public partial class MainViewModel : ViewModelBase
         // Debounce auto-save: a node drag updates Location on every pointer move, so writing the
         // whole document synchronously for every event made large graphs freeze the UI.
         _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-        _autoSaveTimer.Tick += (_, _) =>
+        _autoSaveTimer.Tick += async (_, _) =>
         {
             _autoSaveTimer.Stop();
-            AutoSaveNow();
+            try
+            {
+                await AutoSaveNowAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Auto-save timer callback failed.");
+            }
         };
         // Auto-persist graph after structural changes (add/remove node, wire, drag move). The
         // collection handlers also mark the graph dirty; while loading, both are suppressed so a
@@ -462,7 +471,7 @@ public partial class MainViewModel : ViewModelBase
             }
         };
         // Restore the previous graph on startup.
-        AutoLoad();
+        _startupLoadTask = AutoLoadAsync();
         // Dedicated view-models (composed per view).
         NodeLibrary = new NodeLibraryViewModel(this);
         LogPanel = new LogPanelViewModel(this);
@@ -763,16 +772,34 @@ public partial class MainViewModel : ViewModelBase
         _autoSaveTimer.Stop();
         _autoSaveTimer.Start();
     }
-    /// <summary>Write the current graph to disk (no-op while we are itself loading).</summary>
-    private async void AutoSaveNow()
+    /// <summary>Wait for the startup load so close and explicit save flows can serialize safely.</summary>
+    public Task WaitForStartupLoadAsync() => _startupLoadTask;
+
+    /// <summary>Flush a pending debounced auto-save and wait for any in-flight persistence.</summary>
+    public Task WaitForPendingAutoSaveAsync()
     {
-        if (_isLoading || _suppressAutoSave || !_autoSaveEnabled) return;
+        _autoSaveTimer.Stop();
+        return AutoSaveNowAsync();
+    }
+
+    /// <summary>Write the current graph to disk (no-op while the document is loading).</summary>
+    private Task AutoSaveNowAsync()
+    {
+        if (_isLoading || _suppressAutoSave || !_autoSaveEnabled)
+            return Task.CompletedTask;
+
         if (_autoSaveInFlight)
         {
             _autoSavePending = true;
-            return;
+            return _activeAutoSaveTask;
         }
 
+        _activeAutoSaveTask = RunAutoSaveAsync();
+        return _activeAutoSaveTask;
+    }
+
+    private async Task RunAutoSaveAsync()
+    {
         _autoSaveInFlight = true;
         var version = _changeVersion;
         try
@@ -794,29 +821,24 @@ public partial class MainViewModel : ViewModelBase
             if (_autoSavePending)
             {
                 _autoSavePending = false;
-                AutoSaveNow();
+                await AutoSaveNowAsync();
             }
         }
     }
-    /// <summary>Serialize and write the current graph to the current file, or the store when none is set.</summary>
+    /// <summary>
+    /// Serialize and persist the current graph. Persistence intentionally permits draft or
+    /// temporarily invalid graphs; Run performs its own preflight validation before starting.
+    /// </summary>
     private async Task SaveSnapshotAsync()
     {
         SyncGraphState();
         _graph.EnsurePinIds();
 
-        var graph = _graph.ToWorkflowGraph();
-        var validationErrors = WorkflowValidation.Validate(_registry, graph);
-        if (validationErrors.Count > 0)
-        {
-            throw new InvalidOperationException(
-                "Workflow validation failed: " + string.Join(" | ", validationErrors));
-        }
-
         var json = GraphSerializer.Serialize(_graph);
         if (!string.IsNullOrEmpty(CurrentFilePath))
         {
             CurrentFilePath = WorkflowFileCrypto.NormalizeWorkflowPath(CurrentFilePath);
-            WorkflowFileCrypto.WriteWorkflowFile(CurrentFilePath, json);
+            await Task.Run(() => WorkflowFileCrypto.WriteWorkflowFile(CurrentFilePath, json));
         }
         else
         {
@@ -824,7 +846,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
     /// <summary>Reload the graph from disk if it exists.</summary>
-    private async void AutoLoad()
+    private async Task AutoLoadAsync()
     {
         bool loaded = false;
         // Suppress collection-driven dirty/auto-save for the whole async load, not only after the
@@ -1147,6 +1169,18 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Whether the right node-library Sidebar is visible (Admin only).</summary>
     [ObservableProperty]
     private bool _isSidebarVisible = true; // Admin-only panel is available immediately with the default Admin session.
+    /// <summary>Responsive width for the right node-library sidebar; 18% of the view width, clamped to 220-280 pixels.</summary>
+    [ObservableProperty]
+    private double _sidebarWidth = 220;
+
+    /// <summary>Updates the node-library sidebar width from the current main-view width.</summary>
+    public void UpdateSidebarWidth(double viewWidth)
+    {
+        if (viewWidth <= 0)
+            return;
+
+        SidebarWidth = Math.Clamp(viewWidth * 0.18, 220, 280);
+    }
     /// <summary>Toggle the right node-library Sidebar (Admin only).</summary>
     [RelayCommand]
     private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;

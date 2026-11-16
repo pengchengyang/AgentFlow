@@ -38,7 +38,7 @@ key/value information as a JSON string.
 
 ## Broadcast Output
 
-- Topic: `RTSBroadcastSubscriptions.PriFileSettings` (`Pri.File.Settings`)
+- Topic: `CFGBroadcastSubscriptions.CFGPriFileSettings` (`Pri.File.Settings.00850D6A-1F19-4040-B2D2-BA4E3E8E0F93`)
 - Payload: `BroadcastTopicMessage.FromSampleDictionary`
 - Each parsed key/value pair is published as one `StringSample`.
 - The dictionary is broadcast after parsing succeeds even when `output_string_json`

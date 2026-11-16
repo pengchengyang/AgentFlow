@@ -10,7 +10,7 @@ using System.Text.Json;
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
-using AgentFlow.Shared.RTS.Broadcasts;
+using AgentFlow.Shared.RTS.CFG.Broadcasts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.PriFileParser;
@@ -245,21 +245,21 @@ public sealed class PriFileParserNode : BaseNode
         try
         {
             await (_topicBus ?? TopicBus.Instance).PublishAsync(
-                RTSBroadcastSubscriptions.PriFileSettings,
+                CFGBroadcastSubscriptions.CFGPriFileSettings,
                 BroadcastTopicMessage.FromSampleDictionary(samplesByKey),
                 ct: CancellationToken.None).ConfigureAwait(false);
 
             _logger?.LogInformation(
                 "PRI File Parser broadcast {PairCount} setting(s) on {Topic}.",
                 samplesByKey.Count,
-                RTSBroadcastSubscriptions.PriFileSettings);
+                CFGBroadcastSubscriptions.CFGPriFileSettings);
         }
         catch (Exception ex)
         {
             _logger?.LogError(
                 ex,
                 "PRI File Parser failed to broadcast settings on {Topic}: {Message}",
-                RTSBroadcastSubscriptions.PriFileSettings,
+                CFGBroadcastSubscriptions.CFGPriFileSettings,
                 ex.Message);
         }
     }

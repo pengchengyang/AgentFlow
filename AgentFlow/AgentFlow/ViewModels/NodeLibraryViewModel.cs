@@ -47,6 +47,8 @@ public sealed class NodeLibraryViewModel : ViewModelBase
                 OnPropertyChanged(nameof(SearchText));
             else if (e.PropertyName == nameof(MainViewModel.IsSidebarVisible))
                 OnPropertyChanged(nameof(IsSidebarVisible));
+            else if (e.PropertyName == nameof(MainViewModel.SidebarWidth))
+                OnPropertyChanged(nameof(SidebarWidth));
         };
         // Rebuild the section view whenever the (search-filtered) palette changes.
         _main.PaletteItems.CollectionChanged += (_, _) => RebuildGroups();
@@ -66,6 +68,9 @@ public sealed class NodeLibraryViewModel : ViewModelBase
 
     /// <summary>Whether this Sidebar is visible (Admin login only).</summary>
     public bool IsSidebarVisible => _main.IsSidebarVisible;
+
+    /// <summary>Responsive sidebar width forwarded from the main view model.</summary>
+    public double SidebarWidth => _main.SidebarWidth;
 
     public ICommand AddNodeCommand => _main.AddNodeCommand;
 

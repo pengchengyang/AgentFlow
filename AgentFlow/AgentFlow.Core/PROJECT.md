@@ -10,7 +10,7 @@ It must not reference Avalonia or any desktop-specific project.
 
 ## Main Modules
 
-- `PluginLoader`: discovers and instantiates node implementations from plugin assemblies.
+- `PluginLoader`: stages plugin discovery, manages managed/external node instances, and force-terminates unresponsive external Worker processes after a bounded release timeout.
 - `NodeRegistry`: maps registered node type names to descriptors and factories.
 - `EditorGraph`: stores editor-facing node and connection state while keeping runtime nodes in Contracts.
 - `WorkflowValidation`: checks pins, required inputs, and the acyclic `DependsOn` startup graph.
@@ -19,6 +19,17 @@ It must not reference Avalonia or any desktop-specific project.
 - `WorkflowEngine`: headless execution for CLI and other non-GUI hosts.
 - `LogicSerializer` / `LogicDeserializer`: persist node logic and parameters without GUI data.
 
+## Staged Loading and Release
+
+`WorkflowHost.LoadPlugins` scans assemblies and external packages into a staging
+`NodeRegistry`. The live catalog and external Worker runtime are replaced only after the
+scan finishes; a failed scan leaves the previous catalog available. External node release
+waits cooperatively for three seconds, then terminates the Worker process tree by pid and
+records an `ERROR` entry.
+
+`WorkflowHost.LoadWorkflowJson` performs an `EditorJsonLoader` preflight before clearing the
+live editor graph, so malformed documents and invalid pin/connection references are rejected
+without destroying the currently loaded workflow.
 ## Lifecycle Contract
 
 Node lifecycle is intentionally split into explicit phases. Each phase always applies to all
@@ -50,5 +61,3 @@ dotnet build 'AgentFlow.Core\AgentFlow.Core.csproj' `
 ```
 
 The desktop and CLI hosts consume this project through project references.
-
-

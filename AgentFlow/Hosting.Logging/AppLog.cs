@@ -33,6 +33,7 @@ namespace Hosting.Logging;
 public static class AppLog
 {
     private static readonly object Gate = new();
+    private static readonly LoggingLevelSwitch LevelSwitch = new(LogEventLevel.Verbose);
     private static bool _configured;
     private static string? _currentFile;
 
@@ -61,7 +62,7 @@ public static class AppLog
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(logFilePath);
         return new LoggerConfiguration()
-            .MinimumLevel.Verbose()
+            .MinimumLevel.ControlledBy(LevelSwitch)
             .Enrich.FromLogContext()
             .Enrich.With(new MsLevelNameEnricher())
             .WriteTo.Console(outputTemplate: Template)
@@ -104,12 +105,19 @@ public static class AppLog
     /// Create an <see cref="ILoggerFactory"/> whose loggers all write to the single process-wide
     /// Serilog <see cref="Log.Logger"/> (console + rolling file + any host-added sinks).
     /// </summary>
-    public static ILoggerFactory CreateLoggerFactory()
+    public static ILoggerFactory CreateLoggerFactory() =>
+        CreateLoggerFactory(LogLevel.Trace);
+
+    /// <summary>
+    /// Create an <see cref="ILoggerFactory"/> with the requested minimum level.
+    /// </summary>
+    public static ILoggerFactory CreateLoggerFactory(LogLevel minimumLevel)
     {
         EnsureConfigured();
+        LevelSwitch.MinimumLevel = ToSerilogLevel(minimumLevel);
         return LoggerFactory.Create(builder =>
         {
-            builder.SetMinimumLevel(LogLevel.Trace);
+            builder.SetMinimumLevel(minimumLevel);
             builder.AddSerilog();
         });
     }
@@ -129,6 +137,18 @@ public static class AppLog
 
     /// <summary>Flush and close the process-wide Serilog logger (call in a host's finally block).</summary>
     public static void Close() => Log.CloseAndFlush();
+
+    private static LogEventLevel ToSerilogLevel(LogLevel level) =>
+        level switch
+        {
+            LogLevel.Trace => LogEventLevel.Verbose,
+            LogLevel.Debug => LogEventLevel.Debug,
+            LogLevel.Information => LogEventLevel.Information,
+            LogLevel.Warning => LogEventLevel.Warning,
+            LogLevel.Error => LogEventLevel.Error,
+            LogLevel.Critical => LogEventLevel.Fatal,
+            _ => LogEventLevel.Fatal
+        };
 
     private static void EnsureConfigured()
     {

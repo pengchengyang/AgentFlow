@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // <copyright company="Rolling Wireless SARL" file="IWorkflowStore.cs">
 //     Copyright (c) Rolling Wireless SARL. All rights reserved.
 //     Author: Damon Yang (damon.yang@rollingwireless.com)
@@ -55,11 +55,8 @@ public sealed class LocalWorkflowStore : IWorkflowStore
         return Task.FromResult<string?>(null);
     }
 
-    public Task SaveAsync(string json)
-    {
-        WorkflowFileCrypto.WriteWorkflowFile(_path, json);
-        return Task.CompletedTask;
-    }
+    public Task SaveAsync(string json) =>
+        Task.Run(() => WorkflowFileCrypto.WriteWorkflowFile(_path, json));
 }
 
 /// <summary>

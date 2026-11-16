@@ -61,6 +61,16 @@ public sealed class ExternalWorkerProcess : IAsyncDisposable
     public bool IsReady => Volatile.Read(ref _ready) != 0;
     public int NodeCount => _nodes.Count;
 
+    /// <summary>Live Worker process id, or null when the process has already exited.</summary>
+    public int? ProcessId
+    {
+        get
+        {
+            try { return _process is { HasExited: false } ? _process.Id : null; }
+            catch (InvalidOperationException) { return null; }
+        }
+    }
+
     public void RegisterNode(ExternalNodeProxy proxy)
     {
         _nodes[proxy.InstanceId] = proxy;
@@ -308,17 +318,22 @@ public sealed class ExternalWorkerProcess : IAsyncDisposable
             await _endpoint.DisposeAsync().ConfigureAwait(false);
     }
 
-    public void KillProcess()
+    /// <summary>Force-terminate the Worker process tree. Returns true when a kill was issued.</summary>
+    public bool KillProcess()
     {
         try
         {
-            if (_process is { HasExited: false })
-                _process.Kill(entireProcessTree: true);
+            if (_process is not { HasExited: false })
+                return false;
+
+            _process.Kill(entireProcessTree: true);
+            return true;
         }
-        catch (InvalidOperationException) { }
+        catch (InvalidOperationException) { return false; }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to kill external Worker process for {PackageId}.", PackageId);
+            _logger.LogError(ex, "Failed to kill external Worker process for {PackageId}.", PackageId);
+            return false;
         }
     }
 
@@ -900,7 +915,3 @@ public sealed class ExternalWorkerException : Exception
 
     public string Code { get; }
 }
-
-
-
-

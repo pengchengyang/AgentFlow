@@ -195,10 +195,12 @@ public sealed class ProcessRunnerNode : BaseNode
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            KillProcessTree(process, "cancellation");
             _logger?.LogTrace("ProcessRunner command was cancelled.");
         }
         catch (Exception ex)
         {
+            KillProcessTree(process, "failure");
             _logger?.LogError(ex, "ProcessRunner failed to start or monitor the elevated command.");
             PublishResult(LaunchFailureExitCode, null);
         }
@@ -215,7 +217,7 @@ public sealed class ProcessRunnerNode : BaseNode
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogTrace(ex, "ProcessRunner could not remove temporary files at {Path}.", tempDirectory);
+                    _logger?.LogError(ex, "ProcessRunner could not remove temporary files at {Path}.", tempDirectory);
                 }
             }
 
@@ -224,6 +226,27 @@ public sealed class ProcessRunnerNode : BaseNode
         }
     }
 
+    private void KillProcessTree(Process? process, string reason)
+    {
+        if (process is null || process.HasExited)
+            return;
+
+        try
+        {
+            process.Kill(entireProcessTree: true);
+            _logger?.LogWarning(
+                "ProcessRunner terminated active process pid={Pid} after {Reason}.",
+                process.Id,
+                reason);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex,
+                "ProcessRunner could not terminate active process pid={Pid} after {Reason}.",
+                process.Id,
+                reason);
+        }
+    }
     private static bool IsProcessElevated()
     {
         if (!OperatingSystem.IsWindows())
@@ -288,5 +311,3 @@ public sealed class ProcessRunnerNode : BaseNode
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
 }
-
-
