@@ -14,8 +14,9 @@ using Microsoft.Extensions.Logging;
 namespace Node.UserSettings;
 
 /// <summary>
-/// Loads the fixed INI file during initialization, broadcasts the complete keyed settings
-/// snapshot for GUI consumers, and publishes runtime endpoint and SLOT outputs during Run.
+/// Loads the fixed INI file during initialization, validates and caches its GUID, broadcasts
+/// the non-GUID keyed settings snapshot for GUI consumers, and publishes runtime endpoint,
+/// SLOT, and one-time GUID outputs during Run.
 /// </summary>
 public sealed class UserSettingsNode : BaseNode
 {
@@ -43,16 +44,22 @@ public sealed class UserSettingsNode : BaseNode
     private readonly BasePin _settingsOutputPin =
         new("output_string_settings", DataType.STRING, PinDirection.Output);
 
+    private readonly BasePin _guidOutputPin =
+        new("output_string_guid", DataType.STRING, PinDirection.Output);
+
     private readonly BasePin[] _slotOutputPins;
 
     private readonly record struct SlotAssignment(int Slot, string PortHub);
 
     private const string SettingsDirectory = @"C:\AC710\UserSettings";
     private const string SettingsFilePath = @"C:\AC710\UserSettings\UserSettings.ini";
+    private const string GuidSectionName = "GUID";
 
     private ILogger? _logger;
     private ITopicBus? _topicBus;
     private IReadOnlyDictionary<string, IReadOnlyList<string>>? _settings;
+    private string? _guid;
+    private bool _guidSent;
 
     public UserSettingsNode()
     {
@@ -81,6 +88,7 @@ public sealed class UserSettingsNode : BaseNode
             AddOutputPin(outputPin);
         AddOutputPin(_endpointOutputPin);
         AddOutputPin(_settingsOutputPin);
+        AddOutputPin(_guidOutputPin);
     }
 
     protected override void AddParam()
@@ -111,12 +119,26 @@ public sealed class UserSettingsNode : BaseNode
         if (!parser.TryLoad(out var settings))
         {
             _settings = null;
+            _guid = null;
+            _guidSent = false;
             Running = false;
             throw new InvalidOperationException(
                 $"UserSettings could not load the required settings file '{SettingsFilePath}'.");
         }
 
+        if (!TryGetRequiredGuid(settings, out var guid))
+        {
+            _settings = null;
+            _guid = null;
+            _guidSent = false;
+            Running = false;
+            throw new InvalidOperationException(
+                $"UserSettings requires a valid GUID in section [{GuidSectionName}] of '{SettingsFilePath}'.");
+        }
+
         _settings = settings;
+        _guid = guid;
+        _guidSent = false;
         PublishSettingsJson(settings);
         await PublishInitializationSnapshotAsync(settings, ct).ConfigureAwait(false);
     }
@@ -136,6 +158,7 @@ public sealed class UserSettingsNode : BaseNode
         Running = true;
         PublishEndpoint(settings);
         PublishSettingsBySlot(settings);
+        PublishGuidOnce();
         _logger?.LogTrace(
             "UserSettings is running with profile {Profile} and cached settings from {FilePath}.",
             Param("Profile").Value,
@@ -147,6 +170,8 @@ public sealed class UserSettingsNode : BaseNode
     {
         Running = false;
         _settings = null;
+        _guid = null;
+        _guidSent = false;
         _topicBus = null;
         _logger = null;
         return Task.CompletedTask;
@@ -181,7 +206,7 @@ public sealed class UserSettingsNode : BaseNode
             return;
         }
 
-        var json = JsonSerializer.Serialize(settings);
+        var json = JsonSerializer.Serialize(GetSettingsWithoutGuid(settings));
         var sample = StringSample.CreateSample();
         sample.SetValue(json, _settingsOutputPin.Name);
         _settingsOutputPin.SendSampleWithDispatchLog(
@@ -266,6 +291,9 @@ public sealed class UserSettingsNode : BaseNode
         var sampleLists = new Dictionary<string, IReadOnlyList<Sample>>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in settings)
         {
+            if (IsGuidSection(pair.Key))
+                continue;
+
             var samples = new List<Sample>(pair.Value.Count);
             foreach (var value in pair.Value)
             {
@@ -284,7 +312,7 @@ public sealed class UserSettingsNode : BaseNode
                 BroadcastTopicMessage.FromSampleListDictionary(sampleLists),
                 ct: ct).ConfigureAwait(false);
 
-            var broadcastJson = JsonSerializer.Serialize(settings);
+            var broadcastJson = JsonSerializer.Serialize(GetSettingsWithoutGuid(settings));
             _logger?.LogInformation(
                 "UserSettings published initialization settings JSON to launcher settings broadcast: {Json}",
                 broadcastJson);
@@ -379,6 +407,108 @@ public sealed class UserSettingsNode : BaseNode
         return true;
     }
 
+    private bool TryGetRequiredGuid(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
+        out string guid)
+    {
+        guid = string.Empty;
+        if (!settings.TryGetValue(GuidSectionName, out var values) || values.Count == 0)
+        {
+            _logger?.LogError(
+                "UserSettings requires section [{Section}] in '{FilePath}', but the section is missing or empty.",
+                GuidSectionName,
+                SettingsFilePath);
+            return false;
+        }
+
+        var rawGuid = values
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+            ?.Trim();
+        if (rawGuid is null)
+        {
+            _logger?.LogError(
+                "UserSettings requires a non-empty GUID value in section [{Section}] of '{FilePath}'.",
+                GuidSectionName,
+                SettingsFilePath);
+            return false;
+        }
+
+        if (!Guid.TryParse(rawGuid, out var parsedGuid))
+        {
+            _logger?.LogError(
+                "UserSettings rejected GUID value {Guid} in section [{Section}] of '{FilePath}' because the format is invalid.",
+                rawGuid,
+                GuidSectionName,
+                SettingsFilePath);
+            return false;
+        }
+
+        guid = parsedGuid.ToString("D").ToUpperInvariant();
+        return true;
+    }
+
+    private void PublishGuidOnce()
+    {
+        if (_guidSent)
+            return;
+
+        if (string.IsNullOrWhiteSpace(_guid))
+        {
+            _logger?.LogError(
+                "UserSettings cannot publish a GUID because no validated GUID is cached.");
+            return;
+        }
+
+        if (_guidOutputPin.TargetCount == 0)
+        {
+            _logger?.LogError(
+                "UserSettings failed to publish GUID {Guid} because output pin {Pin} is not connected.",
+                _guid,
+                _guidOutputPin.Name);
+            return;
+        }
+
+        try
+        {
+            var sample = StringSample.CreateSample();
+            sample.SetValue(_guid, _guidOutputPin.Name);
+            var sent = _guidOutputPin.SendSampleWithDispatchLog(
+                sample,
+                $"GUID {_guid}",
+                LogLevel.Information);
+            if (!sent)
+            {
+                _logger?.LogError(
+                    "UserSettings failed to publish GUID {Guid} through output pin {Pin}.",
+                    _guid,
+                    _guidOutputPin.Name);
+                return;
+            }
+
+            _guidSent = true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "UserSettings failed to publish GUID {Guid} through output pin {Pin}.",
+                _guid,
+                _guidOutputPin.Name);
+        }
+    }
+
+    private static bool IsGuidSection(string key)
+        => string.Equals(key, GuidSectionName, StringComparison.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> GetSettingsWithoutGuid(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
+        => settings
+            .Where(pair => !IsGuidSection(pair.Key))
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+
     private static IReadOnlyList<string> GetCommaSeparatedValues(
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
         string key)
@@ -400,7 +530,7 @@ public sealed class UserSettingsNode : BaseNode
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
         SlotAssignment assignment)
     {
-        var payload = settings.ToDictionary(
+        var payload = GetSettingsWithoutGuid(settings).ToDictionary(
             pair => pair.Key,
             pair => pair.Value.ToArray(),
             StringComparer.OrdinalIgnoreCase);
@@ -418,3 +548,5 @@ public sealed class UserSettingsNode : BaseNode
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
 }
+
+

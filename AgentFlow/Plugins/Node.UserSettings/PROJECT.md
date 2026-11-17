@@ -12,28 +12,37 @@ are provided by the workspace libraries.
 - Display name: `User Settings`
 - Category: `Configuration`
 - Input pin: `input_string_ready` (`STRING`, optional)
-- Output pins: `output_string_slotA`, `output_string_slotB`, `output_string_slotC`, `output_string_slotD`, `output_string_slotF`, `output_string_endpoint`, `output_string_settings` (`STRING`)
+- Output pins: `output_string_slotA`, `output_string_slotB`, `output_string_slotC`, `output_string_slotD`, `output_string_slotF`, `output_string_endpoint`, `output_string_settings`, `output_string_guid` (`STRING`)
 - Parameters: `Profile`, `SettingsJson`
 - Broadcast topic: `fact.launcher.settings`
 
 ## Lifecycle
 
-`Initialize` captures the node logger, loads and parses the fixed INI file, caches the
-parsed sections on the node instance, publishes the parsed settings JSON through
-`output_string_settings` when connected, and publishes a complete initialization snapshot to
-`FACT.Launcher.Settings.48D865B9-AB18-4DD0-A7A8-0F79D63EEDBB`. The snapshot is a `SampleListsByKey` dictionary whose outer keys
-are INI section names and whose values are ordered `StringSample` lists. A GUI must subscribe
-before workflow startup to receive this one-shot initialization broadcast.
+`Initialize` captures the node logger, loads and parses the fixed INI file, requires a
+valid `[GUID]` section, caches the parsed sections on the node instance, publishes the parsed
+settings JSON through `output_string_settings` when connected, and publishes a complete
+initialization snapshot to
+`FACT.Launcher.Settings.48D865B9-AB18-4DD0-A7A8-0F79D63EEDBB`. The snapshot is a
+`SampleListsByKey` dictionary whose outer keys are INI section names and whose values are
+ordered `StringSample` lists. The `GUID` section is excluded from this broadcast and from
+the existing settings JSON outputs because the validated GUID is published only through
+`output_string_guid`. A GUI must subscribe before workflow startup to receive this one-shot
+initialization broadcast.
 
 A missing, unreadable, or invalid settings file fails initialization and therefore prevents
-the node from entering `Run`. A broadcast failure or the absence of GUI subscribers does not
-fail initialization; it is logged while the cached settings remain available for runtime use.
-After a successful broadcast, the complete settings snapshot is serialized as JSON and
-logged at `INFO` level for diagnostics and GUI-payload verification.
+the node from entering `Run`. The `[GUID]` section is mandatory, must contain one non-empty
+valid GUID, and is normalized to uppercase `8-4-4-4-12` form. A broadcast failure or the
+absence of GUI subscribers does not fail initialization; it is logged while the cached
+settings remain available for runtime use. After a successful broadcast, the settings
+snapshot without the GUID section is serialized as JSON and logged at `INFO` level for
+diagnostics and GUI-payload verification.
 
 `Run` does not read the INI file again. It requires the settings cached by `Initialize`,
 sets `Running = true`, publishes the first non-empty endpoint from the `IP` section through
-`output_string_endpoint`, and routes one JSON message to each connected SLOT output pin.
+`output_string_endpoint`, routes one JSON message to each connected SLOT output pin, and
+attempts to publish the cached GUID through `output_string_guid`. The GUID is sent at most
+once after a successful dispatch. A disconnected pin or dispatch failure is logged at
+`ERROR` level and does not mark the GUID as sent, so the next `Run` can retry.
 SLOT values `1` through `5` map to A/B/C/D/F, and values `6` through `10` map to the same
 outputs respectively:
 
@@ -45,8 +54,8 @@ outputs respectively:
 | `4` or `9` | `output_string_slotD` |
 | `5` or `10` | `output_string_slotF` |
 
-Each output receives the complete settings JSON with `SLOT` and `PORTHUB` replaced by
-the values at the same position in their respective comma-separated sections. For an INI
+Each SLOT output receives the settings JSON without the `GUID` section, with `SLOT` and
+`PORTHUB` replaced by the values at the same position in their respective comma-separated sections. For an INI
 value `SLOT=1,2,3,4,5` and `PORTHUB=5:1,23:1,7:2,8:2,9:2`, A receives
 `SLOT: ["1"]` with `PORTHUB: ["5:1"]`, B receives `["2"]` with `["23:1"]`, and so on.
 A missing or empty matching PORTHUB value prevents that output from being sent, and extra
@@ -54,7 +63,8 @@ PORTHUB values without matching SLOT entries are ignored with a warning. Duplica
 targeting an already assigned output are also ignored with a warning.
 
 `input_string_ready` remains available as an optional integration trigger and only records
-the received readiness value. `Stop` clears the running state, cached settings, and logger.
+the received readiness value. `Stop` clears the running state, cached settings, cached GUID,
+GUID-sent state, and logger.
 
 A missing directory is created automatically. A missing `UserSettings.ini` file is never
 created implicitly and is reported at `ERROR` level.
@@ -69,7 +79,8 @@ C:\AC710\UserSettings\UserSettings.ini
 
 INI section names are dictionary keys. Every non-empty content line in a section is stored
 as one ordered value. Section names are case-insensitive; string values preserve their
-original casing and order.
+original casing and order except that the validated GUID output is normalized to uppercase.
+The file must include a `[GUID]` section with one valid GUID value.
 
 ## Initialization Broadcast Contract
 
@@ -77,6 +88,8 @@ original casing and order.
 `CFGBroadcastSubscriptions.CFGLauncherSettings`. For example, the following INI content:
 
 ```ini
+[GUID]
+CA7EFFA7-A2EB-4AC0-864A-1E1100D40B90
 [CMD]
 C:\AC710\FACT.exe /PC:\sierra\example.cfg
 [IP]
@@ -96,14 +109,17 @@ SLOT    -> [StringSample("1,2,3,4,5")]
 PORTHUB -> [StringSample("5:1,23:1,7:2,8:2,9:2")]
 ```
 
+The `GUID` section is intentionally not included in this broadcast payload.
+
 Consumers select sections by key and validate `Sample` types and value counts according to
 their own topic contract. TopicBus does not parse, merge, or normalize the payload.
 
 ## Settings JSON Output
 
-During `Initialize`, the node serializes the parsed section dictionary and sends it
-through `output_string_settings` as one `StringSample`. The JSON uses section names as
-keys and string arrays as values, matching the existing `SettingsJson` representation.
+During `Initialize`, the node serializes the parsed section dictionary without the
+`GUID` section and sends it through `output_string_settings` as one `StringSample`. The
+JSON uses section names as keys and string arrays as values, matching the existing
+`SettingsJson` representation.
 
 The output is sent once per initialization. If the pin is not connected, the node logs a
 warning and continues initialization and the existing launcher-settings broadcast.
@@ -136,9 +152,11 @@ Connect one of `Node.UserSettings.output_string_slotA/B/C/D/F` to the correspond
 `Node.FACTLauncher.input_string_settings` pin. `Node.UserSettings` publishes these Pin values
 during its own `Run`; `input_string_ready` remains available as an optional integration
 trigger. `UserSettings.output_string_endpoint` can provide the configured `IP` endpoint for
-nodes that need the runtime address.
+nodes that need the runtime address. `output_string_guid` publishes the validated uppercase
+GUID once per node lifecycle after a successful dispatch.
 
 GUI consumers subscribe to `fact.launcher.settings` before workflow startup and receive the
 complete keyed initialization snapshot from `Initialize`. Because TopicBus does not retain
 messages, a GUI that subscribes after initialization must use a separate current-state query
 mechanism or reload the workflow.
+

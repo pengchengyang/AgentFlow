@@ -13,12 +13,12 @@ using Microsoft.Extensions.Logging;
 namespace Node.AutoStop;
 
 /// <summary>
-/// Workflow-control node that accepts one exact exit message and broadcasts its JSON payload.
+/// Workflow-control node that accepts a JSON string containing the exact stop request fragment,
+/// broadcasts the stop payload, and requests a normal workflow stop from the host.
 /// </summary>
 public sealed class AutoStopNode : BaseNode
 {
-    private const string ExitMessage = ";{\"Request\":\"Exit\"};";
-    private const string ExitPayload = "{\"Request\":\"Exit\"}";
+    private const string StopRequestFragment = "{\"Request\":\"Stop\"}";
 
     private readonly BasePin _stopPin =
         new("input_string_stop", DataType.STRING, PinDirection.Input, required: false);
@@ -79,7 +79,8 @@ public sealed class AutoStopNode : BaseNode
             return;
 
         if (value is not StringSample input ||
-            input.StringValue is not { } inputText)
+            input.StringValue is not { } inputText ||
+            string.IsNullOrWhiteSpace(inputText))
         {
             _logger?.LogError(
                 "AutoStop ignored invalid input on {Pin}: expected a non-empty StringSample.",
@@ -87,25 +88,30 @@ public sealed class AutoStopNode : BaseNode
             return;
         }
 
-        if (!string.Equals(inputText, ExitMessage, StringComparison.Ordinal))
+        if (!inputText.Contains(StopRequestFragment, StringComparison.Ordinal))
+        {
+            _logger?.LogTrace(
+                "AutoStop ignored input on {Pin} because it does not contain the stop request fragment.",
+                pin.Name);
             return;
+        }
 
         _logger?.LogInformation(
-            "AutoStop received stop message on {Pin}: {Message}",
+            "AutoStop received stop request on {Pin}: {Message}",
             pin.Name,
             inputText);
 
-        _ = BroadcastExitAsync();
+        _ = BroadcastStopRequestAsync(inputText);
     }
 
-    private async Task BroadcastExitAsync()
+    private async Task BroadcastStopRequestAsync(string triggerMessage)
     {
         var topicBus = _topicBus ?? TopicBus.Instance;
         var stopRequestSink = _stopRequestSink;
         try
         {
             var sample = StringSample.CreateSample();
-            sample.SetValue(ExitPayload);
+            sample.SetValue(StopRequestFragment);
 
             await topicBus.PublishAsync(
                 CFGBroadcastSubscriptions.CFGAutoStopExit,
@@ -113,25 +119,25 @@ public sealed class AutoStopNode : BaseNode
                 ct: CancellationToken.None).ConfigureAwait(false);
 
             _logger?.LogTrace(
-                "AutoStop broadcast the exit signal on {Topic}.",
+                "AutoStop broadcast the stop request on {Topic}.",
                 CFGBroadcastSubscriptions.CFGAutoStopExit);
 
             if (stopRequestSink is not null)
             {
-                if (!stopRequestSink.RequestStop(Name, ExitMessage))
+                if (!stopRequestSink.RequestStop(Name, triggerMessage))
                     _logger?.LogWarning("AutoStop stop request was not accepted by the current workflow host.");
             }
             else
             {
                 _logger?.LogWarning(
-                    "AutoStop has no workflow stop sink in this host; only the exit broadcast was sent.");
+                    "AutoStop has no workflow stop sink in this host; only the stop broadcast was sent.");
             }
         }
         catch (Exception ex)
         {
             _logger?.LogError(
                 ex,
-                "AutoStop failed to broadcast the exit signal on {Topic}.",
+                "AutoStop failed to broadcast the stop request on {Topic}.",
                 CFGBroadcastSubscriptions.CFGAutoStopExit);
         }
     }

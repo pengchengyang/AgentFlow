@@ -384,37 +384,53 @@ and receive hooks without implementing final business behavior yet:
 | Plugin | Role | Default pins |
 | --- | --- | --- |
 | `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, raw and JSON RET publication, successful position-keyed command broadcasting, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_cmd`, and `output_int64_ret` outputs |
-| `Node.UserSettings` | Standalone INI settings reader that loads during initialization, publishes parsed settings JSON through `output_string_settings`, broadcasts the complete keyed snapshot to GUI consumers, and publishes runtime endpoint/SLOT outputs during Run | `input_string_ready` string input; `output_string_slotA/B/C/D/F`, `output_string_endpoint`, and `output_string_settings` string outputs |
+| `Node.UserSettings` | Standalone INI settings reader that requires and validates `[GUID]`, publishes the GUID once through a dedicated pin, publishes parsed settings JSON without GUID through `output_string_settings`, broadcasts the remaining keyed snapshot to GUI consumers, and publishes runtime endpoint/SLOT outputs during Run | `input_string_ready` string input; `output_string_slotA/B/C/D/F`, `output_string_endpoint`, `output_string_settings`, and `output_string_guid` string outputs |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
 | `Node.FACTFlatFileParser` | Parses FACT XML logs and publishes original XML plus normalized JSON with the legacy FlatFile row split into indexed fields | `input_string_path` string input; `output_string_raw_xml` and `output_string_json` string outputs |
 | `Node.PriFileParser` | Resolves direct PRI paths or `/P` paths from FACT commands, parses PRI configuration files into a JSON dictionary, publishes it through `output_string_json` when connected, and broadcasts the keyed dictionary on `Pri.File.Settings.00850D6A-1F19-4040-B2D2-BA4E3E8E0F93` | `input_string_path` string input; `output_string_json` string output |
 | `Node.PassFailTotalYield` | Maintains per-slot pass/fail/yield counters in `C:\AC710\UserSettings\Yield.ini` and broadcasts keyed slot and aggregate calculations; `0` records a pass and any non-zero RET records a fail | `input_int64_retA/B/C/D/F` INT64 inputs; no output pins; GUI reset via `CFGPassFailTotalYieldBroadcasts.CFGReset` |
 | `Node.WorkflowFileConverter` | Developer-only conversion between encrypted `.rw` workflows and readable JSON files | `input_string_rw` and `input_string_json` string inputs; `output_string_json` and `output_string_rw` string outputs |
-| `Node.AutoStart` | Workflow start trigger and SLOT router; requires semicolon-prefixed batches, validates semicolon-terminated groups, and routes valid groups to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
-| `Node.AutoStop` | Workflow stop trigger with input validation and launcher-stop publication | `input_string_stop` string input; no output pins |
+| `Node.AutoStart` | Workflow start trigger and SLOT router; parses the complete `MESSAGES` JSON array, validates each business message, and routes individual items to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
+| `Node.AutoStop` | Workflow stop trigger; checks one complete input string for the exact `{"Request":"Stop"}` fragment, publishes the stop broadcast, and requests a workflow stop | `input_string_stop` string input; no output pins |
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
 | `Node.ProcessRunner` | Windows command runner using the already-elevated AgentFlow host token; streams stdout/stderr lines to the log panel in real time and publishes the final combined output | `input_string_cmd` string input; `output_string_ret` string output and `output_int64_ret` int64 output |
 | `Node.Heartbeat` | Immediately forwards each input sample and repeatedly publishes a cloned copy of the latest sample on a fixed interval | `input` and `output`; configurable data type and `IntervalMilliseconds` |
 
-`Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. It loads and caches settings during `Initialize`, publishes parsed settings JSON through `output_string_settings`, publishes a complete keyed `SampleListsByKey` snapshot to GUI consumers, and publishes runtime endpoint/SLOT Pin values during `Run`. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
+`Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. During `Initialize` it requires one valid `[GUID]` section, normalizes the GUID to uppercase `8-4-4-4-12` form, caches the settings, publishes parsed settings JSON without the GUID section through `output_string_settings`, and publishes the remaining keyed `SampleListsByKey` snapshot to GUI consumers. During `Run` it publishes runtime endpoint/SLOT Pin values and attempts one validated GUID dispatch through `output_string_guid`; a successful dispatch is not repeated until the node lifecycle is restarted, while a disconnected or failed dispatch is logged at `ERROR` and retried on the next `Run`. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
 
 `Node.PassFailTotalYield` subscribes to `CFGPassFailTotalYieldBroadcasts.CFGReset` (`Pass.Fail.Total.Yield.Reset.70CBA995-4A34-4CC8-8789-F0E29F5058C0`) during `Initialize` and retains the subscription until `Shutdown`, independent of `Run`/`Stop`. Reset payloads contain `A/B/C/D/F` keys with exact `StringSample` values of `Reset`; valid requests clear only selected slots, persist `Yield.ini`, then publish a complete `Pass.Fail.Total.Yield.0314C9D4-964F-4520-AC02-8E1A8729754A` snapshot. Input pins accept only INT64 RET results and do not accept reset commands.
 
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.
 
-`Node.AutoStart` buffers semicolon-prefixed batches of semicolon-terminated
-`SLOT`/`FSN`/`IMEI` JSON groups from `input_string_start`, rejects batches without the
-leading boundary marker, validates each group, sends the corresponding JSON group to the
-output mapped from `SLOT`, and emits a host-neutral start request through
-`IWorkflowStartRequestSink`. A product-specific host registers the service implementation;
-the plugin has no Avalonia dependency.
+`Node.AutoStart` receives one complete JSON object from `input_string_start`, requires a
+`MESSAGES` array, validates each individual `SLOT`/`FSN`/`IMEI` business message, sends the
+corresponding compact item JSON to the output mapped from `SLOT`, and emits a host-neutral start
+request through `IWorkflowStartRequestSink`. The outer `MESSAGES` wrapper is never forwarded.
+A product-specific host registers the service implementation; the plugin has no Avalonia
+dependency.
 
-`Node.AutoStop` validates semicolon-terminated groups on `input_string_stop`, publishes the
-shared LauncherStop broadcast, and requests a normal workflow stop through
-`IWorkflowStopRequestSink`. It has no output pins. The service is implemented by the consuming
-product host, not by the generic AgentFlow editor GUI; it does not invoke final application
-`Shutdown`.
+`Node.AutoStop` accepts one complete JSON string on `input_string_stop`, checks it for the
+exact `{"Request":"Stop"}` fragment, publishes the shared Auto Stop broadcast, and requests a
+normal workflow stop through `IWorkflowStopRequestSink`. It does not split semicolon frames or
+buffer partial input. The service is implemented by the consuming product host, not by the
+generic AgentFlow editor GUI; it does not invoke final application `Shutdown`.
+
+The CFG/CFGS session nodes add protocol-level framing and identity on top of TCP:
+
+- `Node.CFGSTcpServer` accepts a client whitelist on `input_string_client_config`, authenticates
+  one active session per configured GUID, routes BUSINESS envelopes by target GUID, maintains
+  bounded offline queues and PING/PONG heartbeats, and emits client BUSINESS envelopes through
+  `output_string_message`.
+- `Node.CFGTcpClient` authenticates with its configured `ClientGuid`, supports `Immediate` and `WaitForEndpoint` connection modes, reconnects automatically,
+  caches pending BUSINESS envelopes while disconnected, validates inbound target GUIDs, and
+  emits BUSINESS envelopes through `output_string_message`.
+- `Node.CFGConfimer` receives the current local GUID on `input_string_local_guid`, accepts one
+  complete envelope on `input_string_message`, validates the target GUID and `RequiredType`,
+  then emits only the top-level `DATA` JSON object through `output_string_data`; `TIMESTAMP` is used as the duplicate-message key.- Both nodes use `;JSON;` framing and shared top-level `GUID`, `TYPE`, `VERSION`, `SEQ`,
+  `TIMESTAMP`, and `DATA` fields. The `DATA` object remains opaque to these nodes.
+- Connection status is published through the shared topics in
+  `AgentFlow.Shared/RTS/CFGS/Broadcasts/CFGSTcpProtocolBroadcasts.cs`.
 
 The TCP demo nodes expose a raw byte-stream interface. `TCP Client` and `TCP Server`
 each expose `input_string`, `input_binary`, `output_string`, and `output_binary`.

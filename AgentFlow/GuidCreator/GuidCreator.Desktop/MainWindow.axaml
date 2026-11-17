@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GuidCreator.Desktop.MainWindow"
+        Title="GUID Creator"
+        Width="480"
+        Height="170"
+        MinWidth="480"
+        MinHeight="170"
+        MaxWidth="480"
+        MaxHeight="170"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <Border Padding="24">
+    <Grid RowDefinitions="*,Auto">
+      <Border Grid.Row="0"
+              Padding="14,10"
+              Background="#F8FAFC"
+              BorderBrush="#CBD5E1"
+              BorderThickness="1"
+              CornerRadius="6"
+              VerticalAlignment="Center">
+        <TextBlock x:Name="GuidText"
+                   FontFamily="Consolas"
+                   FontSize="16"
+                   Foreground="#1E293B"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+      </Border>
+
+      <StackPanel Grid.Row="1"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8"
+                  Margin="0,16,0,0">
+        <Button x:Name="CreateButton"
+                Content="Create"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Width="88"
+                Height="32"
+                Click="OnCreateClick" />
+        <Button x:Name="CopyButton"
+                Content="Copy"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Width="88"
+                Height="32"
+                IsEnabled="False"
+                Click="OnCopyClick" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>
+
+

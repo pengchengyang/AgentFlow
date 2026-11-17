@@ -2,34 +2,34 @@
 
 ## Purpose
 
-`Node.AutoStart` is a workflow-control plugin. It receives semicolon-prefixed batches of semicolon-terminated JSON groups
-on `input_string_start`, validates each group, emits the original group JSON to a slot-specific
-output pin, and forwards a workflow-start request to a host-provided service.
+`Node.AutoStart` is a workflow-control plugin. It receives one JSON object containing a
+`MESSAGES` array on `input_string_start`, validates each business message, emits each individual
+message JSON to a SLOT-specific output pin, and forwards a workflow-start request to a
+host-provided service.
+
+The upstream `Node.CFGConfimer` emits the complete envelope `DATA` object. A typical input is:
+
+```json
+{"MESSAGES":[{"SLOT":"2","FSN":"603122002902AB","IMEI":"354360451234561"},{"SLOT":"6","FSN":"7G4440003601A1","IMEI":"353990620000005"}]}
+```
 
 ## Input Contract
 
-The input is a text buffer whose first non-whitespace character must be an English
-semicolon. The leading semicolon marks the batch start and is ignored. One or more JSON
-objects follow, separated by semicolons. The final object must also be followed by a
-semicolon so the node can identify the batch boundary while TCP data is still arriving in
-arbitrary chunks.
+The input must be one complete JSON object. Semicolon streaming and frame buffering are not
+handled by this node.
 
-```text
-;{"SLOT":"1","FSN":"603122002902AB","IMEI":"354360451234561"};{"SLOT":"2","FSN":"/F603122002902AC","IMEI":"/I354360451234562"};
-```
+- Top-level value: JSON object.
+- Required property: `MESSAGES`.
+- `MESSAGES` value: JSON array.
+- Each array element: JSON object containing non-empty string values for `SLOT`, `FSN`, and `IMEI`.
+- Property-name lookup is case-insensitive.
+- `FSN` and `IMEI` are preserved exactly, including any leading slash.
 
-Each JSON object must contain:
-
-- `SLOT`: string containing an integer from `1` through `10`
-- `FSN`: non-empty string
-- `IMEI`: non-empty string
-
-Field-name lookup is case-insensitive. `FSN` and `IMEI` are preserved exactly, including
-any leading slash.
+Each `SLOT` must contain an integer from `1` through `10`.
 
 ## Output Mapping
 
-When a group is parsed successfully, the node sends the original validated JSON group to one output pin:
+Each valid array element is emitted as its own compact JSON object through one output pin:
 
 | SLOT | Output pin |
 | --- | --- |
@@ -39,7 +39,16 @@ When a group is parsed successfully, the node sends the original validated JSON 
 | `4` or `9` | `output_string_readyD` |
 | `5` or `10` | `output_string_readyF` |
 
-Multiple groups that map to the same pin are dispatched independently in input order.
+For example, this input element:
+
+```json
+{"SLOT":"2","FSN":"603122002902AB","IMEI":"354360451234561"}
+```
+
+is sent to `output_string_readyB` as the same individual JSON object, not as part of an outer
+`MESSAGES` wrapper.
+
+Multiple groups that map to the same pin are dispatched independently in array order.
 
 ## Contract Surface
 
@@ -47,45 +56,31 @@ Multiple groups that map to the same pin are dispatched independently in input o
 - Category: `Control`
 - Input pin: `input_string_start` (`STRING`, optional)
 - Output pins: `output_string_readyA`, `output_string_readyB`, `output_string_readyC`, `output_string_readyD`, `output_string_readyF` (`STRING`)
-- Output payload: the validated JSON group without its trailing semicolon
+- Output payload: one compact JSON business-message object per valid `MESSAGES` element
 - Required host service: `IWorkflowStartRequestSink`
 
-## Streaming Behavior
+## Validation and Error Handling
 
-TCP does not preserve message boundaries. The node keeps a pending input buffer across
-`StringSample` calls and processes a group only after a semicolon has been received.
-Incomplete trailing content remains buffered until later input arrives or the node stops.
-
-The first empty segment created by the batch-start semicolon is ignored. Other empty
-segments between consecutive semicolons are also ignored. Input that does not begin with a
-semicolon is logged as an error and rejected. Invalid JSON, missing fields, or an
-out-of-range `SLOT` is logged as an error and does not produce output.
-
-The pending buffer is capped at 64 KiB to prevent unbounded growth from malformed input.
+- Invalid top-level JSON: `ERROR`, no output.
+- Missing `MESSAGES`: `ERROR`, no output.
+- `MESSAGES` not an array: `ERROR`, no output.
+- Empty `MESSAGES` array: `WARNING`, no output.
+- Array element not an object: `ERROR` for that item, continue with remaining items.
+- Missing or empty `SLOT`, `FSN`, or `IMEI`: `ERROR` for that item, continue.
+- `SLOT` outside `1..10`: `ERROR` for that item, continue.
 
 ## Lifecycle
 
-`Initialize` and `Run` capture the node context and logger and clear pending input.
-`Run` sets `Running = true` and waits for JSON groups. `Stop` clears pending input and
-releases the cached context and logger.
+`Initialize` and `Run` capture the node context and logger. `Run` sets `Running = true`.
+`Stop` clears the cached context and logger. Because each input is a complete JSON object,
+the node has no pending-input buffer or batch-start state to reset.
 
-For each valid group, the node sends the original JSON group to the mapped output pin and calls
-`IWorkflowStartRequestSink.RequestStart`. If the host service is unavailable, the ready
+For each valid business message, the node sends the compact item JSON to the mapped output pin
+and calls `IWorkflowStartRequestSink.RequestStart`. If the host service is unavailable, the ready
 message is still dispatched and a warning is logged.
-
-Invalid sample types or null string values are rejected before input buffering. Valid
-`StringSample` values are buffered and parsed without a launcher-start request or reply wait.
-
-## JSON Key/Value Parsing
-
-`JsonKeyValueParser.cs` provides plugin-local parsing. It supports both the existing
-string-array value format and scalar string values used by the AutoStart input contract.
-The parser has no dependency on other plugin projects.
 
 ## Build
 
 ```powershell
-dotnet build "AgentFlow/Plugins/Node.AutoStart/Node.AutoStart.csproj" -c Debug -p:Platform=x64
+dotnet build "plugins/Node.AutoStart/Node.AutoStart.csproj" -c Debug -p:Platform=x64
 ```
-
-

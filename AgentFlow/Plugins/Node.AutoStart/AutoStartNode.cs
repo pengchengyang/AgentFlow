@@ -4,20 +4,20 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Text.Json;
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.AutoStart;
 
 /// <summary>
-/// Workflow control node that receives semicolon-prefixed and semicolon-terminated JSON groups and emits each
-/// validated JSON group through the output selected by its SLOT value. The actual workflow-start action
-/// is supplied by the host through <see cref="IWorkflowStartRequestSink"/>.
+/// Workflow control node that receives a JSON object containing a MESSAGES array, validates each
+/// business message, emits each individual message through the output selected by its SLOT value,
+/// and forwards a workflow-start request to the host. The actual workflow-start action is supplied
+/// by the host through <see cref="IWorkflowStartRequestSink"/>.
 /// </summary>
 public sealed class AutoStartNode : BaseNode
 {
-    private const int MaxPendingCharacters = 64 * 1024;
-
     private readonly BasePin _startPin =
         new("input_string_start", DataType.STRING, PinDirection.Input, required: false);
 
@@ -37,12 +37,9 @@ public sealed class AutoStartNode : BaseNode
         new("output_string_readyF", DataType.STRING, PinDirection.Output);
 
     private readonly BasePin[] _readyPins;
-    private readonly object _inputGate = new();
 
     private INodeContext? _context;
     private ILogger? _logger;
-    private string _pendingInput = string.Empty;
-    private bool _batchStartReceived;
 
     public AutoStartNode()
     {
@@ -79,12 +76,6 @@ public sealed class AutoStartNode : BaseNode
     {
         _context = context;
         _logger = context.Logger;
-        lock (_inputGate)
-        {
-            _pendingInput = string.Empty;
-            _batchStartReceived = false;
-        }
-
         return Task.CompletedTask;
     }
 
@@ -93,14 +84,8 @@ public sealed class AutoStartNode : BaseNode
         _context = context;
         _logger = context.Logger;
         Running = true;
-        lock (_inputGate)
-        {
-            _pendingInput = string.Empty;
-            _batchStartReceived = false;
-        }
-
         _logger?.LogTrace(
-            "AutoStart is waiting for semicolon-prefixed batches containing semicolon-terminated SLOT/FSN/IMEI JSON groups.");
+            "AutoStart is waiting for JSON objects containing a MESSAGES array of SLOT/FSN/IMEI business messages.");
         return Task.CompletedTask;
     }
 
@@ -109,135 +94,145 @@ public sealed class AutoStartNode : BaseNode
         Running = false;
         _logger = null;
         _context = null;
-        lock (_inputGate)
-        {
-            _pendingInput = string.Empty;
-            _batchStartReceived = false;
-        }
-
         return Task.CompletedTask;
     }
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (ReferenceEquals(pin, _startPin))
-        {
-            if (!Running)
-                return;
+        if (!ReferenceEquals(pin, _startPin))
+            return;
 
-            if (value is not StringSample input ||
-                input.StringValue is not { } inputText)
+        if (!Running)
+            return;
+
+        if (value is not StringSample input ||
+            input.StringValue is not { } inputText)
+        {
+            _logger?.LogError(
+                "AutoStart ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                pin.Name,
+                value?.Type.ToString() ?? "null");
+            return;
+        }
+
+        ProcessInput(inputText, pin.Context);
+    }
+
+    private void ProcessInput(string inputText, INodeContext? pinContext)
+    {
+        if (string.IsNullOrWhiteSpace(inputText))
+        {
+            _logger?.LogError("AutoStart ignored empty input.");
+            return;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(inputText);
+        }
+        catch (JsonException ex)
+        {
+            _logger?.LogError(
+                ex,
+                "AutoStart ignored invalid JSON input: {Payload}",
+                inputText);
+            return;
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
             {
                 _logger?.LogError(
-                    "AutoStart ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
-                    pin.Name,
-                    value?.Type.ToString() ?? "null");
+                    "AutoStart rejected input because the top-level JSON value must be an object: {Payload}",
+                    inputText);
                 return;
             }
 
-            lock (_inputGate)
+            if (!TryGetPropertyIgnoreCase(root, "MESSAGES", out var messages))
             {
-                if (!_batchStartReceived)
-                {
-                    var candidate = inputText.TrimStart();
-                    if (candidate.Length == 0)
-                        return;
+                _logger?.LogError(
+                    "AutoStart rejected input because the top-level MESSAGES property is missing: {Payload}",
+                    inputText);
+                return;
+            }
 
-                    if (candidate[0] != ';')
-                    {
-                        _logger?.LogError(
-                            "AutoStart rejected input because each batch must begin with ';': {Payload}",
-                            inputText);
-                        _pendingInput = string.Empty;
-                        _batchStartReceived = false;
-                        return;
-                    }
+            if (messages.ValueKind != JsonValueKind.Array)
+            {
+                _logger?.LogError(
+                    "AutoStart rejected input because MESSAGES must be a JSON array: {Payload}",
+                    inputText);
+                return;
+            }
 
-                    _batchStartReceived = true;
-                    inputText = candidate[1..];
-                }
+            if (messages.GetArrayLength() == 0)
+            {
+                _logger?.LogWarning("AutoStart received an empty MESSAGES array and produced no output.");
+                return;
+            }
 
-                _pendingInput += inputText;
-                if (_pendingInput.Length > MaxPendingCharacters)
-                {
-                    _logger?.LogError(
-                        "AutoStart input exceeded the {MaxCharacters}-character buffer limit and was cleared.",
-                        MaxPendingCharacters);
-                    _pendingInput = string.Empty;
-                    _batchStartReceived = false;
-                    return;
-                }
-
-                var processedSegment = false;
-                while (true)
-                {
-                    var separatorIndex = _pendingInput.IndexOf(';');
-                    if (separatorIndex < 0)
-                        break;
-
-                    var segment = _pendingInput[..separatorIndex].Trim();
-                    _pendingInput = _pendingInput[(separatorIndex + 1)..];
-
-                    if (segment.Length == 0)
-                        continue;
-
-                    ProcessCompletedSegment(segment, pin.Context);
-                    processedSegment = true;
-                }
-
-                if (processedSegment && string.IsNullOrWhiteSpace(_pendingInput))
-                {
-                    _pendingInput = string.Empty;
-                    _batchStartReceived = false;
-                }
+            var index = 0;
+            foreach (var message in messages.EnumerateArray())
+            {
+                ProcessMessage(message, index, pinContext);
+                index++;
             }
         }
     }
 
-    private void ProcessCompletedSegment(string segment, INodeContext? pinContext)
+    private void ProcessMessage(JsonElement message, int index, INodeContext? pinContext)
     {
-        if (!JsonKeyValueParser.TryParseStringValues(segment, out var values))
+        if (message.ValueKind != JsonValueKind.Object)
         {
             _logger?.LogError(
-                "AutoStart ignored an invalid JSON group: {Payload}",
-                segment);
+                "AutoStart ignored MESSAGES item {Index} because it must be a JSON object: {Payload}",
+                index,
+                message.GetRawText());
             return;
         }
 
-        if (!TryGetRequiredValue(values, "SLOT", out var slotText) ||
-            !TryGetRequiredValue(values, "FSN", out var fsn) ||
-            !TryGetRequiredValue(values, "IMEI", out var imei))
+        if (!TryGetRequiredStringProperty(message, "SLOT", out var slotText) ||
+            !TryGetRequiredStringProperty(message, "FSN", out var fsn) ||
+            !TryGetRequiredStringProperty(message, "IMEI", out var imei))
         {
             _logger?.LogError(
-                "AutoStart ignored a JSON group because SLOT, FSN, and IMEI are required: {Payload}",
-                segment);
+                "AutoStart ignored MESSAGES item {Index} because non-empty string values for SLOT, FSN, and IMEI are required: {Payload}",
+                index,
+                message.GetRawText());
             return;
         }
 
         if (!int.TryParse(slotText, out var slot) || slot is < 1 or > 10)
         {
             _logger?.LogError(
-                "AutoStart ignored an invalid SLOT value {Slot}: {Payload}",
+                "AutoStart ignored MESSAGES item {Index} with invalid SLOT value {Slot}: {Payload}",
+                index,
                 slotText,
-                segment);
+                message.GetRawText());
             return;
         }
 
         var readyPin = GetReadyPin(slot);
         if (readyPin is null)
         {
-            _logger?.LogError("AutoStart could not map SLOT {Slot} to a ready output pin.", slot);
+            _logger?.LogError(
+                "AutoStart could not map SLOT {Slot} from MESSAGES item {Index} to a ready output pin.",
+                slot,
+                index);
             return;
         }
 
+        var compactMessage = JsonSerializer.Serialize(message);
         var readySample = StringSample.CreateSample();
-        readySample.StringValue = segment;
+        readySample.StringValue = compactMessage;
         readyPin.SendSampleWithDispatchLog(
             readySample,
             $"SLOT {slot} ready payload, FSN {fsn}, IMEI {imei}",
             LogLevel.Information);
 
-        RequestWorkflowStart(segment, pinContext);
+        RequestWorkflowStart(compactMessage, pinContext);
     }
 
     private void RequestWorkflowStart(string triggerMessage, INodeContext? pinContext)
@@ -246,7 +241,7 @@ public sealed class AutoStartNode : BaseNode
         if (startSink is null)
         {
             _logger?.LogWarning(
-                "AutoStart parsed a valid group, but no IWorkflowStartRequestSink service is registered.");
+                "AutoStart parsed a valid business message, but no IWorkflowStartRequestSink service is registered.");
             return;
         }
 
@@ -264,18 +259,41 @@ public sealed class AutoStartNode : BaseNode
         _ => null,
     };
 
-    private static bool TryGetRequiredValue(
-        IReadOnlyDictionary<string, string> values,
+    private static bool TryGetRequiredStringProperty(
+        JsonElement element,
         string key,
         out string value)
     {
-        if (values.TryGetValue(key, out var found) && !string.IsNullOrWhiteSpace(found))
+        if (TryGetPropertyIgnoreCase(element, key, out var property) &&
+            property.ValueKind == JsonValueKind.String)
         {
-            value = found;
-            return true;
+            var found = property.GetString();
+            if (!string.IsNullOrWhiteSpace(found))
+            {
+                value = found;
+                return true;
+            }
         }
 
         value = string.Empty;
+        return false;
+    }
+
+    private static bool TryGetPropertyIgnoreCase(
+        JsonElement element,
+        string propertyName,
+        out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
         return false;
     }
 
@@ -286,5 +304,3 @@ public sealed class AutoStartNode : BaseNode
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
 }
-
-

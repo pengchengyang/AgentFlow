@@ -63,9 +63,9 @@ containing C# types are renamed.
 - `CFGBroadcastSubscriptions.CFGLauncherStop`: `FACT.Launcher.Stop.628779B8-57FF-407F-B252-FD9C448B67CC`
   - Shared launcher stop topic retained for workflow-control components.
 - `CFGBroadcastSubscriptions.CFGAutoStopExit`: `Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8`
-  - Published by `Node.AutoStop` when it receives the exact input
-    `;{"Request":"Exit"};`.
-  - Carries one `StringSample` with value `{"Request":"Exit"}`.
+  - Published by `Node.AutoStop` when its complete input string contains the exact fragment
+    `{"Request":"Stop"}`.
+  - Carries one `StringSample` with value `{"Request":"Stop"}`.
 - `CFGBroadcastSubscriptions.CFGLauncherCommand`: `FACT.Launcher.Command.C3578D71-A049-43B8-AFE1-2482C1D0FFDD`
   - Published by `Node.FACTLauncher` after a launch command is successfully sent to its
     command output pin.
@@ -83,6 +83,20 @@ containing C# types are renamed.
     and exact `StringSample` value `"Reset"`.
   - Valid requests clear only the selected slots, rewrite `Yield.ini`, and cause a complete
     `Pass.Fail.Total.Yield.0314C9D4-964F-4520-AC02-8E1A8729754A` snapshot to be published after persistence succeeds.
+
+## RTS CFGS TCP Protocol
+
+`RTS/CFGS/Broadcasts/CFGSTcpProtocolBroadcasts.cs` defines shared observer topics and payload
+keys for the CFG/CFGS TCP session nodes:
+
+- `CFGSTcpProtocolBroadcasts.CFGSServerConnectionStatus`:
+  `CFGS.Tcp.Server.Connection.Status.1FFD93B9-9244-48A4-8E2B-7CB3057A3314`
+- `CFGSTcpProtocolBroadcasts.CFGTcpClientConnectionStatus`:
+  `CFG.Tcp.Client.Connection.Status.DC4BB9BC-CEA6-41A5-A337-A73DE9964599`
+
+Each status message uses `BroadcastTopicMessage.SamplesByKey` with string keys from
+`CFGSTcpProtocolStatusKeys`: `GUID`, `ROLE`, `STATE`, `ENDPOINT`, `LAST_SEEN_UTC`, and
+`PENDING_SEND_COUNT`. State values are defined by `CFGSTcpProtocolConnectionStates`.
 
 ## Build
 

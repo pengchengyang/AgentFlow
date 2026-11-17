@@ -2,32 +2,40 @@
 
 ## Purpose
 
-`Node.AutoStop` is a small workflow-control plugin. It accepts one exact exit message on
-`input_string_stop` and broadcasts the JSON payload for GUI or workflow consumers. It has
-one input pin and no output pins.
+`Node.AutoStop` is a small workflow-control plugin. It accepts a JSON string on
+`input_string_stop`, checks whether the string contains the exact stop request fragment,
+broadcasts that stop payload, and requests a normal workflow stop from the host. It has one
+input pin and no output pins.
 
 ## Input Contract
 
-The accepted input is exactly:
+The input is a complete JSON string. Semicolon framing and stream buffering are not handled by
+this node.
 
-```text
-;{"Request":"Exit"};
+The input triggers a stop when it contains this exact text fragment:
+
+```json
+{"Request":"Stop"}
 ```
 
-Any other value is ignored without logging. Input is compared as an exact ordinal string;
-there is no buffering, JSON parsing, slot validation, or workflow-stop request.
+Matching uses ordinal text comparison. Whitespace variants such as
+`{ "Request": "Stop" }` do not match. Any input that does not contain the fragment is ignored
+at `TRACE` level.
 
 ## Broadcast
 
-When the exact input is received, the node publishes one `StringSample` with this value:
+When the fragment is found, the node publishes one `StringSample` with this value:
 
 ```json
-{"Request":"Exit"}
+{"Request":"Stop"}
 ```
 
 It is sent on `CFGBroadcastSubscriptions.CFGAutoStopExit`, whose wire value is
-`Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8`. The node does not stop the workflow itself; subscribers decide
-how to handle the exit signal.
+`Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8`.
+
+The original received input is passed to `IWorkflowStopRequestSink.RequestStop` as the trigger
+message. The node does not directly finalize application shutdown; the workflow host decides
+how to handle the stop request.
 
 ## Contract Surface
 
@@ -38,12 +46,12 @@ how to handle the exit signal.
 
 ## Lifecycle
 
-`Initialize` and `Run` capture the logger. `Run` sets `Running = true`. `Stop` clears
-`Running` and releases the cached logger. `ReceiveSample` has one responsibility: recognize
-the exact exit message and publish the broadcast.
+`Initialize` and `Run` capture the logger, topic bus, and workflow stop sink. `Run` sets
+`Running = true`. `Stop` clears `Running` and releases cached services. `ReceiveSample` checks
+one complete input string for the stop fragment and publishes the stop request when matched.
 
 ## Build
 
 ```powershell
-dotnet build "AgentFlow/Plugins/Node.AutoStop/Node.AutoStop.csproj" -c Debug -p:Platform=x64
+dotnet build "plugins/Node.AutoStop/Node.AutoStop.csproj" -c Debug -p:Platform=x64
 ```
