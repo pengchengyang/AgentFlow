@@ -13,18 +13,19 @@ using Microsoft.Extensions.Logging;
 namespace Node.CFGConfimer;
 
 /// <summary>
-/// Confirms that a complete CFG protocol envelope targets this local GUID and extracts the
-/// opaque top-level DATA object as a standalone JSON string.
+/// Confirms that a complete CFG protocol envelope targets this local GUID and location.
+/// BUSINESS envelopes emit only the validated MESSAGES wrapper; other TYPE values emit the
+/// complete original envelope. Any validation failure logs an error and stops the node.
 /// </summary>
 public sealed class CFGConfimerNode : BaseNode
 {
-    private const string DefaultRequiredType = "BUSINESS";
+    private const string BusinessType = "BUSINESS";
 
     private readonly object _stateGate = new();
     private ILogger? _logger;
     private string _localGuid = string.Empty;
-    private string _requiredType = DefaultRequiredType;
-    private DateTimeOffset? _lastTimestampUtc;
+    private string _localLocation = string.Empty;
+    private DateTimeOffset? _lastBusinessTimestampUtc;
 
     public CFGConfimerNode()
     {
@@ -38,64 +39,75 @@ public sealed class CFGConfimerNode : BaseNode
     public override string Category => "Protocol";
 
     public BasePin LocalGuidInputPin { get; } =
-        new("input_string_local_guid", DataType.STRING, PinDirection.Input, required: false);
+        new("in_string_local_guid", DataType.STRING, PinDirection.Input, required: false);
 
-    public BasePin MessageInputPin { get; } =
-        new("input_string_message", DataType.STRING, PinDirection.Input, required: false);
+    public BasePin MessagesInputPin { get; } =
+        new("in_string_messages", DataType.STRING, PinDirection.Input, required: false);
 
-    public BasePin DataOutputPin { get; } =
-        new("output_string_data", DataType.STRING, PinDirection.Output);
+    public BasePin MessagesOutputPin { get; } =
+        new("out_string_messages", DataType.STRING, PinDirection.Output);
+
+    public BasePin OthersOutputPin { get; } =
+        new("out_string_others", DataType.STRING, PinDirection.Output);
 
     public override void AddPins()
     {
         AddInputPin(LocalGuidInputPin);
-        AddInputPin(MessageInputPin);
-        AddOutputPin(DataOutputPin);
+        AddInputPin(MessagesInputPin);
+        AddOutputPin(MessagesOutputPin);
+        AddOutputPin(OthersOutputPin);
     }
 
     protected override void AddParam()
     {
         base.AddParam();
-        AddParameter(new NodeParameter("RequiredType", typeof(string), DefaultRequiredType,
+        AddParameter(new NodeParameter("LocalLocation", typeof(string), string.Empty,
             isEditable: true, group: "Protocol", zone: "CFGConfimerZone"));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
-        if (parameters.TryGetValue("RequiredType", out var requiredType) && requiredType is not null)
-            Param("RequiredType").Value = ParameterValues.GetString(requiredType, DefaultRequiredType) ?? DefaultRequiredType;
+        if (parameters.TryGetValue("LocalLocation", out var localLocation) && localLocation is not null)
+            Param("LocalLocation").Value = ParameterValues.GetString(localLocation, string.Empty) ?? string.Empty;
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
-        var configuredType = (ParameterValues.GetString(Param("RequiredType").Value, DefaultRequiredType) ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(configuredType))
+        var configuredLocation = (ParameterValues.GetString(Param("LocalLocation").Value, string.Empty) ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(configuredLocation) && !IsLocation(configuredLocation))
         {
             context.Logger.LogWarning(
-                "CFG Confimer RequiredType is empty; using {Fallback}.",
-                DefaultRequiredType);
-            configuredType = DefaultRequiredType;
-            Param("RequiredType").Value = configuredType;
+                "CFG Confimer LocalLocation {Location} is invalid; expected CFG-1 or CFG-2.",
+                configuredLocation);
+            configuredLocation = string.Empty;
+            Param("LocalLocation").Value = string.Empty;
         }
 
         lock (_stateGate)
         {
-            _requiredType = configuredType.ToUpperInvariant();
             _localGuid = string.Empty;
-            _lastTimestampUtc = null;
+            _localLocation = NormalizeLocation(configuredLocation);
+            _lastBusinessTimestampUtc = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(configuredLocation))
+        {
+            context.Logger.LogWarning(
+                "CFG Confimer LocalLocation is not configured; incoming messages will be rejected.");
         }
 
         context.Logger.LogInformation(
-            "CFG Confimer initialized; requiredType={RequiredType}, waiting for input_string_local_guid.",
-            _requiredType);
+            "CFG Confimer initialized; localLocation={Location}, waiting for input_string_local_guid.",
+            string.IsNullOrWhiteSpace(configuredLocation) ? "<unset>" : configuredLocation);
         return Task.CompletedTask;
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         Running = true;
-        context.Logger.LogInformation("CFG Confimer is running; requiredType={RequiredType}.", _requiredType);
+        context.Logger.LogInformation(
+            "CFG Confimer is running; BUSINESS messages route to output_string_messages and other TYPE values route to output_string_others.");
         return Task.CompletedTask;
     }
 
@@ -103,7 +115,7 @@ public sealed class CFGConfimerNode : BaseNode
     {
         Running = false;
         lock (_stateGate)
-            _lastTimestampUtc = null;
+            _lastBusinessTimestampUtc = null;
         SetIdle();
         context.Logger.LogInformation("CFG Confimer stopped.");
         return Task.CompletedTask;
@@ -120,8 +132,8 @@ public sealed class CFGConfimerNode : BaseNode
             return;
         }
 
-        if (ReferenceEquals(pin, MessageInputPin))
-            HandleMessage(value);
+        if (ReferenceEquals(pin, MessagesInputPin))
+            HandleMessagesInput(value);
     }
 
     private void HandleLocalGuid(Sample? value)
@@ -144,104 +156,270 @@ public sealed class CFGConfimerNode : BaseNode
         lock (_stateGate)
         {
             if (!string.Equals(_localGuid, normalized, StringComparison.Ordinal))
-                _lastTimestampUtc = null;
+                _lastBusinessTimestampUtc = null;
             _localGuid = normalized;
         }
 
         _logger?.LogInformation("CFG Confimer accepted local GUID {Guid}.", normalized);
     }
 
-    private void HandleMessage(Sample? value)
+    private void HandleMessagesInput(Sample? value)
     {
         if (value is not StringSample text || text.StringValue is null)
         {
-            _logger?.LogError("CFG Confimer ignored input_string_message: expected StringSample.");
+            RejectAndStop("CFG Confimer ignored input_string_messages: expected StringSample.");
             return;
         }
 
         string localGuid;
-        string requiredType;
+        string localLocation;
         lock (_stateGate)
         {
             localGuid = _localGuid;
-            requiredType = _requiredType;
+            localLocation = _localLocation;
         }
 
         if (string.IsNullOrWhiteSpace(localGuid))
         {
-            _logger?.LogWarning(
-                "CFG Confimer ignored message because input_string_local_guid has not received a valid GUID yet.");
+            RejectAndStop(
+                "CFG Confimer rejected message because input_string_local_guid has not received a valid GUID yet.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(localLocation))
+        {
+            RejectAndStop(
+                "CFG Confimer rejected message because LocalLocation is not configured as CFG-1 or CFG-2.");
             return;
         }
 
         if (!TryParseObject(text.StringValue, out var envelope, out var error))
         {
-            _logger?.LogError("CFG Confimer rejected message: {Error}.", error);
+            RejectAndStop("CFG Confimer rejected message: {Error}.", error);
             return;
         }
 
         if (!TryGetString(envelope, "GUID", out var guidText) ||
             !Guid.TryParse(guidText.Trim(), out var targetGuid))
         {
-            _logger?.LogError("CFG Confimer rejected message: GUID is missing or invalid.");
+            RejectAndStop("CFG Confimer rejected message: GUID is missing or invalid.");
             return;
         }
 
         var targetGuidNormalized = targetGuid.ToString("D").ToLowerInvariant();
         if (!string.Equals(targetGuidNormalized, localGuid, StringComparison.Ordinal))
         {
-            _logger?.LogWarning(
-                "CFG Confimer ignored message for GUID {TargetGuid}; local GUID is {LocalGuid}.",
-                targetGuidNormalized, localGuid);
+            RejectAndStop(
+                "CFG Confimer rejected message for GUID {TargetGuid}; local GUID is {LocalGuid}.",
+                targetGuidNormalized,
+                localGuid);
             return;
         }
 
         if (!TryGetString(envelope, "TYPE", out var type) || string.IsNullOrWhiteSpace(type))
         {
-            _logger?.LogError("CFG Confimer rejected message: TYPE is missing.");
+            RejectAndStop("CFG Confimer rejected message: TYPE is missing.");
             return;
         }
 
-        if (!string.Equals(type.Trim(), requiredType, StringComparison.OrdinalIgnoreCase))
+        if (!TryGetString(envelope, "LOCATION", out var location) ||
+            !IsLocation(location))
         {
-            _logger?.LogWarning(
-                "CFG Confimer ignored TYPE {Type}; required TYPE is {RequiredType}.",
-                type, requiredType);
+            RejectAndStop("CFG Confimer rejected message: LOCATION must be CFG-1 or CFG-2.");
             return;
         }
 
-        if (!TryValidateProtocolFields(envelope, out var data, out var timestampUtc, out error))
+        if (!string.Equals(NormalizeLocation(location), localLocation, StringComparison.Ordinal))
         {
-            _logger?.LogError("CFG Confimer rejected message: {Error}.", error);
+            RejectAndStop(
+                "CFG Confimer rejected message LOCATION {Location}; local LOCATION is {LocalLocation}.",
+                location,
+                localLocation);
+            return;
+        }
+
+        if (string.Equals(type.Trim(), BusinessType, StringComparison.OrdinalIgnoreCase))
+        {
+            ProcessBusinessMessage(envelope, localGuid, localLocation);
+        }
+        else
+        {
+            ProcessOtherMessage(envelope, type.Trim());
+        }
+    }
+
+    private void ProcessBusinessMessage(JsonObject envelope, string localGuid, string localLocation)
+    {
+        if (!TryValidateProtocolFields(envelope, out var data, out var timestampUtc, out var error))
+        {
+            RejectAndStop("CFG Confimer rejected BUSINESS message: {Error}.", error);
+            return;
+        }
+
+        if (!TryValidateBusinessData(data, localLocation, out error))
+        {
+            RejectAndStop("CFG Confimer rejected BUSINESS payload: {Error}.", error);
+            return;
+        }
+
+        if (Get(data, "MESSAGES") is not JsonArray messages)
+        {
+            RejectAndStop("CFG Confimer rejected BUSINESS payload: DATA.MESSAGES must be a JSON array.");
             return;
         }
 
         lock (_stateGate)
         {
-            if (_lastTimestampUtc == timestampUtc)
+            if (_lastBusinessTimestampUtc is { } lastTimestampUtc &&
+                timestampUtc <= lastTimestampUtc)
             {
-                _logger?.LogWarning(
-                    "CFG Confimer ignored duplicate TIMESTAMP {Timestamp} for GUID {Guid}.",
+                RejectAndStop(
+                    "CFG Confimer rejected TIMESTAMP {Timestamp}; it must be newer than the last successfully dispatched BUSINESS timestamp {LastTimestamp}.",
                     timestampUtc,
-                    localGuid);
+                    lastTimestampUtc);
                 return;
             }
 
-            var json = JsonSerializer.Serialize(data);
+            var messagesEnvelope = new JsonObject
+            {
+                ["MESSAGES"] = messages.DeepClone()
+            };
+            var json = JsonSerializer.Serialize(messagesEnvelope);
             var sample = StringSample.CreateSample();
-            sample.SetValue(json, DataOutputPin.Name);
-            var sent = DataOutputPin.SendSampleWithDispatchLog(
+            sample.SetValue(json, MessagesOutputPin.Name);
+            var sent = MessagesOutputPin.SendSampleWithDispatchLog(
                 sample,
-                $"confirmed DATA for {localGuid}",
+                $"confirmed BUSINESS MESSAGES for {localGuid}",
                 LogLevel.Information);
 
             if (sent)
-                _lastTimestampUtc = timestampUtc;
+            {
+                _lastBusinessTimestampUtc = timestampUtc;
+            }
             else
+            {
                 _logger?.LogWarning(
-                    "CFG Confimer did not cache TIMESTAMP {Timestamp} because output_string_data was not connected.",
+                    "CFG Confimer did not cache TIMESTAMP {Timestamp} because output_string_messages was not connected.",
                     timestampUtc);
+            }
         }
+    }
+
+    private void ProcessOtherMessage(JsonObject envelope, string type)
+    {
+        var json = JsonSerializer.Serialize(envelope);
+        var sample = StringSample.CreateSample();
+        sample.SetValue(json, OthersOutputPin.Name);
+        var sent = OthersOutputPin.SendSampleWithDispatchLog(
+            sample,
+            $"original TYPE {type} envelope",
+            LogLevel.Information);
+
+        if (!sent)
+        {
+            _logger?.LogTrace(
+                "CFG Confimer did not send TYPE {Type} because output_string_others was not connected.",
+                type);
+        }
+    }
+
+    private static bool TryValidateBusinessData(
+        JsonObject data,
+        string location,
+        out string? error)
+    {
+        error = null;
+        var expectedStartSlot = string.Equals(NormalizeLocation(location), "CFG-1", StringComparison.Ordinal)
+            ? 1
+            : 6;
+        var expectedEndSlot = expectedStartSlot + 4;
+
+        if (Get(data, "MESSAGES") is not JsonArray messages || messages.Count != 5)
+        {
+            error = "DATA.MESSAGES must contain exactly five records";
+            return false;
+        }
+
+        var seenSlots = new bool[5];
+        for (var index = 0; index < messages.Count; index++)
+        {
+            if (messages[index] is not JsonObject message)
+            {
+                error = $"DATA.MESSAGES[{index}] must be a JSON object";
+                return false;
+            }
+
+            if (!TryGetString(message, "SLOT", out var slotText) ||
+                !int.TryParse(slotText, out var slot) ||
+                slot < expectedStartSlot ||
+                slot > expectedEndSlot)
+            {
+                error = $"DATA.MESSAGES[{index}].SLOT must be an integer from {expectedStartSlot} through {expectedEndSlot}";
+                return false;
+            }
+
+            var slotIndex = slot - expectedStartSlot;
+            if (seenSlots[slotIndex])
+            {
+                error = $"DATA.MESSAGES contains duplicate SLOT {slot}";
+                return false;
+            }
+            seenSlots[slotIndex] = true;
+
+            if (!TryGetString(message, "FSN", out var fsn))
+            {
+                error = $"DATA.MESSAGES[{index}].FSN must be a string";
+                return false;
+            }
+            if (!TryGetString(message, "IMEI", out var imei))
+            {
+                error = $"DATA.MESSAGES[{index}].IMEI must be a string";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(fsn) != string.IsNullOrEmpty(imei))
+            {
+                error = $"DATA.MESSAGES[{index}] must set both FSN and IMEI or leave both empty";
+                return false;
+            }
+
+            if (!TryGetString(message, "STATUS", out var statusText))
+            {
+                error = $"DATA.MESSAGES[{index}].STATUS must be IDLE or TEST";
+                return false;
+            }
+
+            var status = statusText.Trim().ToUpperInvariant();
+            if (!string.Equals(status, "IDLE", StringComparison.Ordinal) &&
+                !string.Equals(status, "TEST", StringComparison.Ordinal))
+            {
+                error = $"DATA.MESSAGES[{index}].STATUS must be IDLE or TEST";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(fsn) && !string.Equals(status, "IDLE", StringComparison.Ordinal))
+            {
+                error = $"DATA.MESSAGES[{index}] with empty FSN/IMEI must use STATUS IDLE";
+                return false;
+            }
+        }
+
+        for (var index = 0; index < seenSlots.Length; index++)
+        {
+            if (!seenSlots[index])
+            {
+                error = $"DATA.MESSAGES must contain SLOT {expectedStartSlot + index} exactly once";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void RejectAndStop(string message, params object?[] args)
+    {
+        _logger?.LogError(message, args);
+        Running = false;
     }
 
     private static bool TryParseObject(string json, out JsonObject envelope, out string? error)
@@ -295,6 +473,13 @@ public sealed class CFGConfimerNode : BaseNode
         return true;
     }
 
+    private static bool IsLocation(string value) =>
+        string.Equals(NormalizeLocation(value), "CFG-1", StringComparison.Ordinal) ||
+        string.Equals(NormalizeLocation(value), "CFG-2", StringComparison.Ordinal);
+
+    private static string NormalizeLocation(string value) =>
+        value.Trim().ToUpperInvariant();
+
     private static JsonNode? Get(JsonObject obj, string key)
     {
         if (obj.TryGetPropertyValue(key, out var exact))
@@ -323,10 +508,5 @@ public sealed class CFGConfimerNode : BaseNode
         return false;
     }
 
-
     private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
 }
-
-
-
-

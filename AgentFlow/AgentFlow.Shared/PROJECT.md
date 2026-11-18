@@ -63,8 +63,8 @@ containing C# types are renamed.
 - `CFGBroadcastSubscriptions.CFGLauncherStop`: `FACT.Launcher.Stop.628779B8-57FF-407F-B252-FD9C448B67CC`
   - Shared launcher stop topic retained for workflow-control components.
 - `CFGBroadcastSubscriptions.CFGAutoStopExit`: `Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8`
-  - Published by `Node.AutoStop` when its complete input string contains the exact fragment
-    `{"Request":"Stop"}`.
+  - Published by `Node.AutoStop` when its complete input string parses as a JSON object with
+    top-level string property `TYPE` set exactly to `DISCONNECT`.
   - Carries one `StringSample` with value `{"Request":"Stop"}`.
 - `CFGBroadcastSubscriptions.CFGLauncherCommand`: `FACT.Launcher.Command.C3578D71-A049-43B8-AFE1-2482C1D0FFDD`
   - Published by `Node.FACTLauncher` after a launch command is successfully sent to its

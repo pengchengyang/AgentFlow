@@ -21,11 +21,19 @@ internal static class ProtocolConstants
     public const string Disconnect = "DISCONNECT";
 
     public const string Guid = "GUID";
+    public const string Location = "LOCATION";
     public const string Type = "TYPE";
     public const string Version = "VERSION";
     public const string Sequence = "SEQ";
     public const string Timestamp = "TIMESTAMP";
     public const string Data = "DATA";
+
+    public const string Cfg1 = "CFG-1";
+    public const string Cfg2 = "CFG-2";
+    public const string Idle = "IDLE";
+    public const string Test = "TEST";
+    public const string Ok = "OK";
+    public const string Ng = "NG";
 }
 
 internal static class ProtocolMessage
@@ -60,12 +68,31 @@ internal static class ProtocolMessage
         }
     }
 
-    public static bool TryValidateEnvelope(JsonObject envelope, out string? error)
+    public static bool TryValidateEnvelope(
+        JsonObject envelope,
+        out string? error,
+        bool requireLocation = false)
     {
         error = null;
         if (!TryGetString(envelope, ProtocolConstants.Guid, out var guid) || string.IsNullOrWhiteSpace(guid))
         {
             error = "GUID is required";
+            return false;
+        }
+
+        if (TryGetString(envelope, ProtocolConstants.Location, out var location) &&
+            !string.IsNullOrWhiteSpace(location) &&
+            !IsLocation(location))
+        {
+            error = "LOCATION must be CFG-1 or CFG-2";
+            return false;
+        }
+
+        if (requireLocation &&
+            (!TryGetString(envelope, ProtocolConstants.Location, out location) ||
+             string.IsNullOrWhiteSpace(location)))
+        {
+            error = "LOCATION is required";
             return false;
         }
 
@@ -138,15 +165,34 @@ internal static class ProtocolMessage
                 return false;
             }
 
-            if (!TryGetString(client, "ROLE", out var role) || string.IsNullOrWhiteSpace(role))
+            var hasLocation = TryGetString(client, ProtocolConstants.Location, out var location) &&
+                !string.IsNullOrWhiteSpace(location);
+            var hasRole = TryGetString(client, "ROLE", out var role) &&
+                !string.IsNullOrWhiteSpace(role);
+
+            if (!hasLocation && !hasRole)
             {
-                error = "each clients entry must contain a non-empty ROLE";
+                error = "each clients entry must contain a non-empty LOCATION or ROLE";
+                return false;
+            }
+
+            if (hasLocation && hasRole &&
+                !string.Equals(location.Trim(), role.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                error = $"client {normalizedGuid} has conflicting LOCATION and ROLE values";
+                return false;
+            }
+
+            var configuredLocation = hasLocation ? location.Trim() : role.Trim();
+            if (!IsLocation(configuredLocation))
+            {
+                error = $"client {normalizedGuid} LOCATION must be CFG-1 or CFG-2";
                 return false;
             }
 
             if (!definitions.TryAdd(
                     normalizedGuid,
-                    new CfgClientDefinition(normalizedGuid, role.Trim())))
+                    new CfgClientDefinition(normalizedGuid, NormalizeLocation(configuredLocation))))
             {
                 error = $"duplicate client GUID '{normalizedGuid}'";
                 return false;
@@ -164,21 +210,27 @@ internal static class ProtocolMessage
     }
     public static JsonObject CreateEnvelope(
         string guid,
+        string location,
         string type,
         string version,
         long sequence,
         string timestamp,
         JsonObject? data = null)
     {
-        return new JsonObject
+        var envelope = new JsonObject
         {
             [ProtocolConstants.Guid] = guid,
-            [ProtocolConstants.Type] = type,
-            [ProtocolConstants.Version] = version,
-            [ProtocolConstants.Sequence] = sequence,
-            [ProtocolConstants.Timestamp] = timestamp,
-            [ProtocolConstants.Data] = data?.DeepClone() as JsonObject ?? new JsonObject(),
         };
+
+        if (!string.IsNullOrWhiteSpace(location))
+            envelope[ProtocolConstants.Location] = NormalizeLocation(location);
+
+        envelope[ProtocolConstants.Type] = type;
+        envelope[ProtocolConstants.Version] = version;
+        envelope[ProtocolConstants.Sequence] = sequence;
+        envelope[ProtocolConstants.Timestamp] = timestamp;
+        envelope[ProtocolConstants.Data] = data?.DeepClone() as JsonObject ?? new JsonObject();
+        return envelope;
     }
 
     public static JsonObject CreateBusinessTemplate(JsonObject input, out string? error)
@@ -234,6 +286,110 @@ internal static class ProtocolMessage
         data = sourceData.DeepClone().AsObject();
         return true;
     }
+
+    public static bool TryValidateBusinessData(
+        JsonObject data,
+        string location,
+        out string? error)
+    {
+        error = null;
+        if (!IsLocation(location))
+        {
+            error = "LOCATION must be CFG-1 or CFG-2";
+            return false;
+        }
+
+        var normalizedLocation = NormalizeLocation(location);
+        var expectedStartSlot = string.Equals(normalizedLocation, ProtocolConstants.Cfg1, StringComparison.Ordinal)
+            ? 1
+            : 6;
+        var expectedEndSlot = expectedStartSlot + 4;
+
+        if (Get(data, "MESSAGES") is not JsonArray messages ||
+            messages.Count < 1 ||
+            messages.Count > 5)
+        {
+            error = "DATA.MESSAGES must contain between one and five records";
+            return false;
+        }
+
+        var seenSlots = new bool[5];
+        for (var index = 0; index < messages.Count; index++)
+        {
+            if (messages[index] is not JsonObject message)
+            {
+                error = $"DATA.MESSAGES[{index}] must be a JSON object";
+                return false;
+            }
+
+            if (!TryGetString(message, "SLOT", out var slotText) ||
+                !int.TryParse(slotText, out var slot) ||
+                slot < expectedStartSlot ||
+                slot > expectedEndSlot)
+            {
+                error = $"DATA.MESSAGES[{index}].SLOT must be an integer from {expectedStartSlot} through {expectedEndSlot}";
+                return false;
+            }
+
+            var slotIndex = slot - expectedStartSlot;
+            if (seenSlots[slotIndex])
+            {
+                error = $"DATA.MESSAGES contains duplicate SLOT {slot}";
+                return false;
+            }
+            seenSlots[slotIndex] = true;
+
+            if (!TryGetString(message, "FSN", out var fsn))
+            {
+                error = $"DATA.MESSAGES[{index}].FSN must be a string";
+                return false;
+            }
+
+            if (!TryGetString(message, "IMEI", out var imei))
+            {
+                error = $"DATA.MESSAGES[{index}].IMEI must be a string";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(fsn) != string.IsNullOrEmpty(imei))
+            {
+                error = $"DATA.MESSAGES[{index}] must set both FSN and IMEI or leave both empty";
+                return false;
+            }
+
+            if (!TryGetString(message, "STATUS", out var statusText))
+            {
+                error = $"DATA.MESSAGES[{index}].STATUS must be IDLE, TEST, OK, or NG";
+                return false;
+            }
+
+            var status = statusText.Trim().ToUpperInvariant();
+            if (!string.Equals(status, ProtocolConstants.Idle, StringComparison.Ordinal) &&
+                !string.Equals(status, ProtocolConstants.Test, StringComparison.Ordinal) &&
+                !string.Equals(status, ProtocolConstants.Ok, StringComparison.Ordinal) &&
+                !string.Equals(status, ProtocolConstants.Ng, StringComparison.Ordinal))
+            {
+                error = $"DATA.MESSAGES[{index}].STATUS must be IDLE, TEST, OK, or NG";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(fsn) &&
+                !string.Equals(status, ProtocolConstants.Idle, StringComparison.Ordinal))
+            {
+                error = $"DATA.MESSAGES[{index}] with empty FSN/IMEI must use STATUS IDLE";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static bool IsLocation(string value) =>
+        string.Equals(NormalizeLocation(value), ProtocolConstants.Cfg1, StringComparison.Ordinal) ||
+        string.Equals(NormalizeLocation(value), ProtocolConstants.Cfg2, StringComparison.Ordinal);
+
+    public static string NormalizeLocation(string value) =>
+        value.Trim().ToUpperInvariant();
 
     public static bool TryGetGuid(JsonObject obj, string key, out string normalizedGuid)
     {
@@ -405,7 +561,7 @@ internal sealed class CfgFrameAccumulator
     }
 }
 
-internal sealed record CfgClientDefinition(string Guid, string Role);
+internal sealed record CfgClientDefinition(string Guid, string Location);
 
 internal sealed class CfgClientConfig
 {

@@ -13,7 +13,7 @@
     <s:InvertBoolConverter x:Key="InvertBool"/>
   </UserControl.Resources>
   <UserControl.KeyBindings>
-    <KeyBinding Command="{Binding SaveAsCommand}" Gesture="Ctrl+S"/>
+    <KeyBinding Command="{Binding SaveCommand}" Gesture="Ctrl+S"/>
     <KeyBinding Command="{Binding OpenCommand}" Gesture="Ctrl+O"/>
   </UserControl.KeyBindings>
   <Grid Background="{DynamicResource BrushCanvas}">
@@ -75,7 +75,7 @@
               </StackPanel>
             </Button>
           </StackPanel>
-          <TextBlock Grid.Column="1" Text="{Binding CurrentFilePath}" FontSize="11"
+          <TextBlock Grid.Column="1" Text="{Binding WorkflowPathDisplay}" FontSize="11"
                      Foreground="{DynamicResource BrushTextSecondary}"
                      VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">

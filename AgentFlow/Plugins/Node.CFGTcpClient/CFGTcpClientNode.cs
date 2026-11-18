@@ -5,7 +5,6 @@
 // -----------------------------------------------------------------------
 
 using System.Net.Sockets;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using AgentFlow.Contracts;
@@ -28,6 +27,7 @@ public sealed class CFGTcpClientNode : BaseNode
     private const int DefaultServerPort = 9000;
     private const int DefaultConnectTimeoutSeconds = 5;
     private const int DefaultAuthTimeoutSeconds = 5;
+    private const int DefaultAuthenticationTimeoutMilliseconds = 60000;
     private const int DefaultHeartbeatIntervalSeconds = 10;
     private const int DefaultHeartbeatTimeoutSeconds = 30;
     private const int DefaultReconnectDelaySeconds = 3;
@@ -58,9 +58,10 @@ public sealed class CFGTcpClientNode : BaseNode
     private int _port = DefaultServerPort;
     private string _connectMode = ImmediateConnectMode;
     private string _protocolVersion = "1.0";
-    private string _role = string.Empty;
+    private string _location = string.Empty;
     private int _connectTimeoutSeconds = DefaultConnectTimeoutSeconds;
     private int _authTimeoutSeconds = DefaultAuthTimeoutSeconds;
+    private int _authenticationTimeoutMilliseconds = DefaultAuthenticationTimeoutMilliseconds;
     private int _heartbeatIntervalSeconds = DefaultHeartbeatIntervalSeconds;
     private int _heartbeatTimeoutSeconds = DefaultHeartbeatTimeoutSeconds;
     private int _reconnectDelaySeconds = DefaultReconnectDelaySeconds;
@@ -124,6 +125,8 @@ public sealed class CFGTcpClientNode : BaseNode
             isEditable: true, group: "Protocol", zone: "CFGTcpClientZone"));
         AddParameter(new NodeParameter("AuthTimeoutSeconds", typeof(int), DefaultAuthTimeoutSeconds,
             isEditable: true, group: "Protocol", zone: "CFGTcpClientZone"));
+        AddParameter(new NodeParameter("AuthenticationTimeoutMilliseconds", typeof(int), DefaultAuthenticationTimeoutMilliseconds,
+            isEditable: true, group: "Protocol", zone: "CFGTcpClientZone"));
         AddParameter(new NodeParameter("HeartbeatIntervalSeconds", typeof(int), DefaultHeartbeatIntervalSeconds,
             isEditable: true, group: "Protocol", zone: "CFGTcpClientZone"));
         AddParameter(new NodeParameter("HeartbeatTimeoutSeconds", typeof(int), DefaultHeartbeatTimeoutSeconds,
@@ -149,6 +152,7 @@ public sealed class CFGTcpClientNode : BaseNode
         ApplyIfPresent(parameters, "ProtocolVersion", value => Param("ProtocolVersion").Value = ParameterValues.GetString(value, "1.0") ?? "1.0");
         ApplyIfPresent(parameters, "ConnectTimeoutSeconds", value => Param("ConnectTimeoutSeconds").Value = ParameterValues.GetInt(value, DefaultConnectTimeoutSeconds));
         ApplyIfPresent(parameters, "AuthTimeoutSeconds", value => Param("AuthTimeoutSeconds").Value = ParameterValues.GetInt(value, DefaultAuthTimeoutSeconds));
+        ApplyIfPresent(parameters, "AuthenticationTimeoutMilliseconds", value => Param("AuthenticationTimeoutMilliseconds").Value = ParameterValues.GetInt(value, DefaultAuthenticationTimeoutMilliseconds));
         ApplyIfPresent(parameters, "HeartbeatIntervalSeconds", value => Param("HeartbeatIntervalSeconds").Value = ParameterValues.GetInt(value, DefaultHeartbeatIntervalSeconds));
         ApplyIfPresent(parameters, "HeartbeatTimeoutSeconds", value => Param("HeartbeatTimeoutSeconds").Value = ParameterValues.GetInt(value, DefaultHeartbeatTimeoutSeconds));
         ApplyIfPresent(parameters, "ReconnectDelaySeconds", value => Param("ReconnectDelaySeconds").Value = ParameterValues.GetInt(value, DefaultReconnectDelaySeconds));
@@ -185,6 +189,7 @@ public sealed class CFGTcpClientNode : BaseNode
         _protocolVersion = (ParameterValues.GetString(Param("ProtocolVersion").Value, "1.0") ?? "1.0").Trim();
         _connectTimeoutSeconds = ReadBoundedInt(context, "ConnectTimeoutSeconds", DefaultConnectTimeoutSeconds, 1, 300);
         _authTimeoutSeconds = ReadBoundedInt(context, "AuthTimeoutSeconds", DefaultAuthTimeoutSeconds, 1, 300);
+        _authenticationTimeoutMilliseconds = ReadBoundedInt(context, "AuthenticationTimeoutMilliseconds", DefaultAuthenticationTimeoutMilliseconds, 1000, int.MaxValue);
         _heartbeatIntervalSeconds = ReadBoundedInt(context, "HeartbeatIntervalSeconds", DefaultHeartbeatIntervalSeconds, 1, 3600);
         _heartbeatTimeoutSeconds = ReadBoundedInt(context, "HeartbeatTimeoutSeconds", DefaultHeartbeatTimeoutSeconds, 1, 3600);
         _heartbeatTimeoutSeconds = Math.Max(_heartbeatTimeoutSeconds, _heartbeatIntervalSeconds);
@@ -196,8 +201,8 @@ public sealed class CFGTcpClientNode : BaseNode
 
         _sendChannel = CreateSendChannel(_sendQueueCapacity);
         context.Logger.LogInformation(
-            "CFG TCP client initialized GUID={Guid}, target={Host}:{Port}, connectMode={ConnectMode}, protocol={Version}, heartbeat={Heartbeat}s, reconnectDelay={Reconnect}s",
-            _clientGuid, _host, _port, _connectMode, _protocolVersion, _heartbeatIntervalSeconds, _reconnectDelaySeconds);
+            "CFG TCP client initialized GUID={Guid}, target={Host}:{Port}, connectMode={ConnectMode}, protocol={Version}, authTimeout={AuthTimeout}s, authenticationTimeout={AuthenticationTimeout}ms, heartbeat={Heartbeat}s, reconnectDelay={Reconnect}s",
+            _clientGuid, _host, _port, _connectMode, _protocolVersion, _authTimeoutSeconds, _authenticationTimeoutMilliseconds, _heartbeatIntervalSeconds, _reconnectDelaySeconds);
 
         if (_connectMode == WaitForEndpointConnectMode && EndpointInputPin.ConnectedPin is null)
         {
@@ -284,6 +289,7 @@ public sealed class CFGTcpClientNode : BaseNode
             DisposeCurrentConnection();
             cts?.Dispose();
             _endpointInputReceived = false;
+            _location = string.Empty;
             SetIdle();
             context.Logger.LogInformation(
                 "CFG TCP client stopped: sent={Sent}, received={Received}, cached={Cached}, dropped={Dropped}",
@@ -408,8 +414,32 @@ public sealed class CFGTcpClientNode : BaseNode
             return;
         }
 
+        var location = _location;
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            if (!TryResolveBusinessLocation(data, out location, out error))
+            {
+                Interlocked.Increment(ref _droppedFrames);
+                _logger?.LogError("CFG TCP client rejected business input: {Error}.", error);
+                return;
+            }
+
+            _logger?.LogInformation(
+                "CFG TCP client inferred LOCATION={Location} from the one-to-five-record MESSAGES slot range before authentication.",
+                location);
+            _location = location;
+        }
+
+        if (!ProtocolMessage.TryValidateBusinessData(data, location, out error))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFG TCP client rejected business input: {Error}.", error);
+            return;
+        }
+
         var envelope = ProtocolMessage.CreateEnvelope(
             _clientGuid,
+            location,
             ProtocolConstants.Business,
             _protocolVersion,
             NextSequence(),
@@ -435,10 +465,51 @@ public sealed class CFGTcpClientNode : BaseNode
         }
     }
 
+    private static bool TryResolveBusinessLocation(
+        JsonObject data,
+        out string location,
+        out string? error)
+    {
+        location = string.Empty;
+        if (ProtocolMessage.TryValidateBusinessData(data, ProtocolConstants.Cfg1, out _))
+        {
+            location = ProtocolConstants.Cfg1;
+            error = null;
+            return true;
+        }
+
+        if (ProtocolMessage.TryValidateBusinessData(data, ProtocolConstants.Cfg2, out _))
+        {
+            location = ProtocolConstants.Cfg2;
+            error = null;
+            return true;
+        }
+
+        ProtocolMessage.TryValidateBusinessData(data, ProtocolConstants.Cfg1, out error);
+        return false;
+    }
+
     private async Task ConnectionSupervisorAsync(INodeContext context, CancellationToken ct)
     {
+        long authenticationDeadlineMilliseconds = 0;
+        var lastAuthenticationFailure = "authentication has not completed.";
+
         while (!ct.IsCancellationRequested)
         {
+            if (authenticationDeadlineMilliseconds == 0)
+                authenticationDeadlineMilliseconds = Environment.TickCount64 + _authenticationTimeoutMilliseconds;
+
+            if (Environment.TickCount64 >= authenticationDeadlineMilliseconds)
+            {
+                context.Logger.LogError(
+                    "CFG TCP client authentication did not complete within {Timeout}ms; stopping the workflow. Last failure: {Failure}",
+                    _authenticationTimeoutMilliseconds,
+                    lastAuthenticationFailure);
+                _authenticated = false;
+                Running = false;
+                return;
+            }
+
             string host;
             int port;
             lock (_endpointGate)
@@ -447,9 +518,14 @@ public sealed class CFGTcpClientNode : BaseNode
                 port = _port;
             }
 
+            var remainingAuthenticationTime = TimeSpan.FromMilliseconds(
+                Math.Max(1, authenticationDeadlineMilliseconds - Environment.TickCount64));
+
             TcpSocket? client = null;
             NetworkStream? stream = null;
             using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var authenticationDeadlineCts = CancellationTokenSource.CreateLinkedTokenSource(connectionCts.Token);
+            authenticationDeadlineCts.CancelAfter(remainingAuthenticationTime);
             lock (_endpointGate)
                 _connectionCts = connectionCts;
 
@@ -460,28 +536,30 @@ public sealed class CFGTcpClientNode : BaseNode
                     host, port, context).ConfigureAwait(false);
 
                 client = new TcpSocket();
-                await client.ConnectAsync(host, port, connectionCts.Token)
+                await client.ConnectAsync(host, port, authenticationDeadlineCts.Token)
                     .AsTask()
-                    .WaitAsync(TimeSpan.FromSeconds(_connectTimeoutSeconds), connectionCts.Token)
+                    .WaitAsync(TimeSpan.FromSeconds(_connectTimeoutSeconds), authenticationDeadlineCts.Token)
                     .ConfigureAwait(false);
                 stream = client.GetStream();
                 SetCurrentConnection(client, stream);
                 _lastReceivedUtc = DateTimeOffset.UtcNow;
 
-                await SendAuthAsync(stream, connectionCts.Token).ConfigureAwait(false);
-                var role = await ReadAuthenticationAsync(stream, context, connectionCts.Token).ConfigureAwait(false);
-                if (role is null)
+                await SendAuthAsync(stream, authenticationDeadlineCts.Token).ConfigureAwait(false);
+                var location = await ReadAuthenticationAsync(stream, context, authenticationDeadlineCts.Token).ConfigureAwait(false);
+                if (location is null)
                     throw new IOException("AUTH_FAIL or authentication timeout.");
 
-                _role = role;
+                _location = location;
                 _authenticated = true;
+                authenticationDeadlineMilliseconds = 0;
+                authenticationDeadlineCts.CancelAfter(Timeout.InfiniteTimeSpan);
                 _lastReceivedUtc = DateTimeOffset.UtcNow;
                 await PublishStatusAsync(
                     CFGSTcpProtocolConnectionStates.Authenticated,
                     host, port, context).ConfigureAwait(false);
                 context.Logger.LogInformation(
-                    "CFG TCP client authenticated GUID={Guid}, ROLE={Role}, server={Host}:{Port}.",
-                    _clientGuid, role, host, port);
+                    "CFG TCP client authenticated GUID={Guid}, LOCATION={Location}, server={Host}:{Port}.",
+                    _clientGuid, _location, host, port);
 
                 var writeTask = Task.Run(
                     () => SendBusinessLoopAsync(stream, context, connectionCts.Token),
@@ -502,6 +580,7 @@ public sealed class CFGTcpClientNode : BaseNode
                     }
                     catch (Exception ex)
                     {
+                        lastAuthenticationFailure = $"session ended: {ex.Message}";
                         context.Logger.LogWarning(
                             "CFG TCP client session ended: {Message}", ex.Message);
                     }
@@ -515,6 +594,15 @@ public sealed class CFGTcpClientNode : BaseNode
             {
                 // Expected during Stop.
             }
+            catch (OperationCanceledException) when (
+                authenticationDeadlineCts.IsCancellationRequested &&
+                !connectionCts.IsCancellationRequested)
+            {
+                lastAuthenticationFailure = $"authentication did not complete within {_authenticationTimeoutMilliseconds}ms.";
+                context.Logger.LogWarning(
+                    "CFG TCP client authentication deadline expired for {Host}:{Port}.",
+                    host, port);
+            }
             catch (OperationCanceledException) when (connectionCts.IsCancellationRequested)
             {
                 context.Logger.LogInformation(
@@ -522,6 +610,7 @@ public sealed class CFGTcpClientNode : BaseNode
             }
             catch (Exception ex)
             {
+                lastAuthenticationFailure = $"{host}:{port}: {ex.Message}";
                 context.Logger.LogWarning(
                     ex,
                     "CFG TCP client connection to {Host}:{Port} failed: {Message}",
@@ -530,7 +619,6 @@ public sealed class CFGTcpClientNode : BaseNode
             finally
             {
                 _authenticated = false;
-                _role = string.Empty;
                 lock (_endpointGate)
                     _connectionCts = null;
                 DisposeCurrentConnection();
@@ -554,9 +642,19 @@ public sealed class CFGTcpClientNode : BaseNode
             if (ct.IsCancellationRequested)
                 break;
 
+            if (authenticationDeadlineMilliseconds == 0)
+                authenticationDeadlineMilliseconds = Environment.TickCount64 + _authenticationTimeoutMilliseconds;
+
+            var remainingAuthenticationMilliseconds = authenticationDeadlineMilliseconds - Environment.TickCount64;
+            if (remainingAuthenticationMilliseconds <= 0)
+                continue;
+
+            var reconnectDelay = TimeSpan.FromSeconds(_reconnectDelaySeconds);
+            var boundedDelay = TimeSpan.FromMilliseconds(
+                Math.Min(reconnectDelay.TotalMilliseconds, remainingAuthenticationMilliseconds));
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(_reconnectDelaySeconds), ct).ConfigureAwait(false);
+                await Task.Delay(boundedDelay, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -569,6 +667,7 @@ public sealed class CFGTcpClientNode : BaseNode
     {
         var envelope = ProtocolMessage.CreateEnvelope(
             _clientGuid,
+            string.Empty,
             ProtocolConstants.Auth,
             _protocolVersion,
             NextSequence(),
@@ -612,6 +711,15 @@ public sealed class CFGTcpClientNode : BaseNode
                         return null;
                     }
 
+                    if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Guid, out var guidText) ||
+                        !ProtocolMessage.TryGetGuid(envelope, ProtocolConstants.Guid, out var responseGuid) ||
+                        !string.Equals(responseGuid, _clientGuid, StringComparison.Ordinal))
+                    {
+                        context.Logger.LogError(
+                            "CFG TCP client authentication envelope GUID mismatch: {Guid}.", guidText);
+                        return null;
+                    }
+
                     if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Type, out var type))
                         return null;
 
@@ -625,14 +733,21 @@ public sealed class CFGTcpClientNode : BaseNode
                             return null;
                         }
 
-                        if (ProtocolMessage.Get(envelope, ProtocolConstants.Data) is not JsonObject data ||
-                            !ProtocolMessage.TryGetString(data, "ROLE", out var role))
+                        if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Location, out var location) &&
+                            ProtocolMessage.Get(envelope, ProtocolConstants.Data) is JsonObject data)
                         {
-                            context.Logger.LogError("CFG TCP client AUTH_OK did not contain ROLE.");
+                            if (!ProtocolMessage.TryGetString(data, ProtocolConstants.Location, out location))
+                                ProtocolMessage.TryGetString(data, "ROLE", out location);
+                        }
+
+                        if (!ProtocolMessage.IsLocation(location))
+                        {
+                            context.Logger.LogError(
+                                "CFG TCP client AUTH_OK did not contain a valid LOCATION.");
                             return null;
                         }
 
-                        return role;
+                        return ProtocolMessage.NormalizeLocation(location);
                     }
 
                     if (string.Equals(type, ProtocolConstants.AuthFail, StringComparison.OrdinalIgnoreCase))
@@ -677,7 +792,7 @@ public sealed class CFGTcpClientNode : BaseNode
             {
                 Interlocked.Increment(ref _receivedFrames);
                 if (!ProtocolMessage.TryParseObject(frame, out var envelope, out error) ||
-                    !ProtocolMessage.TryValidateEnvelope(envelope, out error))
+                    !ProtocolMessage.TryValidateEnvelope(envelope, out error, requireLocation: true))
                 {
                     context.Logger.LogWarning("CFG TCP client ignored invalid envelope: {Error}.", error);
                     continue;
@@ -701,19 +816,28 @@ public sealed class CFGTcpClientNode : BaseNode
                     continue;
                 }
 
+                if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Location, out var location) ||
+                    !string.Equals(ProtocolMessage.NormalizeLocation(location), _location, StringComparison.Ordinal))
+                {
+                    context.Logger.LogWarning(
+                        "CFG TCP client ignored envelope with LOCATION {Location}; expected {Expected}.",
+                        location, _location);
+                    continue;
+                }
+
                 if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Type, out var type))
                     continue;
 
                 _lastReceivedUtc = DateTimeOffset.UtcNow;
 
-                if (string.Equals(type, ProtocolConstants.Business, StringComparison.OrdinalIgnoreCase))
-                    PublishBusinessEnvelope(envelope);
-                else if (string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase))
                     _logger?.LogTrace("CFG TCP client received PONG for GUID={Guid}.", _clientGuid);
                 else if (string.Equals(type, ProtocolConstants.AuthFail, StringComparison.OrdinalIgnoreCase))
                     throw new IOException("server sent AUTH_FAIL after authentication");
+                else if (IsControlEnvelopeType(type))
+                    _logger?.LogTrace("CFG TCP client ignored control TYPE {Type}.", type);
                 else
-                    context.Logger.LogWarning("CFG TCP client ignored unsupported TYPE {Type}.", type);
+                    PublishMessageEnvelope(frame, type);
             }
         }
     }
@@ -763,6 +887,7 @@ public sealed class CFGTcpClientNode : BaseNode
 
             var ping = ProtocolMessage.CreateEnvelope(
                 _clientGuid,
+                _location,
                 ProtocolConstants.Ping,
                 _protocolVersion,
                 NextSequence(),
@@ -790,15 +915,22 @@ public sealed class CFGTcpClientNode : BaseNode
         }
     }
 
-    private void PublishBusinessEnvelope(JsonObject envelope)
+    private void PublishMessageEnvelope(string frame, string type)
     {
         var sample = StringSample.CreateSample();
-        sample.SetValue(JsonSerializer.Serialize(envelope), MessageOutputPin.Name);
+        sample.SetValue(frame, MessageOutputPin.Name);
         MessageOutputPin.SendSampleWithDispatchLog(
             sample,
-            $"BUSINESS for {_clientGuid}",
+            $"{type} for {_clientGuid}",
             LogLevel.Information);
     }
+
+    private static bool IsControlEnvelopeType(string type) =>
+        string.Equals(type, ProtocolConstants.Auth, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.AuthOk, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.AuthFail, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.Ping, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase);
 
     private async Task PublishStatusAsync(
         string state,
@@ -809,7 +941,7 @@ public sealed class CFGTcpClientNode : BaseNode
         var samples = new Dictionary<string, Sample>(StringComparer.Ordinal)
         {
             [CFGSTcpProtocolStatusKeys.GUID] = CreateStringSample(CFGSTcpProtocolStatusKeys.GUID, _clientGuid),
-            [CFGSTcpProtocolStatusKeys.ROLE] = CreateStringSample(CFGSTcpProtocolStatusKeys.ROLE, _role),
+            [CFGSTcpProtocolStatusKeys.ROLE] = CreateStringSample(CFGSTcpProtocolStatusKeys.ROLE, _location),
             [CFGSTcpProtocolStatusKeys.STATE] = CreateStringSample(CFGSTcpProtocolStatusKeys.STATE, state),
             [CFGSTcpProtocolStatusKeys.ENDPOINT] = CreateStringSample(CFGSTcpProtocolStatusKeys.ENDPOINT, $"{host}:{port}"),
             [CFGSTcpProtocolStatusKeys.LAST_SEEN_UTC] = CreateStringSample(

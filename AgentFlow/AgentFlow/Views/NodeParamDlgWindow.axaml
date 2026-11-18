@@ -343,9 +343,10 @@
                     <Border Classes="propRow"
                             Classes.selected="{Binding $parent[ListBoxItem].IsSelected}"
                             Classes.hover="{Binding $parent[ListBoxItem].IsPointerOver}">
-                      <Grid ColumnDefinitions="110,*">
+                      <Grid ColumnDefinitions="160,*">
                         <TextBlock Classes="propName" Grid.Column="0"
                                    Text="{Binding Label}" Margin="0,0,16,0"
+                                   ToolTip.Tip="{Binding Label}"
                                    FontSize="12" Foreground="{DynamicResource BrushTextSecondary}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         <Panel Grid.Column="1">

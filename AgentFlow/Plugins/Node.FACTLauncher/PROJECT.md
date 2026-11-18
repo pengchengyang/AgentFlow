@@ -70,20 +70,29 @@ group do not overwrite cached values.
 When `input_int64_ret` receives an `Int64Sample` with a non-null `Int64Value`, the launcher:
 
 - forwards the original integer through `output_int64_ret`; and
-- serializes the value as compact JSON for `output_string_host` and appends `;` as the
-  message delimiter:
+- builds a compact BUSINESS payload for `output_string_host` using the cached
+  `SLOT`, `FSN`, and `IMEI`.
 
-```text
-{"RET":42};
+The host payload has this shape:
+
+```json
+{"TYPE":"BUSINESS","DATA":{"MESSAGES":[{"SLOT":"1","FSN":"603122002902AB","IMEI":"354360451234561","STATUS":"OK"}]}}
 ```
 
-`RET` remains a JSON number. Every message from `output_string_host` ends with `;`, so
-downstream consumers can use it as a stream boundary. Invalid or null input on this pin is
-ignored with a warning.
-The raw `output_int64_ret` value preserves the original Int64 result for downstream
-calculations such as `PassFailTotalYield`. Disconnected outputs only produce dispatch
-warnings and do not block other launcher inputs.
+`STATUS` is `OK` when the RET value is `0`; every non-zero RET value produces `NG`.
+The payload is one complete JSON object without a trailing semicolon, so it can be connected
+directly to `CFG TCP Client.input_string_message`.
 
+The raw `output_int64_ret` value is forwarded independently of host payload construction and
+preserves the original Int64 result for downstream calculations such as `PassFailTotalYield`.
+After `output_string_host` successfully dispatches the RET BUSINESS payload, the launcher clears
+cached `FSN`, `IMEI`, and the associated SLOT so the next business cycle must provide fresh
+identity data. A disconnected or failed host dispatch does not clear the cache.
+
+If cached `SLOT`, `FSN`, or `IMEI` is unavailable, the node logs a warning and skips
+`output_string_host` without suppressing the raw RET output. Invalid or null input on this pin
+is ignored with a warning. Disconnected outputs only produce dispatch warnings and do not block
+other launcher inputs.
 ## User Settings Integration
 
 Connect the pins as follows:

@@ -33,7 +33,8 @@
 		<DockPanel x:Name="LogContent" Margin="12,4,12,8">
 			<!-- Top toolbar: Auto scroll on left, filter/search/clear on right -->
 			<Grid DockPanel.Dock="Top" Height="26" ColumnDefinitions="Auto,*" Margin="0,0,0,6">
-				<ToggleSwitch Grid.Column="0" OnContent="" OffContent="" VerticalAlignment="Center"
+				<ToggleButton Grid.Column="0" Classes="level trace" Content="Auto Scroll" FontSize="12"
+							  VerticalAlignment="Center"
 							  automation:AutomationProperties.Name="Auto scroll"
 							  IsChecked="{Binding IsAutoScrollEnabled, Mode=TwoWay}"
 							  ToolTip.Tip="Follow new log entries; manual scrolling turns this off."/>
@@ -68,7 +69,7 @@
 					</StackPanel>
 					<Button Classes="ghost"
 							Content="{Binding [Clear], Source={x:Static s:Loc.Instance}}"
-							FontSize="11" Padding="8,2"
+							FontSize="12" Padding="6,2" BorderThickness="1.5" BorderBrush="Transparent"
 							Command="{Binding ClearLogCommand}"/>
 				</StackPanel>
 			</Grid>

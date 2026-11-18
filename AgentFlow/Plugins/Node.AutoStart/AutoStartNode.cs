@@ -85,7 +85,7 @@ public sealed class AutoStartNode : BaseNode
         _logger = context.Logger;
         Running = true;
         _logger?.LogTrace(
-            "AutoStart is waiting for JSON objects containing a MESSAGES array of SLOT/FSN/IMEI business messages.");
+            "AutoStart is waiting for JSON objects containing a fixed five-record MESSAGES array with SLOT/FSN/IMEI/STATUS values.");
         return Task.CompletedTask;
     }
 
@@ -167,53 +167,68 @@ public sealed class AutoStartNode : BaseNode
                 return;
             }
 
-            if (messages.GetArrayLength() == 0)
+            if (messages.GetArrayLength() != 5)
             {
-                _logger?.LogWarning("AutoStart received an empty MESSAGES array and produced no output.");
+                _logger?.LogError(
+                    "AutoStart rejected input because MESSAGES must contain exactly five records: {Payload}",
+                    inputText);
                 return;
             }
 
+            var parsedMessages = new List<(JsonElement Element, int Slot, string Fsn, string Imei, string Status)>();
             var index = 0;
             foreach (var message in messages.EnumerateArray())
             {
-                ProcessMessage(message, index, pinContext);
+                if (!TryReadMessage(message, index, out var parsed, out var messageError))
+                {
+                    _logger?.LogError(
+                        "AutoStart rejected MESSAGES item {Index}: {Error}. Payload: {Payload}",
+                        index,
+                        messageError,
+                        message.GetRawText());
+                    return;
+                }
+
+                parsedMessages.Add(parsed);
                 index++;
             }
+
+            if (!TryValidateSlotSet(parsedMessages, out var slotSetError))
+            {
+                _logger?.LogError("AutoStart rejected MESSAGES slot set: {Error}.", slotSetError);
+                return;
+            }
+
+            var hasTestMessage = false;
+            for (var messageIndex = 0; messageIndex < parsedMessages.Count; messageIndex++)
+            {
+                var item = parsedMessages[messageIndex];
+                if (string.Equals(item.Status, "IDLE", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger?.LogWarning(
+                        "AutoStart skipped SLOT {Slot} MESSAGES item {Index} because STATUS=IDLE; no output was dispatched.",
+                        item.Slot,
+                        messageIndex);
+                    continue;
+                }
+
+                hasTestMessage = true;
+                DispatchTestMessage(item.Element, messageIndex, item.Slot, item.Fsn, item.Imei, item.Status);
+            }
+
+            if (hasTestMessage)
+                RequestWorkflowStart(inputText, pinContext);
         }
     }
 
-    private void ProcessMessage(JsonElement message, int index, INodeContext? pinContext)
+    private void DispatchTestMessage(
+        JsonElement message,
+        int index,
+        int slot,
+        string fsn,
+        string imei,
+        string status)
     {
-        if (message.ValueKind != JsonValueKind.Object)
-        {
-            _logger?.LogError(
-                "AutoStart ignored MESSAGES item {Index} because it must be a JSON object: {Payload}",
-                index,
-                message.GetRawText());
-            return;
-        }
-
-        if (!TryGetRequiredStringProperty(message, "SLOT", out var slotText) ||
-            !TryGetRequiredStringProperty(message, "FSN", out var fsn) ||
-            !TryGetRequiredStringProperty(message, "IMEI", out var imei))
-        {
-            _logger?.LogError(
-                "AutoStart ignored MESSAGES item {Index} because non-empty string values for SLOT, FSN, and IMEI are required: {Payload}",
-                index,
-                message.GetRawText());
-            return;
-        }
-
-        if (!int.TryParse(slotText, out var slot) || slot is < 1 or > 10)
-        {
-            _logger?.LogError(
-                "AutoStart ignored MESSAGES item {Index} with invalid SLOT value {Slot}: {Payload}",
-                index,
-                slotText,
-                message.GetRawText());
-            return;
-        }
-
         var readyPin = GetReadyPin(slot);
         if (readyPin is null)
         {
@@ -229,10 +244,105 @@ public sealed class AutoStartNode : BaseNode
         readySample.StringValue = compactMessage;
         readyPin.SendSampleWithDispatchLog(
             readySample,
-            $"SLOT {slot} ready payload, FSN {fsn}, IMEI {imei}",
+            $"SLOT {slot} ready payload, FSN {fsn}, IMEI {imei}, STATUS {status}",
             LogLevel.Information);
+    }
 
-        RequestWorkflowStart(compactMessage, pinContext);
+    private static bool TryReadMessage(
+        JsonElement message,
+        int index,
+        out (JsonElement Element, int Slot, string Fsn, string Imei, string Status) parsed,
+        out string? error)
+    {
+        parsed = default;
+        error = null;
+
+        if (message.ValueKind != JsonValueKind.Object)
+        {
+            error = "each MESSAGES item must be a JSON object";
+            return false;
+        }
+
+        if (!TryGetRequiredStringProperty(message, "SLOT", out var slotText) ||
+            !int.TryParse(slotText, out var slot) ||
+            slot is < 1 or > 10)
+        {
+            error = "SLOT must be an integer from 1 through 10";
+            return false;
+        }
+
+        if (!TryGetStringProperty(message, "FSN", out var fsn))
+        {
+            error = "FSN must be a string";
+            return false;
+        }
+
+        if (!TryGetStringProperty(message, "IMEI", out var imei))
+        {
+            error = "IMEI must be a string";
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(fsn) != string.IsNullOrEmpty(imei))
+        {
+            error = "FSN and IMEI must both be empty or both be non-empty";
+            return false;
+        }
+
+        if (!TryGetStringProperty(message, "STATUS", out var status) ||
+            (!string.Equals(status, "IDLE", StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(status, "TEST", StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "STATUS must be IDLE or TEST";
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(fsn) &&
+            !string.Equals(status, "IDLE", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "empty FSN/IMEI requires STATUS IDLE";
+            return false;
+        }
+
+        parsed = (message, slot, fsn, imei, status.Trim().ToUpperInvariant());
+        return true;
+    }
+
+    private static bool TryValidateSlotSet(
+        IReadOnlyList<(JsonElement Element, int Slot, string Fsn, string Imei, string Status)> messages,
+        out string? error)
+    {
+        error = null;
+        var expectedStartSlot = messages[0].Slot <= 5 ? 1 : 6;
+        var seen = new bool[5];
+        foreach (var message in messages)
+        {
+            if (message.Slot < expectedStartSlot || message.Slot > expectedStartSlot + 4)
+            {
+                error = $"SLOT {message.Slot} is outside the {expectedStartSlot}-{expectedStartSlot + 4} group";
+                return false;
+            }
+
+            var slotIndex = message.Slot - expectedStartSlot;
+            if (seen[slotIndex])
+            {
+                error = $"SLOT {message.Slot} appears more than once";
+                return false;
+            }
+
+            seen[slotIndex] = true;
+        }
+
+        for (var index = 0; index < seen.Length; index++)
+        {
+            if (!seen[index])
+            {
+                error = $"MESSAGES must contain SLOT {expectedStartSlot + index} exactly once";
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void RequestWorkflowStart(string triggerMessage, INodeContext? pinContext)
@@ -241,7 +351,7 @@ public sealed class AutoStartNode : BaseNode
         if (startSink is null)
         {
             _logger?.LogWarning(
-                "AutoStart parsed a valid business message, but no IWorkflowStartRequestSink service is registered.");
+                "AutoStart parsed a valid TEST business batch, but no IWorkflowStartRequestSink service is registered.");
             return;
         }
 
@@ -259,7 +369,7 @@ public sealed class AutoStartNode : BaseNode
         _ => null,
     };
 
-    private static bool TryGetRequiredStringProperty(
+    private static bool TryGetStringProperty(
         JsonElement element,
         string key,
         out string value)
@@ -267,13 +377,22 @@ public sealed class AutoStartNode : BaseNode
         if (TryGetPropertyIgnoreCase(element, key, out var property) &&
             property.ValueKind == JsonValueKind.String)
         {
-            var found = property.GetString();
-            if (!string.IsNullOrWhiteSpace(found))
-            {
-                value = found;
-                return true;
-            }
+            value = property.GetString() ?? string.Empty;
+            return true;
         }
+
+        value = string.Empty;
+        return false;
+    }
+
+    private static bool TryGetRequiredStringProperty(
+        JsonElement element,
+        string key,
+        out string value)
+    {
+        if (TryGetStringProperty(element, key, out value) &&
+            !string.IsNullOrWhiteSpace(value))
+            return true;
 
         value = string.Empty;
         return false;

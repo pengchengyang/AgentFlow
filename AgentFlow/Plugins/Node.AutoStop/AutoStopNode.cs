@@ -4,6 +4,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Text.Json;
 using AgentFlow.Contracts;
 using AgentFlow.Shared.RTS.CFG.Broadcasts;
 using BroadcastKit;
@@ -13,12 +14,13 @@ using Microsoft.Extensions.Logging;
 namespace Node.AutoStop;
 
 /// <summary>
-/// Workflow-control node that accepts a JSON string containing the exact stop request fragment,
-/// broadcasts the stop payload, and requests a normal workflow stop from the host.
+/// Workflow-control node that accepts semicolon-framed JSON, triggers only when the top-level
+/// TYPE is DISCONNECT, broadcasts the stop payload, and requests a normal workflow stop from the host.
 /// </summary>
 public sealed class AutoStopNode : BaseNode
 {
     private const string StopRequestFragment = "{\"Request\":\"Stop\"}";
+    private const string DisconnectMessageType = "DISCONNECT";
 
     private readonly BasePin _stopPin =
         new("input_string_stop", DataType.STRING, PinDirection.Input, required: false);
@@ -82,26 +84,72 @@ public sealed class AutoStopNode : BaseNode
             input.StringValue is not { } inputText ||
             string.IsNullOrWhiteSpace(inputText))
         {
-            _logger?.LogError(
+            _logger?.LogWarning(
                 "AutoStop ignored invalid input on {Pin}: expected a non-empty StringSample.",
                 pin.Name);
             return;
         }
 
-        if (!inputText.Contains(StopRequestFragment, StringComparison.Ordinal))
+        if (!TryGetDisconnectMessageType(inputText, out var messageType, out var parseError))
         {
-            _logger?.LogTrace(
-                "AutoStop ignored input on {Pin} because it does not contain the stop request fragment.",
-                pin.Name);
+            _logger?.LogWarning(
+                "AutoStop ignored input on {Pin} because it could not be parsed as a JSON object with string property TYPE: {Error}",
+                pin.Name,
+                parseError);
+            return;
+        }
+
+        if (!string.Equals(messageType, DisconnectMessageType, StringComparison.Ordinal))
+        {
+            _logger?.LogWarning(
+                "AutoStop ignored input on {Pin} because TYPE is {Type}; expected {ExpectedType}.",
+                pin.Name,
+                messageType,
+                DisconnectMessageType);
             return;
         }
 
         _logger?.LogInformation(
-            "AutoStop received stop request on {Pin}: {Message}",
+            "AutoStop received DISCONNECT message on {Pin}: {Message}",
             pin.Name,
             inputText);
 
         _ = BroadcastStopRequestAsync(inputText);
+    }
+
+    private static bool TryGetDisconnectMessageType(
+        string inputText,
+        out string messageType,
+        out string parseError)
+    {
+        messageType = string.Empty;
+        parseError = string.Empty;
+
+        var jsonText = inputText.Trim().Trim(';').Trim();
+        try
+        {
+            using var document = JsonDocument.Parse(jsonText);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                parseError = "The input root must be a JSON object.";
+                return false;
+            }
+
+            if (!document.RootElement.TryGetProperty("TYPE", out var typeElement) ||
+                typeElement.ValueKind != JsonValueKind.String)
+            {
+                parseError = "The input object must contain a string property named TYPE.";
+                return false;
+            }
+
+            messageType = typeElement.GetString() ?? string.Empty;
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            parseError = ex.Message;
+            return false;
+        }
     }
 
     private async Task BroadcastStopRequestAsync(string triggerMessage)

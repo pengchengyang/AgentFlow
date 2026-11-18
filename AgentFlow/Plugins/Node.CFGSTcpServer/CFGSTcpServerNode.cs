@@ -7,7 +7,6 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using AgentFlow.Contracts;
@@ -343,7 +342,7 @@ public sealed class CFGSTcpServerNode : BaseNode
         _logger?.LogInformation(
             "CFGS TCP server loaded {Count} configured client GUIDs: {Clients}.",
             config.Count,
-            string.Join(", ", config.Clients.Values.Select(item => $"{item.Guid}:{item.Role}")));
+            string.Join(", ", config.Clients.Values.Select(item => $"{item.Guid}:{item.Location}")));
     }
 
     private void HandleOutgoingMessage(Sample? value)
@@ -371,13 +370,73 @@ public sealed class CFGSTcpServerNode : BaseNode
             return;
         }
 
-        if (!IsConfiguredClient(targetGuid))
+        if (!TryGetClientDefinition(targetGuid, out var definition))
         {
             Interlocked.Increment(ref _droppedFrames);
             _logger?.LogError(
                 "CFGS TCP server rejected outgoing message: target GUID {Guid} is not configured.",
                 targetGuid);
             return;
+        }
+
+        if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Type, out var type) ||
+            string.IsNullOrWhiteSpace(type))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFGS TCP server rejected outgoing message: TYPE is required.");
+            return;
+        }
+
+        var requiresLocation =
+            string.Equals(type, ProtocolConstants.Business, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, ProtocolConstants.Ping, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, ProtocolConstants.AuthOk, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, ProtocolConstants.Disconnect, StringComparison.OrdinalIgnoreCase);
+        if (requiresLocation)
+        {
+            if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Location, out var location) ||
+                !ProtocolMessage.IsLocation(location) ||
+                !string.Equals(ProtocolMessage.NormalizeLocation(location), definition.Location, StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref _droppedFrames);
+                _logger?.LogError(
+                    "CFGS TCP server rejected outgoing {Type} message: LOCATION must match target GUID {Guid} LOCATION {Expected}.",
+                    type, targetGuid, definition.Location);
+                return;
+            }
+        }
+        else if (ProtocolMessage.TryGetString(envelope, ProtocolConstants.Location, out var optionalLocation) &&
+                 !string.IsNullOrWhiteSpace(optionalLocation) &&
+                 (!ProtocolMessage.IsLocation(optionalLocation) ||
+                  !string.Equals(ProtocolMessage.NormalizeLocation(optionalLocation), definition.Location, StringComparison.Ordinal)))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError(
+                "CFGS TCP server rejected outgoing {Type} message: optional LOCATION does not match target GUID {Guid} LOCATION {Expected}.",
+                type, targetGuid, definition.Location);
+            return;
+        }
+
+        if (string.Equals(type, ProtocolConstants.Business, StringComparison.OrdinalIgnoreCase))
+        {
+            if (ProtocolMessage.Get(envelope, ProtocolConstants.Data) is not JsonObject data)
+            {
+                Interlocked.Increment(ref _droppedFrames);
+                _logger?.LogError(
+                    "CFGS TCP server rejected outgoing BUSINESS message: DATA must be a JSON object. Target GUID: {Guid}.",
+                    targetGuid);
+                return;
+            }
+
+            if (!ProtocolMessage.TryValidateBusinessData(data, definition.Location, out error))
+            {
+                Interlocked.Increment(ref _droppedFrames);
+                _logger?.LogError(
+                    "CFGS TCP server rejected outgoing BUSINESS message: {Error}. Target GUID: {Guid}.",
+                    error, targetGuid);
+                return;
+            }
         }
 
         if (_sessionsByGuid.TryGetValue(targetGuid, out var session) && session.IsAuthenticated)
@@ -389,10 +448,10 @@ public sealed class CFGSTcpServerNode : BaseNode
         QueuePending(targetGuid, envelope);
     }
 
-    private bool IsConfiguredClient(string guid)
+    private bool TryGetClientDefinition(string guid, out CfgClientDefinition definition)
     {
         lock (_configGate)
-            return _clientDefinitions.ContainsKey(guid);
+            return _clientDefinitions.TryGetValue(guid, out definition!);
     }
 
     private async Task AcceptLoopAsync(INodeContext context, TcpListener listener, CancellationToken ct)
@@ -545,35 +604,52 @@ public sealed class CFGSTcpServerNode : BaseNode
             return false;
         }
 
-        if (string.Equals(type, ProtocolConstants.Business, StringComparison.OrdinalIgnoreCase))
+        var authenticatedLocation = session.Location;
+        var location = string.Empty;
+        if (string.IsNullOrWhiteSpace(authenticatedLocation) ||
+            !ProtocolMessage.TryGetString(envelope, ProtocolConstants.Location, out location) ||
+            !string.Equals(
+                ProtocolMessage.NormalizeLocation(location),
+                authenticatedLocation,
+                StringComparison.Ordinal))
         {
-            PublishBusinessEnvelope(envelope, session);
-            return true;
+            context.Logger.LogError(
+                "CFGS TCP server rejected session {Id}: LOCATION {Location} does not match authenticated LOCATION {Expected}.",
+                session.Id,
+                location,
+                authenticatedLocation);
+            return false;
         }
 
         if (string.Equals(type, ProtocolConstants.Ping, StringComparison.OrdinalIgnoreCase))
         {
             var pong = ProtocolMessage.CreateEnvelope(
                 session.Guid,
+                authenticatedLocation,
                 ProtocolConstants.Pong,
                 _protocolVersion,
                 1,
                 ProtocolMessage.FormatTimestamp(DateTimeOffset.UtcNow),
-                new JsonObject { ["ROLE"] = session.Role ?? string.Empty });
+                new JsonObject
+                {
+                    ["ROLE"] = authenticatedLocation,
+                    [ProtocolConstants.Location] = authenticatedLocation,
+                });
             await SendEnvelopeAsync(session, pong, ct).ConfigureAwait(false);
             return true;
         }
 
-        if (string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase))
+        if (IsControlEnvelopeType(type))
+        {
+            _logger?.LogTrace(
+                "CFGS TCP server ignored control envelope TYPE {Type} from session {Id}.",
+                type,
+                session.Id);
             return true;
+        }
 
-        if (string.Equals(type, ProtocolConstants.Disconnect, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        context.Logger.LogWarning(
-            "CFGS TCP server ignored unsupported envelope TYPE {Type} from session {Id}.",
-            type, session.Id);
-        return true;
+        PublishMessageEnvelope(frame, type, session);
+        return !string.Equals(type, ProtocolConstants.Disconnect, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<bool> AuthenticateAsync(
@@ -615,25 +691,30 @@ public sealed class CFGSTcpServerNode : BaseNode
         }
 
         session.Guid = guid;
-        session.Role = definition.Role;
+        session.Location = definition.Location;
         session.IsAuthenticated = true;
         session.LastSeenUtc = DateTimeOffset.UtcNow;
         Interlocked.Increment(ref _authenticatedConnections);
 
         var authOk = ProtocolMessage.CreateEnvelope(
             guid,
+            definition.Location,
             ProtocolConstants.AuthOk,
             _protocolVersion,
             1,
             ProtocolMessage.FormatTimestamp(DateTimeOffset.UtcNow),
-            new JsonObject { ["ROLE"] = definition.Role });
+            new JsonObject
+            {
+                ["ROLE"] = definition.Location,
+                [ProtocolConstants.Location] = definition.Location,
+            });
         await SendEnvelopeAsync(session, authOk, ct).ConfigureAwait(false);
         await PublishStatusAsync(session, CFGSTcpProtocolConnectionStates.AuthenticatedClient, context)
             .ConfigureAwait(false);
 
         context.Logger.LogInformation(
-            "CFGS TCP server authenticated session {Id}: GUID={Guid}, ROLE={Role}, endpoint={Endpoint}.",
-            session.Id, guid, definition.Role, session.Endpoint);
+            "CFGS TCP server authenticated session {Id}: GUID={Guid}, LOCATION={Location}, endpoint={Endpoint}.",
+            session.Id, guid, definition.Location, session.Endpoint);
 
         DrainPending(guid, session);
         return true;
@@ -645,6 +726,7 @@ public sealed class CFGSTcpServerNode : BaseNode
         {
             var failure = ProtocolMessage.CreateEnvelope(
                 session.Guid ?? "00000000-0000-0000-0000-000000000000",
+                session.Location ?? string.Empty,
                 ProtocolConstants.AuthFail,
                 _protocolVersion,
                 1,
@@ -830,23 +912,30 @@ public sealed class CFGSTcpServerNode : BaseNode
         }
     }
 
-    private void PublishBusinessEnvelope(JsonObject envelope, ClientSession session)
+    private void PublishMessageEnvelope(string frame, string type, ClientSession session)
     {
         var sample = StringSample.CreateSample();
-        sample.SetValue(JsonSerializer.Serialize(envelope), MessageOutputPin.Name);
+        sample.SetValue(frame, MessageOutputPin.Name);
         MessageOutputPin.SendSampleWithDispatchLog(
             sample,
-            $"BUSINESS from {session.Guid}",
+            $"{type} from {session.Guid}",
             LogLevel.Information);
         session.LastSeenUtc = DateTimeOffset.UtcNow;
     }
+
+    private static bool IsControlEnvelopeType(string type) =>
+        string.Equals(type, ProtocolConstants.Auth, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.AuthOk, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.AuthFail, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.Ping, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase);
 
     private async Task PublishStatusAsync(ClientSession session, string state, INodeContext context)
     {
         var samples = new Dictionary<string, Sample>(StringComparer.Ordinal)
         {
             [CFGSTcpProtocolStatusKeys.GUID] = CreateStringSample(CFGSTcpProtocolStatusKeys.GUID, session.Guid ?? string.Empty),
-            [CFGSTcpProtocolStatusKeys.ROLE] = CreateStringSample(CFGSTcpProtocolStatusKeys.ROLE, session.Role ?? string.Empty),
+            [CFGSTcpProtocolStatusKeys.ROLE] = CreateStringSample(CFGSTcpProtocolStatusKeys.ROLE, session.Location ?? string.Empty),
             [CFGSTcpProtocolStatusKeys.STATE] = CreateStringSample(CFGSTcpProtocolStatusKeys.STATE, state),
             [CFGSTcpProtocolStatusKeys.ENDPOINT] = CreateStringSample(CFGSTcpProtocolStatusKeys.ENDPOINT, session.Endpoint),
             [CFGSTcpProtocolStatusKeys.LAST_SEEN_UTC] = CreateStringSample(
@@ -968,7 +1057,7 @@ public sealed class CFGSTcpServerNode : BaseNode
         public SemaphoreSlim WriteLock { get; } = new(1, 1);
         public DateTimeOffset LastSeenUtc { get; set; }
         public string? Guid { get; set; }
-        public string? Role { get; set; }
+        public string? Location { get; set; }
         public bool IsAuthenticated { get; set; }
         public Task? ReadTask { get; set; }
 
@@ -989,9 +1078,4 @@ public sealed class CFGSTcpServerNode : BaseNode
         }
     }
 }
-
-
-
-
-
 

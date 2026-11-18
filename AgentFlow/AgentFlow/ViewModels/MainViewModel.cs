@@ -357,6 +357,36 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Full path of the currently open / saved JSON workflow file.</summary>
     [ObservableProperty]
     private string _currentFilePath = "";
+
+    /// <summary>
+    /// Bottom status-bar path display. The directory is preserved verbatim; the default
+    /// workflow file is title-cased for presentation and a dirty document gets a trailing marker.
+    /// </summary>
+    public string WorkflowPathDisplay
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(CurrentFilePath))
+                return IsDirty ? "Untitled *" : "Untitled";
+
+            var fileName = Path.GetFileName(CurrentFilePath);
+            if (string.Equals(fileName, "workflow.rw", StringComparison.OrdinalIgnoreCase))
+                fileName = "WorkFlow.rw";
+
+            var directory = Path.GetDirectoryName(CurrentFilePath);
+            var displayPath = string.IsNullOrWhiteSpace(directory)
+                ? fileName
+                : Path.Combine(directory, fileName);
+            return IsDirty ? $"{displayPath} *" : displayPath;
+        }
+    }
+
+    partial void OnCurrentFilePathChanged(string value) =>
+        OnPropertyChanged(nameof(WorkflowPathDisplay));
+
+    partial void OnIsDirtyChanged(bool value) =>
+        OnPropertyChanged(nameof(WorkflowPathDisplay));
+
     [ObservableProperty]
     private bool _isDarkTheme;
     /// <summary>Whether the bottom log panel is expanded (toggled by the Logs button).</summary>
@@ -859,6 +889,12 @@ public partial class MainViewModel : ViewModelBase
             if (string.IsNullOrEmpty(json)) return;
             var doc = GraphDeserializer.Deserialize(json);
             LoadGraphFromDocument(doc);
+            // A successful startup load is a named document even when an HTTP-backed store has no
+            // local path. Local stores expose their normalized .rw target so Save updates it in place.
+            if (_store is LocalWorkflowStore localStore)
+                CurrentFilePath = localStore.Description;
+            _isUntitled = false;
+            _autoSaveEnabled = true;
             var externalWorkersReady = await PrepareExternalNodesAfterLoadAsync();
             ClearHistory();
             loaded = true;
@@ -1275,6 +1311,12 @@ public partial class MainViewModel : ViewModelBase
     private void NewWorkflow()
     {
         if (!CanEditGraphNow()) return;
+
+        if (!IsDirty)
+        {
+            CreateUntitledWorkflow();
+            return;
+        }
 
         var message = IsDirty
             ? "Create a new Untitled workflow? Unsaved changes in the current editor will be discarded. The original workflow file will not be modified."
@@ -1701,7 +1743,7 @@ public partial class MainViewModel : ViewModelBase
     public async Task<bool> SaveCurrentAsync()
     {
         if (!CanEditGraphNow()) return false;
-        if (_isUntitled)
+        if (_isUntitled && string.IsNullOrWhiteSpace(CurrentFilePath))
         {
             // An untitled document has no safe default target. Never fall back to the startup
             // store here, because that could overwrite the workflow the user just left behind.

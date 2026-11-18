@@ -4,6 +4,7 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Globalization;
 using System.Text.Json;
 using AgentFlow.Contracts;
 using AgentFlow.Shared.RTS.CFG.Broadcasts;
@@ -249,25 +250,93 @@ public sealed class FACTLauncherNode : BaseNode
 
         try
         {
-            var json = JsonSerializer.Serialize(new { RET = ret }) + ";";
+            if (!TryBuildBusinessHostPayload(ret, out var json, out var error))
+            {
+                _logger?.LogWarning(
+                    "FACTLauncher skipped {Pin} for RET {Ret}: {Error}",
+                    _outputPin.Name,
+                    ret,
+                    error);
+                return;
+            }
+
             var output = StringSample.CreateSample();
             output.SetValue(json, _outputPin.Name);
-            _outputPin.SendSampleWithDispatchLog(
+            var sent = _outputPin.SendSampleWithDispatchLog(
                 output,
-                $"RET {ret}",
+                $"RET {ret} with STATUS {GetRetStatus(ret)}",
                 LogLevel.Information);
+            if (sent)
+                ClearFsnImeiCache();
         }
         catch (Exception ex)
         {
             _logger?.LogError(
                 ex,
-                "FACTLauncher failed to convert or publish RET value {Ret} through {Pin}: {Message}",
+                "FACTLauncher failed to publish RET business result {Ret} through {Pin}: {Message}",
                 ret,
                 _outputPin.Name,
                 ex.Message);
         }
     }
 
+    private bool TryBuildBusinessHostPayload(long ret, out string json, out string error)
+    {
+        json = string.Empty;
+        error = string.Empty;
+
+        string? fsn;
+        string? imei;
+        string? slot;
+        lock (_inputGate)
+        {
+            fsn = _fsn;
+            imei = _imei;
+            slot = _fsnImeiSlot?.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (string.IsNullOrWhiteSpace(slot) ||
+            string.IsNullOrWhiteSpace(fsn) ||
+            string.IsNullOrWhiteSpace(imei))
+        {
+            error = "cached SLOT, FSN, and IMEI are required to build the BUSINESS payload.";
+            return false;
+        }
+
+        json = JsonSerializer.Serialize(new
+        {
+            TYPE = "BUSINESS",
+            DATA = new
+            {
+                MESSAGES = new[]
+                {
+                    new
+                    {
+                        SLOT = slot,
+                        FSN = fsn,
+                        IMEI = imei,
+                        STATUS = GetRetStatus(ret),
+                    },
+                },
+            },
+        });
+        return true;
+    }
+
+    private static string GetRetStatus(long ret) => ret == 0 ? "OK" : "NG";
+
+    private void ClearFsnImeiCache()
+    {
+        lock (_inputGate)
+        {
+            _fsn = null;
+            _imei = null;
+            _fsnImeiSlot = null;
+        }
+
+        _logger?.LogTrace(
+            "FACTLauncher cleared cached FSN, IMEI, and SLOT after the RET BUSINESS payload was dispatched.");
+    }
     private void HandleSettingsInput(Sample? value)
     {
         if (value is not StringSample { StringValue: { } inputText })

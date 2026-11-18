@@ -231,6 +231,10 @@ Actual runtime faults remain at `ERROR`:
   document to a path and re-enables auto-save.
 - The title-bar Undo / Redo buttons bind to `CanUndo` / `CanRedo`. `Ctrl+Z` and `Ctrl+Y`
   use the same commands; focused text boxes keep their native text-editing shortcuts.
+- `F4` and `Ctrl+S` bind to the normal Save command. A workflow with an associated file path
+  is written in place; Save As opens only for a truly detached Untitled document. `F5` remains
+  the explicit Save As shortcut. Startup auto-load also associates a local workflow with its
+  normalized `.rw` path so the first Save updates that file without prompting.
 
 ## Serialization
 
@@ -383,18 +387,20 @@ and receive hooks without implementing final business behavior yet:
 
 | Plugin | Role | Default pins |
 | --- | --- | --- |
-| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, raw and JSON RET publication, successful position-keyed command broadcasting, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_cmd`, and `output_int64_ret` outputs |
+| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, raw RET forwarding and OK/NG BUSINESS host payload publication with post-dispatch FSN/IMEI cache clearing, successful position-keyed command broadcasting, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_cmd`, and `output_int64_ret` outputs |
 | `Node.UserSettings` | Standalone INI settings reader that requires and validates `[GUID]`, publishes the GUID once through a dedicated pin, publishes parsed settings JSON without GUID through `output_string_settings`, broadcasts the remaining keyed snapshot to GUI consumers, and publishes runtime endpoint/SLOT outputs during Run | `input_string_ready` string input; `output_string_slotA/B/C/D/F`, `output_string_endpoint`, `output_string_settings`, and `output_string_guid` string outputs |
+| `Node.ReadIniFile` | Generic INI reader supporting section-content and standard key/value styles; runtime input path overrides the `IniPath` parameter and successful reads publish a compact flat JSON dictionary whose values are arrays | `input_string_path` string input; `output_string_sample` string output |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
 | `Node.FACTFlatFileParser` | Parses FACT XML logs and publishes original XML plus normalized JSON with the legacy FlatFile row split into indexed fields | `input_string_path` string input; `output_string_raw_xml` and `output_string_json` string outputs |
 | `Node.PriFileParser` | Resolves direct PRI paths or `/P` paths from FACT commands, parses PRI configuration files into a JSON dictionary, publishes it through `output_string_json` when connected, and broadcasts the keyed dictionary on `Pri.File.Settings.00850D6A-1F19-4040-B2D2-BA4E3E8E0F93` | `input_string_path` string input; `output_string_json` string output |
 | `Node.PassFailTotalYield` | Maintains per-slot pass/fail/yield counters in `C:\AC710\UserSettings\Yield.ini` and broadcasts keyed slot and aggregate calculations; `0` records a pass and any non-zero RET records a fail | `input_int64_retA/B/C/D/F` INT64 inputs; no output pins; GUI reset via `CFGPassFailTotalYieldBroadcasts.CFGReset` |
 | `Node.WorkflowFileConverter` | Developer-only conversion between encrypted `.rw` workflows and readable JSON files | `input_string_rw` and `input_string_json` string inputs; `output_string_json` and `output_string_rw` string outputs |
-| `Node.AutoStart` | Workflow start trigger and SLOT router; parses the complete `MESSAGES` JSON array, validates each business message, and routes individual items to SLOT-specific outputs | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
-| `Node.AutoStop` | Workflow stop trigger; checks one complete input string for the exact `{"Request":"Stop"}` fragment, publishes the stop broadcast, and requests a workflow stop | `input_string_stop` string input; no output pins |
+| `Node.AutoStart` | Workflow start trigger and SLOT router; validates exactly five `MESSAGES` records, routes only `STATUS=TEST` items to SLOT-specific outputs, warns on IDLE items, and requests at most one workflow start per batch | `input_string_start` string input; `output_string_readyA/B/C/D/F` string outputs |
+| `Node.AutoStop` | Workflow stop trigger; trims optional semicolon framing, parses one complete JSON object, and acts only when top-level `TYPE` is exactly `DISCONNECT`; publishes the stop broadcast and requests a workflow stop | `input_string_stop` string input; no output pins |
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
 | `Node.ProcessRunner` | Windows command runner using the already-elevated AgentFlow host token; streams stdout/stderr lines to the log panel in real time and publishes the final combined output | `input_string_cmd` string input; `output_string_ret` string output and `output_int64_ret` int64 output |
 | `Node.Heartbeat` | Immediately forwards each input sample and repeatedly publishes a cloned copy of the latest sample on a fixed interval | `input` and `output`; configurable data type and `IntervalMilliseconds` |
+| `Node.CFGSHandler` | Contract-only CFGS launch/stop handler scaffold; exposes reserved CFG control inputs and launch/stop/confirmation outputs without business processing | `in_str_raw_from_cfg`, `in_str_from_upper`, and `in_str_user_settings` string inputs; `in_int64_cfgstart_ret` and `in_int64_cfgexit_ret` integer inputs; `out_str_launch_cfg`, `out_stop_cfg`, and `out_str_confirmcfg_exit` string outputs |
 
 `Node.UserSettings` owns the fixed `C:\AC710\UserSettings\UserSettings.ini` parser. During `Initialize` it requires one valid `[GUID]` section, normalizes the GUID to uppercase `8-4-4-4-12` form, caches the settings, publishes parsed settings JSON without the GUID section through `output_string_settings`, and publishes the remaining keyed `SampleListsByKey` snapshot to GUI consumers. During `Run` it publishes runtime endpoint/SLOT Pin values and attempts one validated GUID dispatch through `output_string_guid`; a successful dispatch is not repeated until the node lifecycle is restarted, while a disconnected or failed dispatch is logged at `ERROR` and retried on the next `Run`. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
 
@@ -403,32 +409,48 @@ and receive hooks without implementing final business behavior yet:
 Business-specific service calls, SQL persistence, and settings transformation remain explicit
 `TODO` items in each node implementation.
 
-`Node.AutoStart` receives one complete JSON object from `input_string_start`, requires a
-`MESSAGES` array, validates each individual `SLOT`/`FSN`/`IMEI` business message, sends the
-corresponding compact item JSON to the output mapped from `SLOT`, and emits a host-neutral start
-request through `IWorkflowStartRequestSink`. The outer `MESSAGES` wrapper is never forwarded.
-A product-specific host registers the service implementation; the plugin has no Avalonia
-dependency.
+`Node.AutoStart` receives one complete JSON object from `input_string_start`, requires exactly
+five `MESSAGES` records from either SLOT 1-5 or SLOT 6-10, and validates every
+`SLOT`/`FSN`/`IMEI`/`STATUS` business message. Only `STATUS=TEST` records are sent as compact
+item JSON to the output mapped from `SLOT`; `STATUS=IDLE` records log a warning and produce no
+output. After all TEST records are dispatched, a batch with at least one TEST record emits one
+host-neutral start request through `IWorkflowStartRequestSink`. The outer `MESSAGES` wrapper is
+never forwarded. A product-specific host registers the service implementation; the plugin has
+no Avalonia dependency.
 
-`Node.AutoStop` accepts one complete JSON string on `input_string_stop`, checks it for the
-exact `{"Request":"Stop"}` fragment, publishes the shared Auto Stop broadcast, and requests a
-normal workflow stop through `IWorkflowStopRequestSink`. It does not split semicolon frames or
-buffer partial input. The service is implemented by the consuming product host, not by the
-generic AgentFlow editor GUI; it does not invoke final application `Shutdown`.
+`Node.AutoStop` accepts one complete JSON string on `input_string_stop`, strips optional
+leading/trailing whitespace and semicolons, and parses the value as a JSON object. It publishes
+the shared Auto Stop broadcast and requests a normal workflow stop through
+`IWorkflowStopRequestSink` only when the top-level string property `TYPE` is exactly
+`DISCONNECT` with case-sensitive matching. Invalid JSON, a non-object root, a missing or
+non-string `TYPE`, and every other `TYPE` value are logged as warnings and ignored. It does not
+split semicolon-delimited frames or buffer partial input. The service is implemented by the
+consuming product host, not by the generic AgentFlow editor GUI; it does not invoke final
+application `Shutdown`.
 
 The CFG/CFGS session nodes add protocol-level framing and identity on top of TCP:
 
-- `Node.CFGSTcpServer` accepts a client whitelist on `input_string_client_config`, authenticates
-  one active session per configured GUID, routes BUSINESS envelopes by target GUID, maintains
-  bounded offline queues and PING/PONG heartbeats, and emits client BUSINESS envelopes through
+- `Node.CFGSTcpServer` accepts a client whitelist on `input_string_client_config`, maps GUIDs to
+  `CFG-1` or `CFG-2`, authenticates one active session per configured GUID, validates outgoing
+  and incoming BUSINESS payloads, routes envelopes by target GUID, maintains bounded offline
+  queues and PING/PONG heartbeats, and emits client BUSINESS envelopes through
   `output_string_message`.
-- `Node.CFGTcpClient` authenticates with its configured `ClientGuid`, supports `Immediate` and `WaitForEndpoint` connection modes, reconnects automatically,
-  caches pending BUSINESS envelopes while disconnected, validates inbound target GUIDs, and
-  emits BUSINESS envelopes through `output_string_message`.
-- `Node.CFGConfimer` receives the current local GUID on `input_string_local_guid`, accepts one
-  complete envelope on `input_string_message`, validates the target GUID and `RequiredType`,
-  then emits only the top-level `DATA` JSON object through `output_string_data`; `TIMESTAMP` is used as the duplicate-message key.- Both nodes use `;JSON;` framing and shared top-level `GUID`, `TYPE`, `VERSION`, `SEQ`,
-  `TIMESTAMP`, and `DATA` fields. The `DATA` object remains opaque to these nodes.
+- `Node.CFGTcpClient` authenticates with its configured `ClientGuid`, obtains the authoritative
+  `LOCATION` from `AUTH_OK`, supports `Immediate` and `WaitForEndpoint` connection modes,
+  reconnects automatically, retains the last authenticated location for offline queueing,
+  infers the location from the fixed SLOT group before first authentication, validates inbound
+  target GUIDs and BUSINESS payloads, and emits BUSINESS envelopes through
+  `output_string_message`.
+- `Node.CFGConfimer` receives the current local GUID on `input_string_local_guid` and one
+  complete envelope on `input_string_messages`. It validates the target GUID and `LOCATION`.
+  A `BUSINESS` envelope also requires a strictly increasing `TIMESTAMP`, a JSON-object `DATA`,
+  and the fixed five-record identity contract, then emits `{"MESSAGES":[...]}` through
+  `output_string_messages`. Any other `TYPE` emits the complete original envelope through
+  `output_string_others`. Any validation failure logs an error and stops the node from running.
+- The CFG/CFGS session nodes use `;JSON;` framing and validate top-level `GUID`, `LOCATION`,
+  `TYPE`, `VERSION`, `SEQ`, `TIMESTAMP`, and `DATA` fields. BUSINESS `DATA.MESSAGES` contains
+  exactly five records: SLOT 1-5 for `CFG-1` and SLOT 6-10 for `CFG-2`; each record contains
+  `SLOT`, `FSN`, `IMEI`, and `STATUS` (`IDLE` or `TEST`).
 - Connection status is published through the shared topics in
   `AgentFlow.Shared/RTS/CFGS/Broadcasts/CFGSTcpProtocolBroadcasts.cs`.
 

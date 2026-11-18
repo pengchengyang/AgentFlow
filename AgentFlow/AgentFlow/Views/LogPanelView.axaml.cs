@@ -190,10 +190,10 @@ public partial class LogPanelView : UserControl
         {
             if (src is Visual v)
             {
-                if (v is Button or TextBox or ToggleSwitch
+                if (v is Button or ToggleButton or TextBox
                     || v.FindAncestorOfType<Button>() != null
-                    || v.FindAncestorOfType<TextBox>() != null
-                    || v.FindAncestorOfType<ToggleSwitch>() != null)
+                    || v.FindAncestorOfType<ToggleButton>() != null
+                    || v.FindAncestorOfType<TextBox>() != null)
                     return;
 
                 if (v is ScrollBar || v.FindAncestorOfType<ScrollBar>() != null)
