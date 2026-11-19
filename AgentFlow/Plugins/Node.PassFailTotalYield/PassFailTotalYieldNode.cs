@@ -13,40 +13,22 @@ using Microsoft.Extensions.Logging;
 namespace Node.PassFailTotalYield;
 
 /// <summary>
-/// Maintains per-slot Pass/Fail counters in Yield.ini, computes slot and aggregate yields,
-/// and broadcasts the latest snapshot through TopicBus.
+/// Maintains per-slot Pass/Fail counters in the configured Yield.ini profile, computes slot
+/// and aggregate yields, and broadcasts the latest snapshot through TopicBus.
 /// </summary>
 public sealed class PassFailTotalYieldNode : BaseNode
 {
-    private readonly BasePin _slotAInputPin =
-        new("input_int64_retA", DataType.INT64, PinDirection.Input, required: false);
-    private readonly BasePin _slotBInputPin =
-        new("input_int64_retB", DataType.INT64, PinDirection.Input, required: false);
-    private readonly BasePin _slotCInputPin =
-        new("input_int64_retC", DataType.INT64, PinDirection.Input, required: false);
-    private readonly BasePin _slotDInputPin =
-        new("input_int64_retD", DataType.INT64, PinDirection.Input, required: false);
-    private readonly BasePin _slotFInputPin =
-        new("input_int64_retF", DataType.INT64, PinDirection.Input, required: false);
+    private const string ModeParameterName = "Mode";
+    private const string FilePathParameterName = "YieldFilePath";
+    private static readonly string[] ModeOptions = { YieldProfile.CfgMode, YieldProfile.CfgsMode };
+
+    private readonly BasePin[] _cfgInputPins = CreateInputPins("A", "B", "C", "D", "F");
+    private readonly BasePin[] _cfgsInputPins = CreateInputPins("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
 
     private readonly object _stateGate = new();
 
-    private long _slotAPass;
-    private long _slotAFail;
-    private long _slotBPass;
-    private long _slotBFail;
-    private long _slotCPass;
-    private long _slotCFail;
-    private long _slotDPass;
-    private long _slotDFail;
-    private long _slotFPass;
-    private long _slotFFail;
-
-    private double _slotAYieldPercent;
-    private double _slotBYieldPercent;
-    private double _slotCYieldPercent;
-    private double _slotDYieldPercent;
-    private double _slotFYieldPercent;
+    private YieldProfile _profile = YieldProfile.Cfg;
+    private YieldFileData _data = YieldFileData.Empty(YieldProfile.Cfg);
 
     private ILogger? _logger;
     private ITopicBus? _topicBus;
@@ -61,41 +43,78 @@ public sealed class PassFailTotalYieldNode : BaseNode
 
     public override string Name => "Pass Fail Total Yield";
     public override string DisplayName { get; set; } = "Pass Fail Total Yield";
-    public override string Category => "Data";
+    public override string Category => "C";
 
     public override void AddPins()
     {
-        AddInputPin(_slotAInputPin);
-        AddInputPin(_slotBInputPin);
-        AddInputPin(_slotCInputPin);
-        AddInputPin(_slotDInputPin);
-        AddInputPin(_slotFInputPin);
+        foreach (var pin in _cfgInputPins)
+            AddInputPin(pin);
+        foreach (var pin in _cfgsInputPins)
+            AddInputPin(pin);
+    }
+
+    protected override void AddParam()
+    {
+        base.AddParam();
+        AddParameter(new NodeParameter(
+            ModeParameterName,
+            typeof(string),
+            YieldProfile.CfgMode,
+            isEditable: true,
+            group: "General",
+            zone: "PassFailTotalYieldZone",
+            editor: ParameterEditorKind.SingleSelect,
+            options: ModeOptions));
+        AddParameter(new NodeParameter(
+            FilePathParameterName,
+            typeof(string),
+            string.Empty,
+            isEditable: true,
+            group: "General",
+            zone: "PassFailTotalYieldZone"));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
-        // This node has no configurable parameters.
+        var mode = parameters.TryGetValue(ModeParameterName, out var modeValue)
+            ? ParameterValues.GetString(modeValue, YieldProfile.CfgMode) ?? YieldProfile.CfgMode
+            : Param(ModeParameterName).Value?.ToString();
+
+        var modeProfile = YieldProfile.FromMode(mode);
+        var filePath = parameters.TryGetValue(FilePathParameterName, out var pathValue)
+            ? ParameterValues.GetString(pathValue, string.Empty) ?? string.Empty
+            : Param(FilePathParameterName).Value?.ToString() ?? string.Empty;
+        filePath = filePath.Trim();
+
+        Param(ModeParameterName).Value = modeProfile.ModeName;
+        Param(FilePathParameterName).Value = filePath;
+
+        _profile = string.IsNullOrEmpty(filePath)
+            ? modeProfile
+            : modeProfile with { FilePath = filePath };
+        _data = YieldFileData.Empty(_profile);
     }
 
     public override async Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
         _topicBus = ResolveTopicBus(context);
-        var data = YieldSettingsStore.EnsureAndLoad(_logger);
 
+        var data = LoadData();
         YieldSnapshot snapshot;
         lock (_stateGate)
         {
-            ApplyData(data);
+            _data = data;
             snapshot = CreateSnapshot();
         }
 
         await BroadcastSnapshotAsync(snapshot).ConfigureAwait(false);
-
         EnsureResetSubscription();
 
         _logger?.LogTrace(
-            "PassFailTotalYield initialized with snapshot {Snapshot}.",
+            "PassFailTotalYield initialized mode {Mode} with file {FilePath} and snapshot {Snapshot}.",
+            _profile.ModeName,
+            _profile.FilePath,
             snapshot);
     }
 
@@ -104,7 +123,7 @@ public sealed class PassFailTotalYieldNode : BaseNode
         _logger = context.Logger;
         _topicBus = ResolveTopicBus(context);
         Running = true;
-        _logger?.LogTrace("PassFailTotalYield is running.");
+        _logger?.LogTrace("PassFailTotalYield is running in {Mode} mode.", _profile.ModeName);
         return Task.CompletedTask;
     }
 
@@ -127,89 +146,97 @@ public sealed class PassFailTotalYieldNode : BaseNode
         return Task.CompletedTask;
     }
 
-    private void EnsureResetSubscription()
-    {
-        if (_resetSubscription is { IsActive: true })
-            return;
-
-        _resetSubscription?.Dispose();
-        _resetSubscription = (_topicBus ?? TopicBus.Instance).Subscribe(
-            CFGPassFailTotalYieldBroadcasts.CFGReset,
-            OnResetBroadcast);
-        _logger?.LogTrace(
-            "PassFailTotalYield subscribed to reset broadcasts on {Topic}.",
-            CFGPassFailTotalYieldBroadcasts.CFGReset);
-    }
-
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
-        if (!IsKnownInputPin(pin))
+        int slotNumber;
+        if (_profile.TryResolveInputPin(pin.Name, out slotNumber))
         {
-            _logger?.LogWarning(
-                "PassFailTotalYield ignored a sample from an unknown pin {Pin}.",
-                pin.Name);
+            if (value is not Int64Sample { Int64Value: { } ret })
+            {
+                _logger?.LogWarning(
+                    "PassFailTotalYield ignored invalid input on {Pin}: expected Int64Sample with non-null Int64Value, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
+            }
+
+            try
+            {
+                UpdateSlot(slotNumber, ret);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(
+                    ex,
+                    "PassFailTotalYield failed to process RET {Ret} on {Pin}: {Message}",
+                    ret,
+                    pin.Name,
+                    ex.Message);
+            }
+
             return;
         }
 
-        if (value is not Int64Sample { Int64Value: { } ret })
-        {
-            _logger?.LogWarning(
-                "PassFailTotalYield ignored invalid input on {Pin}: expected Int64Sample with non-null Int64Value, got {Type}.",
-                pin.Name,
-                value?.Type.ToString() ?? "null");
-            return;
-        }
-
-        try
-        {
-            UpdateSlot(pin, ret);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(
-                ex,
-                "PassFailTotalYield failed to process RET {Ret} on {Pin}: {Message}",
-                ret,
-                pin.Name,
-                ex.Message);
-        }
+        _logger?.LogWarning(
+            "PassFailTotalYield ignored input pin {Pin} because it is not valid in {Mode} mode.",
+            pin.Name,
+            _profile.ModeName);
     }
 
-    private void UpdateSlot(BasePin pin, long ret)
+    private YieldFileData LoadData() =>
+        _profile.Mode == YieldMode.Cfg
+            ? YieldSettingsStore.EnsureAndLoad(_profile, _logger)
+            : CfgsYieldSettingsStore.EnsureAndLoad(_profile, _logger);
+
+    private void SaveData(YieldFileData data, bool resetFormat)
+    {
+        if (_profile.Mode == YieldMode.Cfg)
+        {
+            YieldSettingsStore.Save(_profile, data, _logger, resetFormat);
+            return;
+        }
+
+        CfgsYieldSettingsStore.Save(_profile, data, _logger, resetFormat);
+    }
+
+    private void UpdateSlot(int slotNumber, long ret)
     {
         var kind = ret == 0 ? YieldResultKind.Pass : YieldResultKind.Fail;
         YieldSnapshot snapshot;
         lock (_stateGate)
         {
-            var data = CreateData();
-            data = ApplyDelta(pin, kind, data);
-            YieldSettingsStore.Save(data, _logger);
-            ApplyData(data);
+            var data = ApplyDelta(_data, slotNumber, kind);
+            SaveData(data, resetFormat: false);
+            _data = data;
             snapshot = CreateSnapshot();
             _logger?.LogTrace(
-                "PassFailTotalYield recorded RET {Ret} for {Slot} as {Kind}.",
+                "PassFailTotalYield recorded RET {Ret} for {Slot} as {Kind} in {Mode} mode.",
                 ret,
-                GetSlotName(pin),
-                kind);
+                _profile.FormatSlot(slotNumber),
+                kind,
+                _profile.ModeName);
             _ = BroadcastSnapshotAsync(snapshot);
         }
     }
 
-    private void ResetSlots(IReadOnlySet<char> slots, string trigger)
+    private void ResetSlots(IReadOnlySet<int> slots, string trigger)
     {
         YieldSnapshot snapshot;
         lock (_stateGate)
         {
-            var data = CreateData();
+            var data = _data;
             foreach (var slot in slots)
-                data = ResetSlot(data, slot);
+            {
+                data = data.WithCounter(slot, new YieldCounter(0, 0));
+            }
 
-            YieldSettingsStore.Save(data, _logger, resetFormat: slots.Count == 5);
-            ApplyData(data);
+            SaveData(data, resetFormat: slots.Count == _profile.Slots.Count);
+            _data = data;
             snapshot = CreateSnapshot();
             _logger?.LogInformation(
-                "PassFailTotalYield reset slots {Slots} and updated Yield.ini after {Trigger}.",
+                "PassFailTotalYield reset slots {Slots} and updated {FilePath} after {Trigger}.",
                 FormatSlots(slots),
+                _profile.FilePath,
                 trigger);
             _ = BroadcastSnapshotAsync(snapshot);
         }
@@ -229,9 +256,10 @@ public sealed class PassFailTotalYieldNode : BaseNode
             }
 
             _logger?.LogInformation(
-                "PassFailTotalYield received reset command on {Topic} for slots {Slots}.",
+                "PassFailTotalYield received reset command on {Topic} for slots {Slots} in {Mode} mode.",
                 message.Topic,
-                FormatSlots(slots));
+                FormatSlots(slots),
+                _profile.ModeName);
             ResetSlots(slots, $"broadcast {message.Topic}");
         }
         catch (Exception ex)
@@ -246,12 +274,12 @@ public sealed class PassFailTotalYieldNode : BaseNode
         return Task.CompletedTask;
     }
 
-    private static bool TryParseResetSlots(
+    private bool TryParseResetSlots(
         object? payload,
-        out IReadOnlySet<char> slots,
+        out IReadOnlySet<int> slots,
         out string error)
     {
-        slots = new HashSet<char>();
+        slots = new HashSet<int>();
 
         if (payload is not BroadcastTopicMessage { SamplesByKey: { } samplesByKey } ||
             samplesByKey.Count == 0)
@@ -260,26 +288,26 @@ public sealed class PassFailTotalYieldNode : BaseNode
             return false;
         }
 
-        var requestedSlots = new HashSet<char>();
+        var requestedSlots = new HashSet<int>();
         foreach (var pair in samplesByKey)
         {
-            var key = pair.Key.Trim().ToUpperInvariant();
-            if (key.Length != 1 || !IsSupportedResetSlot(key[0]))
+            int slotNumber;
+            if (!_profile.TryResolveResetSlot(pair.Key, out slotNumber))
             {
-                error = $"unsupported slot key '{pair.Key}'";
+                error = $"unsupported slot key '{pair.Key}' for {_profile.ModeName} mode";
                 return false;
             }
 
-            if (!requestedSlots.Add(key[0]))
+            if (!requestedSlots.Add(slotNumber))
             {
-                error = $"duplicate normalized slot key '{key}'";
+                error = $"duplicate normalized slot key '{pair.Key}'";
                 return false;
             }
 
             if (pair.Value is not StringSample value ||
                 !string.Equals(value.StringValue, "Reset", StringComparison.Ordinal))
             {
-                error = $"slot '{key}' must contain StringSample value 'Reset'";
+                error = $"slot '{pair.Key}' must contain StringSample value 'Reset'";
                 return false;
             }
         }
@@ -289,122 +317,43 @@ public sealed class PassFailTotalYieldNode : BaseNode
         return true;
     }
 
-    private static YieldFileData ResetSlot(YieldFileData data, char slot) =>
-        slot switch
-        {
-            'A' => data with { SlotAPass = 0, SlotAFail = 0 },
-            'B' => data with { SlotBPass = 0, SlotBFail = 0 },
-            'C' => data with { SlotCPass = 0, SlotCFail = 0 },
-            'D' => data with { SlotDPass = 0, SlotDFail = 0 },
-            'F' => data with { SlotFPass = 0, SlotFFail = 0 },
-            _ => throw new ArgumentOutOfRangeException(nameof(slot), slot, "Unsupported reset slot."),
-        };
-
-    private static bool IsSupportedResetSlot(char slot) =>
-        slot is 'A' or 'B' or 'C' or 'D' or 'F';
-
-    private static string FormatSlots(IReadOnlySet<char> slots) =>
-        string.Join(",", slots.OrderBy(static slot => slot));
-
-    private YieldFileData ApplyDelta(
-        BasePin pin,
-        YieldResultKind kind,
-        YieldFileData data)
+    private static YieldFileData ApplyDelta(
+        YieldFileData data,
+        int slotNumber,
+        YieldResultKind kind)
     {
-        if (ReferenceEquals(pin, _slotAInputPin))
-        {
-            return kind == YieldResultKind.Pass
-                ? data with { SlotAPass = data.SlotAPass + 1 }
-                : data with { SlotAFail = data.SlotAFail + 1 };
-        }
-
-        if (ReferenceEquals(pin, _slotBInputPin))
-        {
-            return kind == YieldResultKind.Pass
-                ? data with { SlotBPass = data.SlotBPass + 1 }
-                : data with { SlotBFail = data.SlotBFail + 1 };
-        }
-
-        if (ReferenceEquals(pin, _slotCInputPin))
-        {
-            return kind == YieldResultKind.Pass
-                ? data with { SlotCPass = data.SlotCPass + 1 }
-                : data with { SlotCFail = data.SlotCFail + 1 };
-        }
-
-        if (ReferenceEquals(pin, _slotDInputPin))
-        {
-            return kind == YieldResultKind.Pass
-                ? data with { SlotDPass = data.SlotDPass + 1 }
-                : data with { SlotDFail = data.SlotDFail + 1 };
-        }
-
-        if (ReferenceEquals(pin, _slotFInputPin))
-        {
-            return kind == YieldResultKind.Pass
-                ? data with { SlotFPass = data.SlotFPass + 1 }
-                : data with { SlotFFail = data.SlotFFail + 1 };
-        }
-
-        throw new InvalidOperationException($"Unsupported input pin '{pin.Name}'.");
-    }
-
-    private YieldFileData CreateData() =>
-        new(
-            _slotAPass,
-            _slotAFail,
-            _slotBPass,
-            _slotBFail,
-            _slotCPass,
-            _slotCFail,
-            _slotDPass,
-            _slotDFail,
-            _slotFPass,
-            _slotFFail);
-
-    private void ApplyData(YieldFileData data)
-    {
-        _slotAPass = data.SlotAPass;
-        _slotAFail = data.SlotAFail;
-        _slotBPass = data.SlotBPass;
-        _slotBFail = data.SlotBFail;
-        _slotCPass = data.SlotCPass;
-        _slotCFail = data.SlotCFail;
-        _slotDPass = data.SlotDPass;
-        _slotDFail = data.SlotDFail;
-        _slotFPass = data.SlotFPass;
-        _slotFFail = data.SlotFFail;
-
-        _slotAYieldPercent = YieldSettingsStore.CalculateYield(_slotAPass, _slotAFail);
-        _slotBYieldPercent = YieldSettingsStore.CalculateYield(_slotBPass, _slotBFail);
-        _slotCYieldPercent = YieldSettingsStore.CalculateYield(_slotCPass, _slotCFail);
-        _slotDYieldPercent = YieldSettingsStore.CalculateYield(_slotDPass, _slotDFail);
-        _slotFYieldPercent = YieldSettingsStore.CalculateYield(_slotFPass, _slotFFail);
+        var counter = data.GetCounter(slotNumber);
+        var updated = kind == YieldResultKind.Pass
+            ? counter with { Pass = counter.Pass + 1 }
+            : counter with { Fail = counter.Fail + 1 };
+        return data.WithCounter(slotNumber, updated);
     }
 
     private YieldSnapshot CreateSnapshot()
     {
-        var passTotal = _slotAPass + _slotBPass + _slotCPass + _slotDPass + _slotFPass;
-        var failTotal = _slotAFail + _slotBFail + _slotCFail + _slotDFail + _slotFFail;
+        var slots = _profile.Slots
+            .Select(slot =>
+            {
+                var counter = _data.GetCounter(slot.SlotNumber);
+                var yield = YieldSettingsStore.CalculateYield(counter.Pass, counter.Fail);
+                return new YieldSlotSnapshot(
+                    slot.SlotNumber,
+                    slot.BroadcastKey,
+                    counter.Pass,
+                    counter.Fail,
+                    yield);
+            })
+            .ToArray();
+
+        var passTotal = slots.Sum(static slot => slot.Pass);
+        var failTotal = slots.Sum(static slot => slot.Fail);
         var total = passTotal + failTotal;
         var aggregateYield = YieldSettingsStore.CalculateYield(passTotal, failTotal);
 
         return new YieldSnapshot(
-            _slotAPass,
-            _slotAFail,
-            _slotAYieldPercent,
-            _slotBPass,
-            _slotBFail,
-            _slotBYieldPercent,
-            _slotCPass,
-            _slotCFail,
-            _slotCYieldPercent,
-            _slotDPass,
-            _slotDFail,
-            _slotDYieldPercent,
-            _slotFPass,
-            _slotFFail,
-            _slotFYieldPercent,
+            _profile.ModeName,
+            _profile.Slots.Count,
+            slots,
             passTotal,
             failTotal,
             total,
@@ -413,28 +362,19 @@ public sealed class PassFailTotalYieldNode : BaseNode
 
     private async Task BroadcastSnapshotAsync(YieldSnapshot snapshot)
     {
-        var samplesByKey = new Dictionary<string, Sample>(StringComparer.Ordinal)
+        var samplesByKey = new Dictionary<string, Sample>(StringComparer.Ordinal);
+        foreach (var slot in snapshot.Slots)
         {
-            ["slotA_Pass"] = CreateInt64Sample("slotA_Pass", snapshot.SlotAPass),
-            ["slotA_Fail"] = CreateInt64Sample("slotA_Fail", snapshot.SlotAFail),
-            ["slotA_Yield"] = CreateDoubleSample("slotA_Yield", snapshot.SlotAYield),
-            ["slotB_Pass"] = CreateInt64Sample("slotB_Pass", snapshot.SlotBPass),
-            ["slotB_Fail"] = CreateInt64Sample("slotB_Fail", snapshot.SlotBFail),
-            ["slotB_Yield"] = CreateDoubleSample("slotB_Yield", snapshot.SlotBYield),
-            ["slotC_Pass"] = CreateInt64Sample("slotC_Pass", snapshot.SlotCPass),
-            ["slotC_Fail"] = CreateInt64Sample("slotC_Fail", snapshot.SlotCFail),
-            ["slotC_Yield"] = CreateDoubleSample("slotC_Yield", snapshot.SlotCYield),
-            ["slotD_Pass"] = CreateInt64Sample("slotD_Pass", snapshot.SlotDPass),
-            ["slotD_Fail"] = CreateInt64Sample("slotD_Fail", snapshot.SlotDFail),
-            ["slotD_Yield"] = CreateDoubleSample("slotD_Yield", snapshot.SlotDYield),
-            ["slotF_Pass"] = CreateInt64Sample("slotF_Pass", snapshot.SlotFPass),
-            ["slotF_Fail"] = CreateInt64Sample("slotF_Fail", snapshot.SlotFFail),
-            ["slotF_Yield"] = CreateDoubleSample("slotF_Yield", snapshot.SlotFYield),
-            ["P"] = CreateInt64Sample("P", snapshot.PassTotal),
-            ["F"] = CreateInt64Sample("F", snapshot.FailTotal),
-            ["T"] = CreateInt64Sample("T", snapshot.Total),
-            ["Y"] = CreateDoubleSample("Y", snapshot.Yield),
-        };
+            var prefix = $"slot{slot.BroadcastKey}";
+            samplesByKey[$"{prefix}_Pass"] = CreateInt64Sample($"{prefix}_Pass", slot.Pass);
+            samplesByKey[$"{prefix}_Fail"] = CreateInt64Sample($"{prefix}_Fail", slot.Fail);
+            samplesByKey[$"{prefix}_Yield"] = CreateDoubleSample($"{prefix}_Yield", slot.Yield);
+        }
+
+        samplesByKey["P"] = CreateInt64Sample("P", snapshot.PassTotal);
+        samplesByKey["F"] = CreateInt64Sample("F", snapshot.FailTotal);
+        samplesByKey["T"] = CreateInt64Sample("T", snapshot.Total);
+        samplesByKey["Y"] = CreateDoubleSample("Y", snapshot.Yield);
 
         try
         {
@@ -444,9 +384,10 @@ public sealed class PassFailTotalYieldNode : BaseNode
                 ct: CancellationToken.None).ConfigureAwait(false);
 
             _logger?.LogTrace(
-                "PassFailTotalYield broadcast {Count} values on {Topic}: P={Pass}, F={Fail}, T={Total}, Y={Yield}.",
+                "PassFailTotalYield broadcast {Count} values on {Topic} in {Mode} mode: P={Pass}, F={Fail}, T={Total}, Y={Yield}.",
                 samplesByKey.Count,
                 CFGBroadcastSubscriptions.CFGPassFailTotalYield,
+                snapshot.ModeName,
                 snapshot.PassTotal,
                 snapshot.FailTotal,
                 snapshot.Total,
@@ -462,8 +403,39 @@ public sealed class PassFailTotalYieldNode : BaseNode
         }
     }
 
+    private void EnsureResetSubscription()
+    {
+        if (_resetSubscription is { IsActive: true })
+            return;
+
+        _resetSubscription?.Dispose();
+        _resetSubscription = (_topicBus ?? TopicBus.Instance).Subscribe(
+            CFGPassFailTotalYieldBroadcasts.CFGReset,
+            OnResetBroadcast);
+        _logger?.LogTrace(
+            "PassFailTotalYield subscribed to reset broadcasts on {Topic} for {Mode} mode.",
+            CFGPassFailTotalYieldBroadcasts.CFGReset,
+            _profile.ModeName);
+    }
+
+    private string FormatSlots(IReadOnlySet<int> slots) =>
+        string.Join(
+            ",",
+            slots.OrderBy(static slot => slot).Select(_profile.FormatSlot));
+
     private static ITopicBus ResolveTopicBus(INodeContext context) =>
         context.GetService<ITopicBus>() ?? TopicBus.Instance;
+
+    private static BasePin[] CreateInputPins(params string[] slotKeys) =>
+        slotKeys
+            .Select(static key => new BasePin(
+                $"input_int64_ret{key}",
+                DataType.INT64,
+                PinDirection.Input,
+                required: false))
+            .ToArray();
+
+    private NodeParameter Param(string name) => NodeParameters.First(parameter => parameter.Name == name);
 
     private static Int64Sample CreateInt64Sample(string key, long value)
     {
@@ -479,46 +451,23 @@ public sealed class PassFailTotalYieldNode : BaseNode
         return sample;
     }
 
-    private bool IsKnownInputPin(BasePin pin) =>
-        ReferenceEquals(pin, _slotAInputPin) ||
-        ReferenceEquals(pin, _slotBInputPin) ||
-        ReferenceEquals(pin, _slotCInputPin) ||
-        ReferenceEquals(pin, _slotDInputPin) ||
-        ReferenceEquals(pin, _slotFInputPin);
-
-    private static string GetSlotName(BasePin pin) =>
-        pin.Name switch
-        {
-            "input_int64_retA" => "A",
-            "input_int64_retB" => "B",
-            "input_int64_retC" => "C",
-            "input_int64_retD" => "D",
-            "input_int64_retF" => "F",
-            _ => pin.Name,
-        };
-
     private enum YieldResultKind
     {
         Pass,
         Fail,
     }
 
+    private sealed record YieldSlotSnapshot(
+        int SlotNumber,
+        string BroadcastKey,
+        long Pass,
+        long Fail,
+        double Yield);
+
     private sealed record YieldSnapshot(
-        long SlotAPass,
-        long SlotAFail,
-        double SlotAYield,
-        long SlotBPass,
-        long SlotBFail,
-        double SlotBYield,
-        long SlotCPass,
-        long SlotCFail,
-        double SlotCYield,
-        long SlotDPass,
-        long SlotDFail,
-        double SlotDYield,
-        long SlotFPass,
-        long SlotFFail,
-        double SlotFYield,
+        string ModeName,
+        int SlotCount,
+        IReadOnlyList<YieldSlotSnapshot> Slots,
         long PassTotal,
         long FailTotal,
         long Total,

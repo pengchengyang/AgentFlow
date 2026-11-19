@@ -87,7 +87,7 @@ public sealed class CFGSTcpServerNode : BaseNode
 
     public override string Name => "CFGS TCP Server";
     public override string DisplayName { get; set; } = "CFGS TCP Server";
-    public override string Category => "Network";
+    public override string Category => "C";
     public override bool RequiresPersistentHost => true;
 
     public BasePin ConfigInputPin { get; } =

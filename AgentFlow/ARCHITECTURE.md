@@ -155,3 +155,27 @@ dotnet run --project AgentFlow.Cli -- --workflow sample.workflow.rw --instances 
 外部多语言节点源码位于 `Plugins/External` 下的语言分类目录，例如
 `Plugins/External/Python/Node.PythonUpper`。宿主 Build/Publish 时会按源码指纹增量构建，
 并按当前标准 RID 把产物复制到输出目录的 `Plugins/External/<RID>`；源码未变化时只复制已有产物，不重复编译。
+## 7. Windows 原生 VC++ 节点
+
+Windows 专用节点采用“稳定 C ABI + 托管代理 + 有界队列”的架构，不修改 Core 层的插件发现机制：
+
+```text
+VC++ node DLL
+  -> AfNode C ABI
+  -> AgentFlow.Windows.NativeHost
+  -> bounded Channel (per node, capacity 1024)
+  -> NativeNodeBackgroundPump (serial)
+  -> BasePin.SendSample / ILogger
+```
+
+- 源码：`Plugins/Windows/Src`，其中 `AgentFlow.NativeNodeApi/agentflow_node_api.h` 定义 ABI。
+- 原生节点：每个节点目录包含 VC++ 工程、实现文件和 `manifest.json`。
+- 托管桥：`Plugins/Windows/AgentFlow.Windows.NativeHost`，由 `manifest.json` 生成 `BaseNode` 代理。
+- 生成器：`Tools/NativeNodeCodeGen`。
+- 部署：`Plugins/Windows/win-x64/<ModuleId>`，Desktop/CLI 构建时自动同步到输出目录。
+- 节点类别：`Category=C` 表示跨平台通用节点，`W` 表示 Windows 专用节点，`E` 表示外部 Worker 节点；Components 图标右下角只显示 `W` 或 `E`，`C` 不显示角标。
+- 回调约束：原生回调只可复制数据并入队，不得直接调用托管 `BasePin`；Sample 缓冲区仅在 ABI 调用期间有效。
+- 队列满：`sendSample` 返回 `AF_ERR_QUEUE_FULL`，调用方必须处理该状态，不能无限阻塞原生线程。
+- 运行时链接：Debug 使用 `/MTd`，Release 使用 `/MT`，避免依赖 `MSVCP*.dll` 或 `VCRUNTIME*.dll`。
+
+示例 `Node.NativeUpperCase.Windows` 已实现 `input_string -> output_string`，将 ASCII 小写字母转换为大写。

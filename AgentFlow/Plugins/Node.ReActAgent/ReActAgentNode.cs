@@ -40,7 +40,7 @@ public sealed class ReActAgentNode : BaseNode
 
     public override string Name => "ReAct Agent";
     public override string DisplayName { get; set; } = string.Empty;
-    public override string Category => "AI";
+    public override string Category => "C";
 
     /// <summary>Question input pin (from an upstream node / user).</summary>
     private readonly BasePin _inPin = new("Question", DataType.STRING, PinDirection.Input, required: false);

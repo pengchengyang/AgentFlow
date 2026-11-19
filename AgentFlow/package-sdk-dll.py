@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -39,6 +40,17 @@ REQUIRED_SHARED_ASSEMBLIES = (
 
 
 SUPPORTED_RIDS = ("win-x64", "win-arm64", "linux-x64", "linux-arm64", "linux-arm")
+WINDOWS_NATIVE_SOURCE = ROOT / "Plugins" / "Windows" / "Src"
+WINDOWS_NATIVE_OUTPUT = ROOT / "Plugins" / "Windows" / "win-x64"
+WINDOWS_NATIVE_BUILD_SCRIPT = ROOT / "Scripts" / "build_windows_native.ps1"
+WINDOWS_NATIVE_HOST_PROJECT = (
+    ROOT / "Plugins" / "Windows" / "AgentFlow.Windows.NativeHost" /
+    "AgentFlow.Windows.NativeHost.csproj"
+)
+WINDOWS_NATIVE_API_HEADER = (
+    WINDOWS_NATIVE_SOURCE / "AgentFlow.NativeNodeApi" / "agentflow_node_api.h"
+)
+NATIVE_NODE_CODEGEN_PROJECT = ROOT / "Tools" / "NativeNodeCodeGen" / "NativeNodeCodeGen.csproj"
 DEMO_PROJECTS = ("Demo.Cli", "Demo.Desktop")
 
 
@@ -80,6 +92,39 @@ def require_tool(name: str) -> Path:
     if not found:
         raise RuntimeError(f"{name} was not found in PATH.")
     return Path(found)
+
+
+def find_visual_studio_msbuild() -> Path | None:
+    """Locate the Visual Studio MSBuild used for Windows native-host packaging."""
+    program_files_x86 = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+    vswhere = program_files_x86 / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if vswhere.is_file():
+        completed = subprocess.run(
+            [
+                str(vswhere), "-latest", "-products", "*",
+                "-requires", "Microsoft.Component.MSBuild",
+                "-find", r"MSBuild\**\Bin\MSBuild.exe",
+            ],
+            cwd=str(ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode == 0:
+            for line in completed.stdout.splitlines():
+                candidate = Path(line.strip())
+                if candidate.is_file():
+                    return candidate
+
+    for edition in ("Enterprise", "Professional", "Community", "BuildTools"):
+        candidate = (
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+            / "Microsoft Visual Studio" / "2022" / edition
+            / "MSBuild" / "Current" / "Bin" / "MSBuild.exe"
+        )
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def msbuild_property(project: Path, property_name: str) -> str:
@@ -158,6 +203,104 @@ def build_plugins(configuration: str) -> None:
             pdb = output / f"{directory.name}.pdb"
             if pdb.is_file():
                 shutil.copy2(pdb, destination / pdb.name)
+
+
+def package_windows_native_nodes(configuration: str) -> None:
+    if platform.system() != "Windows":
+        log("")
+        log(f"Skipping Windows native nodes for {configuration}: build host is not Windows.")
+        return
+
+    powershell = find_powershell()
+    if not powershell:
+        raise RuntimeError("PowerShell was not found; Windows native node packaging requires it.")
+    if not WINDOWS_NATIVE_BUILD_SCRIPT.is_file():
+        raise FileNotFoundError(f"Windows native build script was not found: {WINDOWS_NATIVE_BUILD_SCRIPT}")
+
+    log("")
+    log(f"Building {configuration} Windows native nodes...")
+    run([
+        powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+        WINDOWS_NATIVE_BUILD_SCRIPT, "-Configuration", configuration,
+    ])
+
+    if not WINDOWS_NATIVE_OUTPUT.is_dir():
+        raise FileNotFoundError(f"Windows native output was not found: {WINDOWS_NATIVE_OUTPUT}")
+
+    native_destination = STAGING / "SharedDlls" / "x64" / configuration / "Plugins" / "Windows" / "win-x64"
+    if native_destination.exists():
+        shutil.rmtree(native_destination)
+    native_destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(WINDOWS_NATIVE_OUTPUT, native_destination)
+    log(f"  copied Windows native modules: {native_destination}")
+
+    # Build NativeHost into its normal project output. Passing a shared -o output directory
+    # here can make the project-reference restore fail without diagnostics on some SDK/MSBuild
+    # combinations, so the packaging script discovers the produced assembly by configuration.
+    msbuild = find_visual_studio_msbuild()
+    if msbuild is not None:
+        run([
+            msbuild, WINDOWS_NATIVE_HOST_PROJECT,
+            f"/p:Configuration={configuration}",
+            "/p:Platform=x64",
+            "/p:CopyLocalLockFileAssemblies=true",
+            "/v:minimal",
+            "/nologo",
+        ])
+    else:
+        run([
+            "dotnet", "build", WINDOWS_NATIVE_HOST_PROJECT, "-c", configuration,
+            "-p:Platform=x64", "-p:CopyLocalLockFileAssemblies=true",
+            "-v:minimal",
+        ])
+    native_host_dlls = sorted(
+        WINDOWS_NATIVE_HOST_PROJECT.parent.glob(
+            f"bin/x64/{configuration}/net*/AgentFlow.Windows.NativeHost.dll"
+        ),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not native_host_dlls:
+        raise FileNotFoundError(
+            "NativeHost assembly was not produced under "
+            f"{WINDOWS_NATIVE_HOST_PROJECT.parent / 'bin' / 'x64' / configuration}."
+        )
+    native_host_dll = native_host_dlls[0]
+    native_host_output = native_host_dll.parent
+
+    plugin_destination = STAGING / "SharedDlls" / "x64" / configuration / "Plugins"
+    plugin_destination.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(native_host_dll, plugin_destination / native_host_dll.name)
+    if configuration == "Debug":
+        native_host_pdb = native_host_output / "AgentFlow.Windows.NativeHost.pdb"
+        if native_host_pdb.is_file():
+            shutil.copy2(native_host_pdb, plugin_destination / native_host_pdb.name)
+    log(f"  copied NativeHost plugin assembly: {plugin_destination / native_host_dll.name}")
+
+
+def package_windows_native_sdk(configuration: str) -> None:
+    if platform.system() != "Windows":
+        return
+    if not WINDOWS_NATIVE_API_HEADER.is_file():
+        raise FileNotFoundError(f"Windows native API header was not found: {WINDOWS_NATIVE_API_HEADER}")
+
+    header_destination = STAGING / "SDK" / "Windows" / "NativeNodeApi"
+    header_destination.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(WINDOWS_NATIVE_API_HEADER, header_destination / WINDOWS_NATIVE_API_HEADER.name)
+
+    codegen_output = BUILD_ROOT / "NativeNodeCodeGen" / configuration
+    if codegen_output.exists():
+        shutil.rmtree(codegen_output)
+    run([
+        "dotnet", "publish", NATIVE_NODE_CODEGEN_PROJECT, "-c", configuration,
+        "-p:Platform=x64", "-p:CopyLocalLockFileAssemblies=true", "-o", codegen_output,
+        "-v:minimal",
+    ])
+    codegen_destination = STAGING / "SDK" / "Windows" / "NativeNodeCodeGen" / configuration
+    if codegen_destination.exists():
+        shutil.rmtree(codegen_destination)
+    shutil.copytree(codegen_output, codegen_destination)
+    log(f"  copied Windows native SDK support files for {configuration}.")
 
 
 def sync_external_nodes(configuration: str, rid: str, destination: Path) -> None:
@@ -297,6 +440,11 @@ Layout:
   SharedDlls/x64/Release                Release shared assemblies and dependencies
   SharedDlls/x64/Release/Plugins        Release C# node assemblies
   SharedDlls/x64/Release/Plugins/External/<RID> Verified Release external-language node packages
+  SharedDlls/x64/<Configuration>/Plugins/Windows/win-x64/<ModuleId>
+                                        Windows native node DLL and manifest
+  SDK/Windows/NativeNodeApi/            Stable C ABI header for Windows native nodes
+  SDK/Windows/NativeNodeCodeGen/<Configuration>
+                                        Proxy generator for Windows native node manifests
   Demo.Cli/                          Minimal command-line workflow runner source project
   Demo.Desktop/                      Minimal Avalonia workflow runner source project
 
@@ -309,6 +457,7 @@ BinaryVersions.json contains the file and assembly versions of every AgentFlow-o
 Node.Broadcast.Demo is included only in the Debug plugin folder.
 External RIDs packaged: {", ".join(rids) if external_enabled else "none"}.
 Release external packages were built, FakeCore-verified, and copied from artifacts/External/Release/<RID>.
+Windows native SDK content is included when the package is built on Windows.
 Application/shared target framework: {target_framework}.
 Plugin target framework: {plugin_framework}.
 """
@@ -359,6 +508,8 @@ def main() -> int:
     for configuration in ("Debug", "Release"):
         build_shared(configuration, plugin_framework)
         build_plugins(configuration)
+        package_windows_native_nodes(configuration)
+        package_windows_native_sdk(configuration)
 
     if not args.skip_external:
         external_debug = STAGING / "SharedDlls" / "x64" / "Debug" / "Plugins" / "External"

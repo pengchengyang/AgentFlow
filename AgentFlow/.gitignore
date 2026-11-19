@@ -459,11 +459,16 @@ $RECYCLE.BIN/
 !.vscode/launch.json
 !.vscode/extensions.json
 
-# ============ 本地 vendored 二进制：Rolling.Logging（编译必需，csproj 以 HintPath 引用 SeriLog.Bin）============
-# 放行 SeriLog.Bin 下的 Debug/Release 输出目录，让 Rolling.Logging.dll 能被提交，
-# 否则在新机器拉取后因缺少该 DLL 导致编译失败。pdb/nupkg 仍被上述规则忽略。
+# Vendored Rolling.Logging binaries required by HintPath references in project files.
+# Keep the Debug/Release output folders visible to Git so Rolling.Logging.dll is not
+# lost on a fresh clone. Symbol packages and NuGet packages remain ignored.
 !SeriLog.Bin/Debug/
 !SeriLog.Bin/Debug/netstandard2.0/
 !SeriLog.Bin/Release/
 !SeriLog.Bin/Release/netstandard2.0/
 !*.bat
+
+# Build outputs generated from Plugins/Windows/Src.
+Plugins/Windows/win-x64/
+Plugins/Windows/Src/win-x64/
+__pycache__/

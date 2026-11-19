@@ -4030,7 +4030,7 @@ Windows 建议明确 MSVC Runtime 方案；如需完全独立，可使用静态�
     {
       "nodeType": "Node.PythonUpper",
       "displayName": "Python Upper",
-      "category": "External/Python",
+      "category": "E",
       "pins": [
         {"name": "in", "direction": "input", "dataType": "STRING", "required": true},
         {"name": "out", "direction": "output", "dataType": "STRING", "required": true}

@@ -38,7 +38,7 @@ public sealed class AutoStopNode : BaseNode
 
     public override string Name => "Auto Stop";
     public override string DisplayName { get; set; } = "Auto Stop";
-    public override string Category => "Control";
+    public override string Category => "C";
 
     public override void AddPins()
     {

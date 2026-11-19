@@ -41,7 +41,7 @@
     {
       "nodeType": "Node.PythonUpper",
       "displayName": "Python Upper",
-      "category": "External Demo",
+      "category": "E",
       "description": "Convert uppercase or lowercase STRING inputs and append the configured suffix.",
       "pins": [
         {

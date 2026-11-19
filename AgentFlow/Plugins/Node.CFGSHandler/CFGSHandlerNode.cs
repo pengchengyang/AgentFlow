@@ -79,7 +79,7 @@ public sealed class CFGSHandlerNode : BaseNode
 
     public override string Name => "CFGS Handler";
     public override string DisplayName { get; set; } = "CFGS Handler";
-    public override string Category => "Protocol";
+    public override string Category => "C";
 
     public override void AddPins()
     {

@@ -61,6 +61,6 @@ connections, failed `AUTH` attempts, and reconnect delays.
 ## Build
 
 ```powershell
-dotnet build "plugins/Node.CFGTcpClient/Node.CFGTcpClient.csproj" -c Debug -p:Platform=x64
+dotnet build "Plugins/Node.CFGTcpClient/Node.CFGTcpClient.csproj" -c Debug -p:Platform=x64
 ```
 

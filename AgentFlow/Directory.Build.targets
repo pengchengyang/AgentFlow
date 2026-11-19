@@ -58,6 +58,12 @@
     write to their own output folders, but plugin project builds must not run concurrently.
   -->
 
+  <Target Name="BuildWindowsNativeNodes"
+          BeforeTargets="CopyPluginsToBuildOutput;PublishFreshPlugins"
+          Condition="'$(PluginHost)' == 'true' and '$(OS)' == 'Windows_NT' and '$(Platform)' == 'x64' and '$(AgentFlowBuildWindowsNativeNodes)' != 'false'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)Scripts\build_windows_native.ps1&quot; -Configuration &quot;$(Configuration)&quot;"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" />
+  </Target>
   <Target Name="CopyPluginsToBuildOutput"
           AfterTargets="Build"
           Condition="'$(PluginHost)' == 'true' and '$(_IsPublishing)' != 'true'">
@@ -110,6 +116,35 @@
     <Copy SourceFiles="@(_PublishPluginDlls)" DestinationFolder="$(OutDir)Plugins" SkipUnchangedFiles="false" Condition="Exists('$(OutDir)')" />
 
     <Message Importance="High" Text="Published plugin assemblies to $(PublishDir)Plugins" />
+  </Target>
+
+
+  <Target Name="SyncWindowsNativeNodesToBuildOutput"
+          AfterTargets="CopyPluginsToBuildOutput"
+          Condition="'$(PluginHost)' == 'true' and '$(OS)' == 'Windows_NT' and '$(Platform)' == 'x64'">
+    <ItemGroup>
+      <_WindowsNativeBuildFiles Include="$(MSBuildThisFileDirectory)Plugins\Windows\win-x64\**\*" />
+    </ItemGroup>
+    <Error Condition="'@(_WindowsNativeBuildFiles)' == ''"
+           Text="No Windows native node files were produced under Plugins\Windows\win-x64." />
+    <Copy SourceFiles="@(_WindowsNativeBuildFiles)"
+          DestinationFiles="@(_WindowsNativeBuildFiles->'$(OutDir)Plugins\Windows\win-x64\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="false" />
+    <Message Importance="normal" Text="Copied Windows native nodes to $(OutDir)Plugins\Windows\win-x64" />
+  </Target>
+
+  <Target Name="SyncWindowsNativeNodesToPublishOutput"
+          AfterTargets="PublishFreshPlugins"
+          Condition="'$(PluginHost)' == 'true' and '$(OS)' == 'Windows_NT' and '$(Platform)' == 'x64'">
+    <ItemGroup>
+      <_WindowsNativePublishFiles Include="$(MSBuildThisFileDirectory)Plugins\Windows\win-x64\**\*" />
+    </ItemGroup>
+    <Error Condition="'@(_WindowsNativePublishFiles)' == ''"
+           Text="No Windows native node files were produced under Plugins\Windows\win-x64." />
+    <Copy SourceFiles="@(_WindowsNativePublishFiles)"
+          DestinationFiles="@(_WindowsNativePublishFiles->'$(PublishDir)Plugins\Windows\win-x64\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="false" />
+    <Message Importance="High" Text="Published Windows native nodes to $(PublishDir)Plugins\Windows\win-x64" />
   </Target>
 
   <Target Name="SyncExternalNodesToBuildOutput"

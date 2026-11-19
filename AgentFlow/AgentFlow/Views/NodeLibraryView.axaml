@@ -103,11 +103,27 @@
                       PointerReleased="OnItemPointerReleased"
                       DoubleTapped="OnItemDoubleTapped">
                 <Grid ColumnDefinitions="Auto,*">
-                  <Border Grid.Column="0" Classes="caticon" Background="{Binding Accent}">
-                    <TextBlock Text="{Binding Name, Converter={StaticResource Initial}}"
-                               FontSize="10" FontWeight="Bold"
-                               Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
+                  <Grid Grid.Column="0" Width="22" Height="22">
+                    <Border Classes="caticon" Background="{Binding Accent}">
+                      <TextBlock Text="{Binding Name, Converter={StaticResource Initial}}"
+                                 FontSize="10" FontWeight="Bold"
+                                 Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <Border ZIndex="1"
+                            IsVisible="{Binding HasPlatformCode}"
+                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            Margin="0,0,-3,-3"
+                            Padding="1,0"
+                            Background="{DynamicResource BrushCard}"
+                            BorderBrush="{DynamicResource BrushBorder}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                      <TextBlock Text="{Binding PlatformCode}"
+                                 FontSize="7.5" FontWeight="Bold"
+                                 Foreground="{DynamicResource BrushTextSecondary}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                  </Grid>
                   <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Name}" FontSize="10.5" FontWeight="Medium"
                                Foreground="{DynamicResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"

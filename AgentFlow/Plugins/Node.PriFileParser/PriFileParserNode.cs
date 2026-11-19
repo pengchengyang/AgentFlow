@@ -39,7 +39,7 @@ public sealed class PriFileParserNode : BaseNode
 
     public override string Name => "PRI File Parser";
     public override string DisplayName { get; set; } = "PRI File Parser";
-    public override string Category => "Parsing";
+    public override string Category => "C";
 
     public override void AddPins()
     {

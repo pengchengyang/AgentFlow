@@ -34,7 +34,7 @@ public sealed class DatabaseWriterNode : BaseNode
 
     public override string Name => "Database Writer";
     public override string DisplayName { get; set; } = "Database Writer";
-    public override string Category => "Database";
+    public override string Category => "C";
 
     public override void AddPins()
     {

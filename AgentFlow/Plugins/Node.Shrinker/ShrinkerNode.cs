@@ -48,7 +48,7 @@ public sealed class ShrinkerNode : BaseNode
 
     public override string Name => "Shrinker";
     public override string DisplayName { get; set; } = "Shrinker";
-    public override string Category => "General";
+    public override string Category => "C";
 
     public override void AddPins()
     {

@@ -11,76 +11,64 @@ using Microsoft.Extensions.Logging;
 namespace Node.PassFailTotalYield;
 
 /// <summary>
-/// Owns persistence for the fixed Yield.ini file. Slot pass/fail counts are the source of
+/// Owns persistence for the CFG Yield.ini file. Slot pass/fail counts are the source of
 /// truth; aggregate pass/fail/total/yield values are always derived when the file is written.
 /// </summary>
 internal static class YieldSettingsStore
 {
-    public const string SettingsDirectory = @"C:\AC710\UserSettings";
-    public const string SettingsFileName = "Yield.ini";
-    public static readonly string SettingsFilePath =
-        Path.Combine(SettingsDirectory, SettingsFileName);
-
-    public static YieldFileData EnsureAndLoad(ILogger? logger)
+    public static YieldFileData EnsureAndLoad(YieldProfile profile, ILogger? logger)
     {
-        Directory.CreateDirectory(SettingsDirectory);
+        EnsureCfgProfile(profile);
+        EnsureDirectory(profile.FilePath);
 
-        if (!File.Exists(SettingsFilePath))
+        if (!File.Exists(profile.FilePath))
         {
-            Save(YieldFileData.Empty, logger, resetFormat: true);
+            var empty = YieldFileData.Empty(profile);
+            Save(profile, empty, logger, resetFormat: true);
             logger?.LogInformation(
-                "Created missing Yield settings file at {FilePath} with zeroed counters.",
-                SettingsFilePath);
-            return YieldFileData.Empty;
+                "Created missing CFG Yield settings file at {FilePath} with zeroed counters.",
+                profile.FilePath);
+            return empty;
         }
 
-        var sections = ReadSections(SettingsFilePath);
-        var data = new YieldFileData(
-            ReadCount(sections, "A_P", logger),
-            ReadCount(sections, "A_F", logger),
-            ReadCount(sections, "B_P", logger),
-            ReadCount(sections, "B_F", logger),
-            ReadCount(sections, "C_P", logger),
-            ReadCount(sections, "C_F", logger),
-            ReadCount(sections, "D_P", logger),
-            ReadCount(sections, "D_F", logger),
-            ReadCount(sections, "F_P", logger),
-            ReadCount(sections, "F_F", logger));
+        var sections = ReadSections(profile.FilePath);
+        var data = YieldFileData.Empty(profile);
+        foreach (var slot in profile.Slots)
+        {
+            data = data.WithCounter(
+                slot.SlotNumber,
+                new YieldCounter(
+                    ReadCount(sections, $"{slot.SectionKey}_P", logger),
+                    ReadCount(sections, $"{slot.SectionKey}_F", logger)));
+        }
 
-        ValidateAggregateValues(sections, data, logger);
+        ValidateAggregateValues(profile, sections, data, logger);
         logger?.LogInformation(
-            "Loaded Yield settings from {FilePath}: A={AP}/{AF}, B={BP}/{BF}, C={CP}/{CF}, D={DP}/{DF}, F={FP}/{FF}.",
-            SettingsFilePath,
-            data.SlotAPass,
-            data.SlotAFail,
-            data.SlotBPass,
-            data.SlotBFail,
-            data.SlotCPass,
-            data.SlotCFail,
-            data.SlotDPass,
-            data.SlotDFail,
-            data.SlotFPass,
-            data.SlotFFail);
+            "Loaded CFG Yield settings from {FilePath}: {SlotSummary}.",
+            profile.FilePath,
+            FormatSlotSummary(profile, data));
 
         return data;
     }
 
     public static void Save(
+        YieldProfile profile,
         YieldFileData data,
         ILogger? logger,
         bool resetFormat = false)
     {
-        Directory.CreateDirectory(SettingsDirectory);
+        EnsureCfgProfile(profile);
+        EnsureDirectory(profile.FilePath);
 
-        var passTotal = GetPassTotal(data);
-        var failTotal = GetFailTotal(data);
+        var passTotal = GetPassTotal(profile, data);
+        var failTotal = GetFailTotal(profile, data);
         var total = passTotal + failTotal;
         var yield = CalculateYield(passTotal, failTotal);
         var yieldText = resetFormat
             ? "0.00"
             : yield.ToString("0.0", CultureInfo.InvariantCulture);
 
-        var content = string.Join(Environment.NewLine, new[]
+        var lines = new List<string>
         {
             "[P]",
             passTotal.ToString(CultureInfo.InvariantCulture),
@@ -91,41 +79,27 @@ internal static class YieldSettingsStore
             "[Y]",
             yieldText,
             string.Empty,
-            "[A_P]",
-            data.SlotAPass.ToString(CultureInfo.InvariantCulture),
-            "[A_F]",
-            data.SlotAFail.ToString(CultureInfo.InvariantCulture),
-            string.Empty,
-            "[B_P]",
-            data.SlotBPass.ToString(CultureInfo.InvariantCulture),
-            "[B_F]",
-            data.SlotBFail.ToString(CultureInfo.InvariantCulture),
-            string.Empty,
-            "[C_P]",
-            data.SlotCPass.ToString(CultureInfo.InvariantCulture),
-            "[C_F]",
-            data.SlotCFail.ToString(CultureInfo.InvariantCulture),
-            string.Empty,
-            "[D_P]",
-            data.SlotDPass.ToString(CultureInfo.InvariantCulture),
-            "[D_F]",
-            data.SlotDFail.ToString(CultureInfo.InvariantCulture),
-            string.Empty,
-            "[F_P]",
-            data.SlotFPass.ToString(CultureInfo.InvariantCulture),
-            "[F_F]",
-            data.SlotFFail.ToString(CultureInfo.InvariantCulture),
-            string.Empty,
-        });
+        };
 
-        var tempPath = SettingsFilePath + ".tmp";
+        foreach (var slot in profile.Slots)
+        {
+            var counter = data.GetCounter(slot.SlotNumber);
+            lines.Add($"[{slot.SectionKey}_P]");
+            lines.Add(counter.Pass.ToString(CultureInfo.InvariantCulture));
+            lines.Add($"[{slot.SectionKey}_F]");
+            lines.Add(counter.Fail.ToString(CultureInfo.InvariantCulture));
+            lines.Add(string.Empty);
+        }
+
+        var content = string.Join(Environment.NewLine, lines);
+        var tempPath = profile.FilePath + ".tmp";
         try
         {
             File.WriteAllText(tempPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            File.Move(tempPath, SettingsFilePath, overwrite: true);
+            File.Move(tempPath, profile.FilePath, overwrite: true);
             logger?.LogTrace(
-                "Saved Yield settings to {FilePath}: P={Pass}, F={Fail}, T={Total}, Y={Yield}.",
-                SettingsFilePath,
+                "Saved CFG Yield settings to {FilePath}: P={Pass}, F={Fail}, T={Total}, Y={Yield}.",
+                profile.FilePath,
                 passTotal,
                 failTotal,
                 total,
@@ -138,11 +112,11 @@ internal static class YieldSettingsStore
         }
     }
 
-    public static long GetPassTotal(YieldFileData data) =>
-        data.SlotAPass + data.SlotBPass + data.SlotCPass + data.SlotDPass + data.SlotFPass;
+    public static long GetPassTotal(YieldProfile profile, YieldFileData data) =>
+        profile.Slots.Sum(slot => data.GetCounter(slot.SlotNumber).Pass);
 
-    public static long GetFailTotal(YieldFileData data) =>
-        data.SlotAFail + data.SlotBFail + data.SlotCFail + data.SlotDFail + data.SlotFFail;
+    public static long GetFailTotal(YieldProfile profile, YieldFileData data) =>
+        profile.Slots.Sum(slot => data.GetCounter(slot.SlotNumber).Fail);
 
     public static double CalculateYield(long pass, long fail)
     {
@@ -153,6 +127,12 @@ internal static class YieldSettingsStore
                 pass * 100.0 / total,
                 1,
                 MidpointRounding.AwayFromZero);
+    }
+
+    private static void EnsureCfgProfile(YieldProfile profile)
+    {
+        if (profile.Mode != YieldMode.Cfg)
+            throw new ArgumentException("CFG Yield store requires a CFG profile.", nameof(profile));
     }
 
     private static Dictionary<string, string> ReadSections(string path)
@@ -187,7 +167,7 @@ internal static class YieldSettingsStore
         if (!sections.TryGetValue(section, out var text))
         {
             logger?.LogWarning(
-                "Yield settings section [{Section}] is missing; defaulting to zero.",
+                "CFG Yield settings section [{Section}] is missing; defaulting to zero.",
                 section);
             return 0;
         }
@@ -203,19 +183,20 @@ internal static class YieldSettingsStore
         }
 
         logger?.LogWarning(
-            "Yield settings section [{Section}] contains invalid count {Value}; defaulting to zero.",
+            "CFG Yield settings section [{Section}] contains invalid count {Value}; defaulting to zero.",
             section,
             text);
         return 0;
     }
 
     private static void ValidateAggregateValues(
+        YieldProfile profile,
         IReadOnlyDictionary<string, string> sections,
         YieldFileData data,
         ILogger? logger)
     {
-        var expectedPass = GetPassTotal(data);
-        var expectedFail = GetFailTotal(data);
+        var expectedPass = GetPassTotal(profile, data);
+        var expectedFail = GetFailTotal(profile, data);
         var expectedTotal = expectedPass + expectedFail;
         var expectedYield = CalculateYield(expectedPass, expectedFail);
 
@@ -229,7 +210,7 @@ internal static class YieldSettingsStore
             if (!sections.TryGetValue(section, out var actual))
             {
                 logger?.LogWarning(
-                    "Yield settings aggregate section [{Section}] is missing; it will be derived on the next save.",
+                    "CFG Yield settings aggregate section [{Section}] is missing; it will be derived on the next save.",
                     section);
                 return;
             }
@@ -237,12 +218,28 @@ internal static class YieldSettingsStore
             if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
             {
                 logger?.LogWarning(
-                    "Yield settings aggregate [{Section}] contains {Actual}, but slot values derive {Expected}; slot values take precedence.",
+                    "CFG Yield settings aggregate [{Section}] contains {Actual}, but slot values derive {Expected}; slot values take precedence.",
                     section,
                     actual,
                     expected);
             }
         }
+    }
+
+    private static string FormatSlotSummary(YieldProfile profile, YieldFileData data) =>
+        string.Join(
+            ", ",
+            profile.Slots.Select(slot =>
+            {
+                var counter = data.GetCounter(slot.SlotNumber);
+                return $"{slot.SectionKey}={counter.Pass}/{counter.Fail}";
+            }));
+
+    private static void EnsureDirectory(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
     }
 
     private static void TryDelete(string path, ILogger? logger)
@@ -256,24 +253,8 @@ internal static class YieldSettingsStore
         {
             logger?.LogWarning(
                 ex,
-                "Could not delete temporary Yield settings file {Path}.",
+                "Could not delete temporary CFG Yield settings file {Path}.",
                 path);
         }
     }
-}
-
-/// <summary>Slot pass/fail counters loaded from or persisted to Yield.ini.</summary>
-internal sealed record YieldFileData(
-    long SlotAPass,
-    long SlotAFail,
-    long SlotBPass,
-    long SlotBFail,
-    long SlotCPass,
-    long SlotCFail,
-    long SlotDPass,
-    long SlotDFail,
-    long SlotFPass,
-    long SlotFFail)
-{
-    public static YieldFileData Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }

@@ -42,7 +42,7 @@ public sealed class FactFlatFileParserNode : BaseNode
 
     public override string Name => "FACT Flat File Parser";
     public override string DisplayName { get; set; } = "FACT Flat File Parser";
-    public override string Category => "Parsing";
+    public override string Category => "C";
 
     public override void AddPins()
     {

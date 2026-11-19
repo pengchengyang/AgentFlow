@@ -83,7 +83,7 @@ public sealed class UserSettingsNode : BaseNode
 
     public override string Name => "User Settings";
     public override string DisplayName { get; set; } = "User Settings";
-    public override string Category => "Configuration";
+    public override string Category => "C";
 
     public override void AddPins()
     {

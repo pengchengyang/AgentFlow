@@ -30,7 +30,7 @@ public sealed class BroadcastDemoNode : BaseNode
 
     public override string Name => "Broadcast Demo";
     public override string DisplayName { get; set; } = "Broadcast Demo";
-    public override string Category => "Demo";
+    public override string Category => "C";
 
     public override void AddPins() { }
 

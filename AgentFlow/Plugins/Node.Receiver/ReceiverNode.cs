@@ -36,7 +36,7 @@ public sealed class ReceiverNode : BaseNode
 
     public override string Name => "Receiver";
     public override string DisplayName { get; set; } = "Receiver";
-    public override string Category => "General";
+    public override string Category => "C";
 
     public override void AddPins()
     {

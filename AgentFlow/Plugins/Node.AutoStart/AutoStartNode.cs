@@ -59,7 +59,7 @@ public sealed class AutoStartNode : BaseNode
 
     public override string Name => "Auto Start";
     public override string DisplayName { get; set; } = "Auto Start";
-    public override string Category => "Control";
+    public override string Category => "C";
 
     public override void AddPins()
     {

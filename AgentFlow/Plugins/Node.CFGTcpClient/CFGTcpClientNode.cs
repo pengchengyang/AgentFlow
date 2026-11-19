@@ -88,7 +88,7 @@ public sealed class CFGTcpClientNode : BaseNode
 
     public override string Name => "CFG TCP Client";
     public override string DisplayName { get; set; } = "CFG TCP Client";
-    public override string Category => "Network";
+    public override string Category => "C";
     public override bool RequiresPersistentHost => true;
 
     public BasePin EndpointInputPin { get; } =

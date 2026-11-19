@@ -50,7 +50,7 @@ public sealed class ExternalNodeTypeManifest
 {
     public string NodeType { get; set; } = "";
     public string DisplayName { get; set; } = "";
-    public string Category { get; set; } = "External";
+    public string Category { get; set; } = "E";
     public string? Description { get; set; }
     public List<ExternalPinManifest> Pins { get; set; } = new();
     public List<ExternalParameterManifest> Parameters { get; set; } = new();

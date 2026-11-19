@@ -114,5 +114,5 @@ automatic refresh is used; rereading occurs only when `Run` starts or a new inpu
 ## Build
 
 ```powershell
-dotnet build "plugins/Node.ReadIniFile/Node.ReadIniFile.csproj" -c Debug -p:Platform=x64
+dotnet build "Plugins/Node.ReadIniFile/Node.ReadIniFile.csproj" -c Debug -p:Platform=x64
 ```

@@ -78,5 +78,5 @@ Other `TYPE` output is the original envelope with all top-level fields preserved
 ## Build
 
 ```powershell
-dotnet build "plugins/Node.CFGConfimer/Node.CFGConfimer.csproj" -c Debug -p:Platform=x64
+dotnet build "Plugins/Node.CFGConfimer/Node.CFGConfimer.csproj" -c Debug -p:Platform=x64
 ```

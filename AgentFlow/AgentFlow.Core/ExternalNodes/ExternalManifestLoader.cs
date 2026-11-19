@@ -132,8 +132,9 @@ public static class ExternalManifestLoader
                 throw new ExternalManifestException($"Duplicate nodeType: {nodeType.NodeType}");
             if (string.IsNullOrWhiteSpace(nodeType.DisplayName))
                 throw new ExternalManifestException($"nodeType '{nodeType.NodeType}' is missing displayName.");
-            if (string.IsNullOrWhiteSpace(nodeType.Category))
-                throw new ExternalManifestException($"nodeType '{nodeType.NodeType}' is missing category.");
+            if (!string.Equals(nodeType.Category, "E", StringComparison.OrdinalIgnoreCase))
+                throw new ExternalManifestException(
+                    $"nodeType '{nodeType.NodeType}' must use category E for external worker nodes.");
 
             var pinNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pin in nodeType.Pins)

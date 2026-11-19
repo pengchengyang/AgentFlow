@@ -366,6 +366,9 @@ plugin builds also include PDB files, while Release plugin builds exclude them.
 `Node.Broadcast.Demo` remains Debug-only. `SharedDlls/x64/<Configuration>` contains the
 shared AgentFlow assemblies, plugin runtime dependencies, their PDB files in Debug,
 and the NuGet runtime dependencies required to compile and run against the SDK.
+When packaging on Windows, `package-sdk-dll.py` also includes Windows native node binaries,
+`AgentFlow.Windows.NativeHost.dll`, the native ABI header, and the NativeNodeCodeGen tool.
+
 `Demo.Cli` and `Demo.Desktop` are minimal source projects for opening and running
 workflows; they intentionally do not include graph editing. They reference the SDK
 configuration selected by their build (`Debug` or `Release`) and copy `Plugins` beside
@@ -380,6 +383,40 @@ The binary package is written to
 python .\package-sdk-dll.py
 ```
 
+## Windows Native Nodes
+
+Windows-only VC++ nodes use a stable C ABI and a generated managed proxy, without changing
+AgentFlow.Core's reflection-based plugin discovery.
+
+```text
+VC++ node DLL
+  -> AfNode C ABI
+  -> AgentFlow.Windows.NativeHost.dll
+  -> bounded Channel per node (capacity 1024)
+  -> NativeNodeBackgroundPump
+  -> BasePin.SendSample / ILogger
+```
+
+- Native source lives under `Plugins/Windows/Src`.
+- `AgentFlow.NativeNodeApi/agentflow_node_api.h` defines the ABI.
+- Each module has a VC++ project, implementation, and `manifest.json`.
+- `Tools/NativeNodeCodeGen` reads manifests and regenerates `NativeNodeProxies.g.cs` before
+  `AgentFlow.Windows.NativeHost` compiles.
+- `AgentFlow.Windows.NativeHost.dll` must remain a top-level file under `Plugins` so the
+  existing plugin loader can discover it.
+- Native binaries and manifests deploy under `Plugins/Windows/win-x64/<ModuleId>`.
+- `Category=C/W/E` identifies common nodes, Windows-only nodes, and external Worker nodes.
+  Components displays only the `W` or `E` corner badge; `C` has no badge.
+- Callbacks may copy and enqueue data only. They must not call `BasePin` directly or retain
+  borrowed sample buffers after returning.
+- A full callback queue returns `AF_ERR_QUEUE_FULL`; native code must handle that status without
+  blocking indefinitely.
+- Debug and Release native DLLs use static CRT linking through `/MTd` and `/MT` respectively.
+- `package-sdk-dll.py` includes NativeHost, native node binaries, the ABI header, and the
+  NativeNodeCodeGen tool when packaging on Windows.
+
+The example `Node.NativeUpperCase.Windows` converts ASCII lowercase characters to uppercase
+from `input_string` and publishes the result on `output_string`.
 ## Bundled Plugin Skeletons
 
 The following plugins provide the standard construction, parameters, pins, lifecycle,

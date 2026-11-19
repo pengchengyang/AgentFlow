@@ -39,7 +39,7 @@ public sealed class WorkflowFileConverterNode : BaseNode
 
     public override string Name => "Workflow File Converter";
     public override string DisplayName { get; set; } = "Workflow File Converter";
-    public override string Category => "Workflow Tools";
+    public override string Category => "C";
 
     public override void AddPins()
     {

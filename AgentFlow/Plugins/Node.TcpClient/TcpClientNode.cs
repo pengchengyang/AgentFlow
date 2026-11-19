@@ -74,7 +74,7 @@ public sealed class TcpClientNode : BaseNode
 
     public override string Name => "TCP Client";
     public override string DisplayName { get; set; } = "TCP Client";
-    public override string Category => "Network";
+    public override string Category => "C";
     public override bool RequiresPersistentHost => true;
 
     /// <summary>

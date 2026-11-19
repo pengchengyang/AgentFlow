@@ -1,0 +1,25 @@
+{
+  "moduleId": "NativeUpperCase",
+  "nodeType": "Node.NativeUpperCase.Windows",
+  "proxyClassName": "NativeUpperCaseWindowsNode",
+  "displayName": "Native UpperCase",
+  "category": "W",
+  "platform": "windows",
+  "abiVersion": 1,
+  "uuid": "6D23D1CE-76C0-49FE-91BB-F47768E3DCE3",
+  "nativeBinary": "Node.NativeUpperCase.Windows.dll",
+  "pins": [
+    {
+      "name": "input_string",
+      "direction": "Input",
+      "dataType": "STRING",
+      "required": false
+    },
+    {
+      "name": "output_string",
+      "direction": "Output",
+      "dataType": "STRING",
+      "required": false
+    }
+  ]
+}

@@ -9,6 +9,7 @@ are built through the vendored CMake executable and CMake-generated projects.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -119,28 +120,109 @@ def external_source_digest() -> str:
     return digest.hexdigest()
 
 
+def _process_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        process_query_limited_information = 0x1000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+        if not handle:
+            return False
+        kernel32.CloseHandle(handle)
+        return True
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _read_lock_owner(path: Path) -> dict[str, Any] | None:
+    owner_file = path / "owner.json"
+    try:
+        value = json.loads(owner_file.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _lock_is_stale(path: Path) -> bool:
+    try:
+        age = time.time() - path.stat().st_mtime
+    except FileNotFoundError:
+        return True
+    owner = _read_lock_owner(path)
+    if owner:
+        try:
+            owner_pid = int(owner.get("pid", 0))
+        except (TypeError, ValueError):
+            owner_pid = 0
+        if owner_pid and _process_is_alive(owner_pid):
+            return False
+        return True
+    # A process can be killed between creating the directory and writing owner.json.
+    return age > 30
+
+
+def _describe_lock_owner(path: Path) -> str:
+    owner = _read_lock_owner(path)
+    if not owner:
+        try:
+            age = int(time.time() - path.stat().st_mtime)
+            return f"owner=unknown age={age}s"
+        except FileNotFoundError:
+            return "owner=unknown"
+    try:
+        age = int(time.time() - path.stat().st_mtime)
+    except FileNotFoundError:
+        age = 0
+    return (
+        f"owner pid={owner.get('pid', 'unknown')} host={owner.get('host', 'unknown')} "
+        f"started={owner.get('startedAt', 'unknown')} age={age}s"
+    )
+
+
 @contextmanager
 def exclusive_build_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
+    owner_token = f"{os.getpid()}-{time.time_ns()}"
+    last_wait_log = 0.0
     while True:
         try:
             path.mkdir()
+            owner = {
+                "pid": os.getpid(),
+                "host": platform.node(),
+                "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "token": owner_token,
+            }
+            (path / "owner.json").write_text(json.dumps(owner, indent=2), encoding="utf-8")
             break
         except FileExistsError:
-            try:
-                if time.monotonic() - path.stat().st_mtime > 1800:
-                    shutil.rmtree(path, ignore_errors=True)
-                    continue
-            except FileNotFoundError:
+            if _lock_is_stale(path):
+                log(f"Removing stale external node build lock: {path} ({_describe_lock_owner(path)})")
+                shutil.rmtree(path, ignore_errors=True)
                 continue
-            if time.monotonic() - started > 600:
-                raise TimeoutError(f"Timed out waiting for external node build lock: {path}")
+            elapsed = time.monotonic() - started
+            if elapsed >= last_wait_log + 30:
+                log(f"Waiting for external node build lock: {path} ({_describe_lock_owner(path)})")
+                last_wait_log = elapsed
+            if elapsed > 600:
+                raise TimeoutError(
+                    "Timed out waiting for external node build lock: "
+                    f"{path} ({_describe_lock_owner(path)})"
+                )
             time.sleep(1)
     try:
         yield
     finally:
-        shutil.rmtree(path, ignore_errors=True)
+        current_owner = _read_lock_owner(path)
+        if current_owner and current_owner.get("token") == owner_token:
+            shutil.rmtree(path, ignore_errors=True)
 
 
 def run(

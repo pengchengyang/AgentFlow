@@ -22,7 +22,14 @@ using Microsoft.Extensions.Logging;
 using Hosting.Logging;
 namespace AgentFlow.ViewModels;
 /// <summary>A node entry in the component palette.</summary>
-public sealed record PaletteItem(string Name, string DisplayName, string Category, string PinSummary, SolidColorBrush Accent);
+public sealed record PaletteItem(string Name, string DisplayName, string Category, string PinSummary, SolidColorBrush Accent)
+{
+    /// <summary>Node kind code shown at the bottom-right of the component icon.</summary>
+    public string PlatformCode => Category is "W" or "E" ? Category : string.Empty;
+
+    /// <summary>True when the node declares an explicit W/E badge category.</summary>
+    public bool HasPlatformCode => !string.IsNullOrEmpty(PlatformCode);
+}
 internal sealed record CopiedNodeSnapshot(
     string OriginalId, string TypeName, string DisplayName, Point Location, int Priority,
     IReadOnlyDictionary<string, object?> Parameters);

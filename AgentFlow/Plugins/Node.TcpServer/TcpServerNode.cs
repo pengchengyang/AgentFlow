@@ -61,7 +61,7 @@ public sealed class TcpServerNode : BaseNode
 
     public override string Name => "TCP Server";
     public override string DisplayName { get; set; } = "TCP Server";
-    public override string Category => "Network";
+    public override string Category => "C";
     public override bool RequiresPersistentHost => true;
 
     /// <summary>UTF-8 text input. The text is encoded as bytes before it is broadcast.</summary>

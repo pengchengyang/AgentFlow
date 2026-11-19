@@ -56,5 +56,5 @@ and publishes the stop request only for `TYPE=DISCONNECT`.
 ## Build
 
 ```powershell
-dotnet build "plugins/Node.AutoStop/Node.AutoStop.csproj" -c Debug -p:Platform=x64
+dotnet build "Plugins/Node.AutoStop/Node.AutoStop.csproj" -c Debug -p:Platform=x64
 ```

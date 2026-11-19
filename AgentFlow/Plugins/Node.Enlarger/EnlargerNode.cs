@@ -48,7 +48,7 @@ public sealed class EnlargerNode : BaseNode
 
     public override string Name => "Enlarger";
     public override string DisplayName { get; set; } = "Enlarger";
-    public override string Category => "General";
+    public override string Category => "C";
 
     public override void AddPins()
     {

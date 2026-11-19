@@ -40,7 +40,7 @@ public sealed class SenderNode : BaseNode
 
     public override string Name => "Sender";
     public override string DisplayName { get; set; } = "Sender";
-    public override string Category => "General";
+    public override string Category => "C";
 
     public override void AddPins()
     {

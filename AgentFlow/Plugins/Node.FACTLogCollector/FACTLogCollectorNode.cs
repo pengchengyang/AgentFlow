@@ -34,7 +34,7 @@ public sealed class FACTLogCollectorNode : BaseNode
 
     public override string Name => "FACT Log Collector";
     public override string DisplayName { get; set; } = "FACT Log Collector";
-    public override string Category => "Logging";
+    public override string Category => "C";
 
     public override void AddPins()
     {

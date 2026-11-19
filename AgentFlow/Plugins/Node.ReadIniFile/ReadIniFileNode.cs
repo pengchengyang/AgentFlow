@@ -38,7 +38,7 @@ public sealed class ReadIniFileNode : BaseNode
 
     public override string Name => "Read INI File";
     public override string DisplayName { get; set; } = "Read INI File";
-    public override string Category => "Parsing";
+    public override string Category => "C";
 
     public override void AddPins()
     {

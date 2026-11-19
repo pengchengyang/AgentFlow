@@ -55,5 +55,5 @@ Supported `TYPE` values are `AUTH`, `AUTH_OK`, `AUTH_FAIL`, `BUSINESS`, `PING`, 
 ## Build
 
 ```powershell
-dotnet build "plugins/Node.CFGSTcpServer/Node.CFGSTcpServer.csproj" -c Debug -p:Platform=x64
+dotnet build "Plugins/Node.CFGSTcpServer/Node.CFGSTcpServer.csproj" -c Debug -p:Platform=x64
 ```

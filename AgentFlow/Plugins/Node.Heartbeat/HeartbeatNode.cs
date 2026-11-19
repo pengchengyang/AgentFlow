@@ -45,7 +45,7 @@ public sealed class HeartbeatNode : BaseNode
 
     public override string Name => "Heartbeat";
     public override string DisplayName { get; set; } = "Heartbeat";
-    public override string Category => "General";
+    public override string Category => "C";
 
     public override void AddPins()
     {

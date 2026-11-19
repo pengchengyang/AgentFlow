@@ -36,7 +36,7 @@ public sealed class CFGConfimerNode : BaseNode
 
     public override string Name => "CFG Confimer";
     public override string DisplayName { get; set; } = "CFG Confimer";
-    public override string Category => "Protocol";
+    public override string Category => "C";
 
     public BasePin LocalGuidInputPin { get; } =
         new("in_string_local_guid", DataType.STRING, PinDirection.Input, required: false);

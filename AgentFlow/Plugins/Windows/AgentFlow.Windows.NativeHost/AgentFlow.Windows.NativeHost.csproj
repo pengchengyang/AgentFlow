@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(PluginTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPlugin>true</IsPlugin>
+    <Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Tools\NativeNodeCodeGen\NativeNodeCodeGen.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <Target Name="GenerateNativeNodeProxies" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <NativeNodeCodeGenAssembly>$(MSBuildThisFileDirectory)..\..\..\Tools\NativeNodeCodeGen\bin\$(PluginPlatformOutputPath)$(Configuration)\$(AgentFlowTargetFramework)\NativeNodeCodeGen.dll</NativeNodeCodeGenAssembly>
+    </PropertyGroup>
+    <Exec Command="dotnet &quot;$(NativeNodeCodeGenAssembly)&quot; &quot;$(MSBuildThisFileDirectory)..\..\..&quot; &quot;$(MSBuildThisFileDirectory)..\Src&quot; &quot;$(MSBuildThisFileDirectory)Generated\NativeNodeProxies.g.cs&quot;" />
+  </Target>
+</Project>

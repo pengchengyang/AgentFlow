@@ -73,7 +73,7 @@ public sealed class FACTLauncherNode : BaseNode
         set => _displayName = StripPositionSuffix(value);
     }
 
-    public override string Category => "Data";
+    public override string Category => "C";
 
     public override void AddPins()
     {

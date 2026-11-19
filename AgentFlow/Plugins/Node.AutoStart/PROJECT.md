@@ -91,5 +91,5 @@ dispatched and a warning is logged.
 ## Build
 
 ```powershell
-dotnet build "plugins/Node.AutoStart/Node.AutoStart.csproj" -c Debug -p:Platform=x64
+dotnet build "Plugins/Node.AutoStart/Node.AutoStart.csproj" -c Debug -p:Platform=x64
 ```

@@ -24,7 +24,7 @@
   "nodeTypes": [{
     "nodeType": "Node.CUpper",
     "displayName": "C Upper",
-    "category": "External Demo",
+    "category": "E",
     "pins": [
       {"name": "input_string_toupper", "direction": "input", "dataType": "STRING", "required": true},
       {"name": "input_string_tolower", "direction": "input", "dataType": "STRING", "required": true},

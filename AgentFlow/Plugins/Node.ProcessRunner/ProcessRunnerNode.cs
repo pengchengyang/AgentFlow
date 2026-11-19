@@ -45,7 +45,7 @@ public sealed class ProcessRunnerNode : BaseNode
 
     public override string Name => "Process Runner";
     public override string DisplayName { get; set; } = "Process Runner";
-    public override string Category => "System";
+    public override string Category => "C";
 
     public override void AddPins()
     {
