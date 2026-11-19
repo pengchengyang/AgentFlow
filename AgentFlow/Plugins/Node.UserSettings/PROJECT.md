@@ -11,10 +11,10 @@ are provided by the workspace libraries.
 
 - Display name: `User Settings`
 - Category: `Configuration`
-- Input pin: `input_string_ready` (`STRING`, optional)
+- Input pins: `input_string_ready` and `input_string_settings` (`STRING`, optional)
 - Output pins: `output_string_slotA`, `output_string_slotB`, `output_string_slotC`, `output_string_slotD`, `output_string_slotF`, `output_string_endpoint`, `output_string_settings`, `output_string_guid` (`STRING`)
 - Parameters: `Profile`, `SettingsJson`
-- Broadcast topic: `fact.launcher.settings`
+- Broadcast topics: `CFGBroadcastSubscriptions.CFGLauncherSettings` and `CFGBroadcastSubscriptions.CFGUserSettingsGuid`
 
 ## Lifecycle
 
@@ -145,6 +145,28 @@ slot number:
   "PORTHUB": ["5:1"]
 }
 ```
+
+## Settings Broadcast Input
+
+The optional `input_string_settings` pin accepts a JSON dictionary such as:
+
+```json
+{
+  "CFG-1": "11111111-1111-1111-1111-111111111111",
+  "CFG-2": "22222222-2222-2222-2222-222222222222"
+}
+```
+
+A successful parse publishes the dictionary on
+`CFGBroadcastSubscriptions.CFGUserSettingsGuid`:
+
+```text
+CFG.UserSettings.Guid.D7D7367B-61A4-4CE7-B41B-E2E1E4B55F91
+```
+
+The payload is a `BroadcastTopicMessage.SamplesByKey` dictionary. Each dictionary key becomes
+the Sample key and each string value becomes a `StringSample`. Subscribers must be registered
+before the input pin receives data because TopicBus does not retain messages.
 
 ## Integration
 

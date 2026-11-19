@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
@@ -22,6 +23,9 @@ public sealed class UserSettingsNode : BaseNode
 {
     private readonly BasePin _readyInputPin =
         new("input_string_ready", DataType.STRING, PinDirection.Input, required: false);
+
+    private readonly BasePin _settingsBroadcastInputPin =
+        new("input_string_settings", DataType.STRING, PinDirection.Input, required: false);
 
     private readonly BasePin _slotAOutputPin =
         new("output_string_slotA", DataType.STRING, PinDirection.Output);
@@ -84,6 +88,7 @@ public sealed class UserSettingsNode : BaseNode
     public override void AddPins()
     {
         AddInputPin(_readyInputPin);
+        AddInputPin(_settingsBroadcastInputPin);
         foreach (var outputPin in _slotOutputPins)
             AddOutputPin(outputPin);
         AddOutputPin(_endpointOutputPin);
@@ -179,6 +184,11 @@ public sealed class UserSettingsNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
+        if (ReferenceEquals(pin, _settingsBroadcastInputPin))
+        {
+            HandleSettingsBroadcast(value);
+        }
+
         if (ReferenceEquals(pin, _readyInputPin))
         {
             if (value is not StringSample { StringValue: { } inputText })
@@ -193,6 +203,108 @@ public sealed class UserSettingsNode : BaseNode
                 Param("Profile").Value,
                 inputText);
         }
+    }
+
+    private void HandleSettingsBroadcast(Sample? value)
+    {
+        if (value is not StringSample { StringValue: { } inputText })
+        {
+            _logger?.LogError(
+                "UserSettings rejected settings broadcast input through {Pin}: expected a non-empty STRING payload.",
+                _settingsBroadcastInputPin.Name);
+            return;
+        }
+
+        if (!TryParseSettingsDictionary(inputText, out var samplesByKey, out var error))
+        {
+            _logger?.LogError(
+                "UserSettings rejected settings broadcast input through {Pin}: {Error}.",
+                _settingsBroadcastInputPin.Name,
+                error);
+            return;
+        }
+
+        _ = PublishSettingsDictionaryAsync(samplesByKey, inputText);
+    }
+
+    private async Task PublishSettingsDictionaryAsync(
+        IReadOnlyDictionary<string, Sample> samplesByKey,
+        string sourceJson)
+    {
+        try
+        {
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
+                CFGBroadcastSubscriptions.CFGUserSettingsGuid,
+                BroadcastTopicMessage.FromSampleDictionary(samplesByKey),
+                ct: CancellationToken.None).ConfigureAwait(false);
+
+            _logger?.LogInformation(
+                "UserSettings broadcast settings dictionary to CFG broadcast: {Json}.",
+                sourceJson);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "UserSettings failed to broadcast settings dictionary to CFG broadcast.");
+        }
+    }
+
+    private static bool TryParseSettingsDictionary(
+        string json,
+        out IReadOnlyDictionary<string, Sample> samplesByKey,
+        out string? error)
+    {
+        samplesByKey = new Dictionary<string, Sample>(StringComparer.Ordinal);
+        error = null;
+
+        JsonObject root;
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonObject parsed)
+            {
+                error = "payload must be a JSON object containing string key/value pairs";
+                return false;
+            }
+
+            root = parsed;
+        }
+        catch (JsonException ex)
+        {
+            error = $"invalid JSON: {ex.Message}";
+            return false;
+        }
+
+        if (root.Count == 0)
+        {
+            error = "payload dictionary must contain at least one entry";
+            return false;
+        }
+
+        var samples = new Dictionary<string, Sample>(StringComparer.Ordinal);
+        foreach (var pair in root)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Key))
+            {
+                error = "dictionary keys cannot be empty";
+                return false;
+            }
+
+            if (pair.Value is not JsonValue jsonValue ||
+                !jsonValue.TryGetValue<string>(out var text) ||
+                string.IsNullOrWhiteSpace(text))
+            {
+                error = $"dictionary value for key '{pair.Key}' must be a non-empty string";
+                return false;
+            }
+
+            var sample = StringSample.CreateSample();
+            sample.SetValue(text, pair.Key);
+            samples[pair.Key] = sample;
+        }
+
+        samplesByKey = samples;
+        return true;
     }
 
     private void PublishSettingsJson(

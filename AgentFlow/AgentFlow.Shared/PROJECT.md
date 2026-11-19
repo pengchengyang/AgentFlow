@@ -46,6 +46,9 @@ containing C# types are renamed.
   - Published by `Node.PriFileParser` after parsing a PRI file.
   - Carries the parsed key/value dictionary as `BroadcastTopicMessage.SamplesByKey`,
     with one string sample per key.
+- `CFGBroadcastSubscriptions.CFGUserSettingsGuid`: `CFG.UserSettings.Guid.D7D7367B-61A4-4CE7-B41B-E2E1E4B55F91`
+  - Published by `Node.UserSettings` when `input_string_settings` receives a JSON dictionary.
+  - Carries the dictionary as `BroadcastTopicMessage.SamplesByKey`, with one string sample per key.
 - `CFGBroadcastSubscriptions.CFGLauncherSettings`: `FACT.Launcher.Settings.48D865B9-AB18-4DD0-A7A8-0F79D63EEDBB`
   - Used to exchange launcher settings between nodes and GUI hosts.
   - `Node.UserSettings` publishes the complete keyed initialization snapshot during

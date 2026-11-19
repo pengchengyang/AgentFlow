@@ -27,6 +27,9 @@ public static class CFGBroadcastSubscriptions
     /// <summary>Subscription used to broadcast a successfully dispatched FACT command.</summary>
     public const string CFGLauncherCommand = "FACT.Launcher.Command.C3578D71-A049-43B8-AFE1-2482C1D0FFDD";
 
+    /// <summary>Subscription used to publish UserSettings GUID dictionaries for CFG consumers.</summary>
+    public const string CFGUserSettingsGuid = "CFG.UserSettings.Guid.D7D7367B-61A4-4CE7-B41B-E2E1E4B55F91";
+
     /// <summary>Subscription used to publish parsed PRI file settings as a keyed Sample dictionary.</summary>
     public const string CFGPriFileSettings = "Pri.File.Settings.00850D6A-1F19-4040-B2D2-BA4E3E8E0F93";
 
