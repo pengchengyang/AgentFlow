@@ -7,7 +7,6 @@
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgentFlow.Contracts;
 using BroadcastKit;
@@ -216,22 +215,8 @@ public sealed class ExternalNodeRuntime : IAsyncDisposable
         }
     }
 
-    private static BroadcastTopicMessage ToBroadcastTopicMessage(object? payload)
-    {
-        return payload switch
-        {
-            null => new BroadcastTopicMessage(),
-            BroadcastTopicMessage native => native,
-            string text => BroadcastTopicMessage.FromPayload(text),
-            Sample sample => BroadcastTopicMessage.FromSample(sample),
-            IReadOnlyList<Sample> samples => BroadcastTopicMessage.FromSamples(samples),
-            IReadOnlyDictionary<string, Sample> samplesByKey
-                => BroadcastTopicMessage.FromSampleDictionary(samplesByKey),
-            IReadOnlyDictionary<string, IReadOnlyList<Sample>> sampleListsByKey
-                => BroadcastTopicMessage.FromSampleListDictionary(sampleListsByKey),
-            _ => BroadcastTopicMessage.FromPayload(JsonSerializer.Serialize(payload))
-        };
-    }
+    private static BroadcastTopicMessage ToBroadcastTopicMessage(object? payload) =>
+        BroadcastTopicCodec.ToLocalPayload(payload);
 
     public async Task ShutdownWorkerIfUnusedAsync(ExternalWorkerProcess worker, CancellationToken cancellationToken)
     {

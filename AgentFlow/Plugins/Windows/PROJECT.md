@@ -2,7 +2,8 @@
 
 Windows-only VC++ nodes use a stable C ABI and a generated managed proxy in
 `AgentFlow.Windows.NativeHost.dll`. Native callbacks are copied into a bounded channel and are
-dispatched by a serial background pump before any `BasePin.SendSample` call occurs.
+dispatched by a serial background pump before any `BasePin.SendSample`, logging, or TopicBus
+broadcast operation occurs.
 
 ## Contract
 
@@ -12,6 +13,10 @@ dispatched by a serial background pump before any `BasePin.SendSample` call occu
 - Native modules never receive managed objects and never pass pointers across callback boundaries.
 - `manifest.json` is the source of truth for generated pins and module metadata.
 - Native DLLs use static CRT linking: `/MTd` for Debug and `/MT` for Release.
+- Native broadcasts use `topic + payloadKind + payloadJson`. The ABI does not expose managed
+  collections; C++ helpers build the five canonical payload shapes.
+- `AfNodeHostVTable` is extended by appending fields. `structSize` remains the compatibility gate
+  so older DLLs can ignore the new tail fields.
 
 ## Example Node
 

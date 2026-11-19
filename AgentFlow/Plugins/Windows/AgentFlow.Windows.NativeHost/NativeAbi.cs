@@ -11,8 +11,10 @@ internal static class NativeAbi
     public const int QueueFull = -4;
     public const int NativeError = -5;
     public const int InternalError = -6;
+    public const int NotSupported = -7;
 
     public static readonly int SampleStructSize = Marshal.SizeOf<AfSample>();
+    public static readonly int BroadcastStructSize = Marshal.SizeOf<AfBroadcast>();
     public static readonly int HostVTableStructSize = Marshal.SizeOf<AfNodeHostVTable>();
 }
 
@@ -54,6 +56,19 @@ internal struct AfSample
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct AfBroadcast
+{
+    public uint StructSize;
+    public uint AbiVersion;
+    public IntPtr Topic;
+    public ulong TopicLength;
+    public IntPtr PayloadKind;
+    public ulong PayloadKindLength;
+    public IntPtr PayloadJson;
+    public ulong PayloadJsonLength;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct AfNodeHostVTable
 {
     public uint StructSize;
@@ -61,6 +76,9 @@ internal struct AfNodeHostVTable
     public IntPtr CallbackContext;
     public IntPtr SendSample;
     public IntPtr Log;
+    public IntPtr PublishBroadcast;
+    public IntPtr SubscribeBroadcast;
+    public IntPtr UnsubscribeBroadcast;
 }
 
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -94,3 +112,27 @@ internal delegate void LogCallback(
     int level,
     IntPtr message,
     ulong messageLength);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate int PublishBroadcastCallback(
+    IntPtr callbackContext,
+    IntPtr message);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate void ReceiveBroadcastCallback(
+    IntPtr receiverContext,
+    IntPtr message);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate int SubscribeBroadcastCallback(
+    IntPtr callbackContext,
+    IntPtr topic,
+    ulong topicLength,
+    IntPtr receive,
+    IntPtr receiverContext);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate int UnsubscribeBroadcastCallback(
+    IntPtr callbackContext,
+    IntPtr topic,
+    ulong topicLength);

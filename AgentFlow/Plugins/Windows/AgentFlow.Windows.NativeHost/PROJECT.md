@@ -12,7 +12,13 @@ using its normal reflection-based discovery without any native-specific changes.
 VC++ callback
   -> NativeHost bounded channel
   -> NativeNodeBackgroundPump
-  -> BasePin.SendSample / ILogger
+  -> BasePin.SendSample / ILogger / workflow ITopicBus
+
+workflow ITopicBus
+  -> NativeHost subscription handler
+  -> NativeHost bounded channel
+  -> NativeNodeBackgroundPump
+  -> VC++ broadcast receive callback
 ```
 
 Native callbacks never call `BasePin.SendSample` directly and never retain managed or native sample
@@ -21,6 +27,8 @@ buffers after returning. Each node has one bounded event queue and one serial ba
 ## Source Layout
 
 - `Plugins/Windows/Src/AgentFlow.NativeNodeApi/agentflow_node_api.h`: stable C ABI.
+- `Plugins/Windows/Src/AgentFlow.NativeNodeApi/agentflow_broadcast_helpers.h`: C++ helpers for
+  single Sample, Sample list, Sample dictionary, Sample list dictionary, and mixed payloads.
 - `Plugins/Windows/Src/Node.*.Windows/`: VC++ node source and `manifest.json`.
 - `Tools/NativeNodeCodeGen`: generates `Generated/NativeNodeProxies.g.cs`.
 - `Plugins/Windows/win-x64/<ModuleId>/`: deployed native DLL and manifest.

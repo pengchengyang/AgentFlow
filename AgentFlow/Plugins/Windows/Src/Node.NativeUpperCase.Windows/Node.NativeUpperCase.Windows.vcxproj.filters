@@ -20,6 +20,7 @@
   <ItemGroup>
     <ClInclude Include="NativeUpperCaseNode.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\AgentFlow.NativeNodeApi\agentflow_node_api.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\AgentFlow.NativeNodeApi\agentflow_broadcast_helpers.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="manifest.json"><Filter>Resource Files</Filter></None>

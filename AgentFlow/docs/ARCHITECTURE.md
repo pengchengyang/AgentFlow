@@ -394,11 +394,19 @@ VC++ node DLL
   -> AgentFlow.Windows.NativeHost.dll
   -> bounded Channel per node (capacity 1024)
   -> NativeNodeBackgroundPump
-  -> BasePin.SendSample / ILogger
+  -> BasePin.SendSample / ILogger / workflow ITopicBus
+
+workflow ITopicBus
+  -> NativeHost subscription handler
+  -> bounded Channel per node
+  -> NativeNodeBackgroundPump
+  -> VC++ broadcast receive callback
 ```
 
 - Native source lives under `Plugins/Windows/Src`.
 - `AgentFlow.NativeNodeApi/agentflow_node_api.h` defines the ABI.
+- `AgentFlow.NativeNodeApi/agentflow_broadcast_helpers.h` provides C++ helpers for the five
+  canonical broadcast payload shapes.
 - Each module has a VC++ project, implementation, and `manifest.json`.
 - `Tools/NativeNodeCodeGen` reads manifests and regenerates `NativeNodeProxies.g.cs` before
   `AgentFlow.Windows.NativeHost` compiles.
@@ -407,8 +415,12 @@ VC++ node DLL
 - Native binaries and manifests deploy under `Plugins/Windows/win-x64/<ModuleId>`.
 - `Category=C/W/E` identifies common nodes, Windows-only nodes, and external Worker nodes.
   Components displays only the `W` or `E` corner badge; `C` has no badge.
+- Native broadcasts use `topic + payloadKind + payloadJson` through `publishBroadcast`,
+  `subscribeBroadcast`, and `unsubscribeBroadcast` in `AfNodeHostVTable`.
+- The vtable extension appends fields at the end and uses `structSize` for compatibility; older
+  DLLs can ignore the broadcast tail.
 - Callbacks may copy and enqueue data only. They must not call `BasePin` directly or retain
-  borrowed sample buffers after returning.
+  borrowed sample or broadcast buffers after returning.
 - A full callback queue returns `AF_ERR_QUEUE_FULL`; native code must handle that status without
   blocking indefinitely.
 - Debug and Release native DLLs use static CRT linking through `/MTd` and `/MT` respectively.

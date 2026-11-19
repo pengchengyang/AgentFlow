@@ -14,6 +14,11 @@ publishers and subscribers working with `BroadcastKit`.
 - `BroadcastTopicMessage.FromSampleDictionary(...)`: creates an envelope with one Sample per key.
 - `BroadcastTopicMessage.FromSampleListDictionary(...)`: creates an envelope with an ordered
   Sample list per key.
+- `BroadcastPayloadKinds`: canonical cross-language `payloadKind` names.
+- `BroadcastSampleCodec`: shared Sample JSON codec used by workers and Windows native nodes.
+- `BroadcastTopicCodec`: shared mapping between `BroadcastTopicMessage` and the
+  `payloadKind + payload` wire shape.
+- Unknown `payloadKind` values are rejected instead of being silently treated as JSON.
 - The broadcast bus remains generic and does not interpret payload, sample order, keys, types,
   or business meaning.
 

@@ -31,6 +31,7 @@ typedef int32_t AfStatus;
 #define AF_ERR_QUEUE_FULL ((AfStatus)-4)
 #define AF_ERR_NATIVE_ERROR ((AfStatus)-5)
 #define AF_ERR_INTERNAL ((AfStatus)-6)
+#define AF_ERR_NOT_SUPPORTED ((AfStatus)-7)
 
 typedef enum AfSampleType {
     AF_SAMPLE_UNKNOWN = 0,
@@ -82,12 +83,53 @@ typedef void (AF_CALL *AfLogFn)(
     const char* message,
     uint64_t messageLength);
 
+/*
+ * Broadcast strings are borrowed by the host for the duration of the callback or ABI call.
+ * Native nodes must copy them before returning. payloadJson uses the canonical AgentFlow
+ * broadcast protocol and payloadKind values defined by BroadcastPayloadKinds.
+ */
+typedef struct AfBroadcast {
+    uint32_t structSize;
+    uint32_t abiVersion;
+    const char* topic;
+    uint64_t topicLength;
+    const char* payloadKind;
+    uint64_t payloadKindLength;
+    const char* payloadJson;
+    uint64_t payloadJsonLength;
+} AfBroadcast;
+
+typedef AfStatus (AF_CALL *AfPublishBroadcastFn)(
+    void* callbackContext,
+    const AfBroadcast* message);
+
+typedef void (AF_CALL *AfReceiveBroadcastFn)(
+    void* receiverContext,
+    const AfBroadcast* message);
+
+typedef AfStatus (AF_CALL *AfSubscribeBroadcastFn)(
+    void* callbackContext,
+    const char* topic,
+    uint64_t topicLength,
+    AfReceiveBroadcastFn receive,
+    void* receiverContext);
+
+typedef AfStatus (AF_CALL *AfUnsubscribeBroadcastFn)(
+    void* callbackContext,
+    const char* topic,
+    uint64_t topicLength);
+
 typedef struct AfNodeHostVTable {
     uint32_t structSize;
     uint32_t abiVersion;
     void* callbackContext;
     AfSendSampleFn sendSample;
     AfLogFn log;
+
+    /* Appended in a prefix-compatible layout. Older DLLs safely ignore these fields. */
+    AfPublishBroadcastFn publishBroadcast;
+    AfSubscribeBroadcastFn subscribeBroadcast;
+    AfUnsubscribeBroadcastFn unsubscribeBroadcast;
 } AfNodeHostVTable;
 
 AF_NODE_API uint32_t AF_CALL af_node_get_abi_version(void);

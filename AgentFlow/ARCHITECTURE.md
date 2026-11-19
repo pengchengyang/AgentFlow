@@ -165,16 +165,24 @@ VC++ node DLL
   -> AgentFlow.Windows.NativeHost
   -> bounded Channel (per node, capacity 1024)
   -> NativeNodeBackgroundPump (serial)
-  -> BasePin.SendSample / ILogger
+  -> BasePin.SendSample / ILogger / workflow ITopicBus
+
+workflow ITopicBus
+  -> NativeHost subscription handler
+  -> bounded Channel (per node)
+  -> NativeNodeBackgroundPump
+  -> VC++ broadcast receive callback
 ```
 
 - 源码：`Plugins/Windows/Src`，其中 `AgentFlow.NativeNodeApi/agentflow_node_api.h` 定义 ABI。
+- 原生广播：统一使用 `topic + payloadKind + payloadJson`，由 `agentflow_broadcast_helpers.h` 提供五种结构的 C++ 构建辅助函数。
 - 原生节点：每个节点目录包含 VC++ 工程、实现文件和 `manifest.json`。
 - 托管桥：`Plugins/Windows/AgentFlow.Windows.NativeHost`，由 `manifest.json` 生成 `BaseNode` 代理。
 - 生成器：`Tools/NativeNodeCodeGen`。
 - 部署：`Plugins/Windows/win-x64/<ModuleId>`，Desktop/CLI 构建时自动同步到输出目录。
 - 节点类别：`Category=C` 表示跨平台通用节点，`W` 表示 Windows 专用节点，`E` 表示外部 Worker 节点；Components 图标右下角只显示 `W` 或 `E`，`C` 不显示角标。
-- 回调约束：原生回调只可复制数据并入队，不得直接调用托管 `BasePin`；Sample 缓冲区仅在 ABI 调用期间有效。
+- 广播 ABI：`AfNodeHostVTable` 尾部追加 `publishBroadcast`、`subscribeBroadcast`、`unsubscribeBroadcast`，通过 `structSize` 保持前缀兼容。
+- 回调约束：原生回调只可复制数据并入队，不得直接调用托管 `BasePin`；Sample 和广播缓冲区仅在 ABI 调用期间有效。
 - 队列满：`sendSample` 返回 `AF_ERR_QUEUE_FULL`，调用方必须处理该状态，不能无限阻塞原生线程。
 - 运行时链接：Debug 使用 `/MTd`，Release 使用 `/MT`，避免依赖 `MSVCP*.dll` 或 `VCRUNTIME*.dll`。
 

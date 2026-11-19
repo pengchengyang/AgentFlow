@@ -1,6 +1,7 @@
 #pragma once
 
 #include "agentflow_node_api.h"
+#include "agentflow_broadcast_helpers.h"
 
 #include <cstdint>
 #include <string>

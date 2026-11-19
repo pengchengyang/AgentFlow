@@ -17,6 +17,7 @@ set(NATIVE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../win-x64/NativeUpperCase")
 add_library(Node.NativeUpperCase.Windows SHARED
   "${NATIVE_SOURCE_DIR}/NativeUpperCaseNode.cpp"
   "${NATIVE_SOURCE_DIR}/NativeUpperCaseNode.h"
+  "${NATIVE_API_DIR}/agentflow_broadcast_helpers.h"
 )
 
 target_include_directories(Node.NativeUpperCase.Windows PRIVATE "${NATIVE_API_DIR}")

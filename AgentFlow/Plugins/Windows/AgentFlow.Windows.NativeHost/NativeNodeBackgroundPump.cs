@@ -4,16 +4,16 @@ namespace AgentFlow.Windows.NativeHost;
 
 /// <summary>
 /// Serial background consumer for one native node. Native callbacks only enqueue immutable
-/// managed events; this pump is the only place that calls BasePin.SendSample or the node logger.
+/// managed events; this pump performs managed pin sends, logging, and TopicBus operations.
 /// </summary>
 internal sealed class NativeNodeBackgroundPump
 {
     private readonly ChannelReader<NativeNodeEvent> _reader;
-    private readonly Action<NativeNodeEvent> _dispatch;
+    private readonly Func<NativeNodeEvent, CancellationToken, Task> _dispatch;
 
     public NativeNodeBackgroundPump(
         ChannelReader<NativeNodeEvent> reader,
-        Action<NativeNodeEvent> dispatch)
+        Func<NativeNodeEvent, CancellationToken, Task> dispatch)
     {
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
         _dispatch = dispatch ?? throw new ArgumentNullException(nameof(dispatch));
@@ -27,12 +27,12 @@ internal sealed class NativeNodeBackgroundPump
             {
                 try
                 {
-                    _dispatch(item);
+                    await _dispatch(item, cancellationToken).ConfigureAwait(false);
                 }
                 catch
                 {
-                    // The event dispatcher records its own failures through the node logger.
-                    // Keeping the pump alive is more important than a single malformed event.
+                    // The dispatcher records failures through the node logger. A malformed event
+                    // must not terminate the pump for subsequent events.
                 }
             }
         }

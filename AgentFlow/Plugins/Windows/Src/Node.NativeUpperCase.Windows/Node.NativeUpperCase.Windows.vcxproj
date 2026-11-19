@@ -85,6 +85,7 @@
     <ClCompile Include="NativeUpperCaseNode.cpp" />
     <ClInclude Include="NativeUpperCaseNode.h" />
     <ClInclude Include="..\AgentFlow.NativeNodeApi\agentflow_node_api.h" />
+    <ClInclude Include="..\AgentFlow.NativeNodeApi\agentflow_broadcast_helpers.h" />
     <None Include="manifest.json" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,8 +1,12 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using AgentFlow.Contracts;
+using BroadcastKit;
+using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Windows.NativeHost;
@@ -26,9 +30,13 @@ public abstract class WindowsNativeNodeBase : BaseNode
 
     private readonly Dictionary<string, BasePin> _inputPinsByName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BasePin> _outputPinsByName = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NativeBroadcastRegistration> _broadcastSubscriptions =
+        new(StringComparer.Ordinal);
+    private readonly ConditionalWeakTable<object, BroadcastSource> _broadcastSources = new();
 
     private INodeContext? _context;
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
     private NativeNodeModule? _nativeModule;
     private Channel<NativeNodeEvent>? _eventChannel;
     private NativeNodeBackgroundPump? _eventPump;
@@ -38,6 +46,9 @@ public abstract class WindowsNativeNodeBase : BaseNode
     private GCHandle _callbackState;
     private SendSampleCallback? _sendSampleCallback;
     private LogCallback? _logCallback;
+    private PublishBroadcastCallback? _publishBroadcastCallback;
+    private SubscribeBroadcastCallback? _subscribeBroadcastCallback;
+    private UnsubscribeBroadcastCallback? _unsubscribeBroadcastCallback;
     private int _acceptEvents;
 
     protected abstract string ModuleId { get; }
@@ -76,6 +87,9 @@ public abstract class WindowsNativeNodeBase : BaseNode
         ArgumentNullException.ThrowIfNull(context);
         _context = context;
         _logger = context.Logger;
+        _topicBus = context.GetService<ITopicBus>();
+        if (_topicBus is null)
+            _logger.LogWarning("{Node} did not resolve an ITopicBus; native broadcasts will be unavailable.", DisplayName);
         Running = false;
 
         await ResetNativeRuntimeAsync(LogWarningBestEffort).ConfigureAwait(false);
@@ -103,6 +117,7 @@ public abstract class WindowsNativeNodeBase : BaseNode
     {
         _context = context;
         _logger = context.Logger;
+        _topicBus = context.GetService<ITopicBus>() ?? _topicBus;
         if (_nativeModule is null || !_nativeModule.IsCreated)
             throw new InvalidOperationException($"{DisplayName} cannot run before native initialization.");
 
@@ -123,6 +138,7 @@ public abstract class WindowsNativeNodeBase : BaseNode
         }
         finally
         {
+            DisposeBroadcastSubscriptions();
             await StopEventPumpAsync().ConfigureAwait(false);
             Running = false;
         }
@@ -132,8 +148,10 @@ public abstract class WindowsNativeNodeBase : BaseNode
     {
         _context = context;
         _logger = context.Logger;
+        DisposeBroadcastSubscriptions();
         await StopEventPumpAsync().ConfigureAwait(false);
         ShutdownNativeModuleBestEffort();
+        _topicBus = null;
         Running = false;
     }
 
@@ -188,7 +206,7 @@ public abstract class WindowsNativeNodeBase : BaseNode
         });
         _acceptEvents = 1;
         _eventPumpCts = new CancellationTokenSource();
-        _eventPump = new NativeNodeBackgroundPump(_eventChannel.Reader, DispatchNativeEvent);
+        _eventPump = new NativeNodeBackgroundPump(_eventChannel.Reader, DispatchNativeEventAsync);
         _eventPumpTask = Task.Run(() => _eventPump.RunAsync(_eventPumpCts.Token));
     }
 
@@ -228,6 +246,7 @@ public abstract class WindowsNativeNodeBase : BaseNode
 
     private async Task ResetNativeRuntimeAsync(Action<Exception, string> onError)
     {
+        DisposeBroadcastSubscriptions();
         await StopEventPumpAsync().ConfigureAwait(false);
         try
         {
@@ -252,6 +271,9 @@ public abstract class WindowsNativeNodeBase : BaseNode
 
         _sendSampleCallback = OnNativeSendSample;
         _logCallback = OnNativeLog;
+        _publishBroadcastCallback = OnNativePublishBroadcast;
+        _subscribeBroadcastCallback = OnNativeSubscribeBroadcast;
+        _unsubscribeBroadcastCallback = OnNativeUnsubscribeBroadcast;
         _callbackState = GCHandle.Alloc(this, GCHandleType.Normal);
 
         var hostVTable = new AfNodeHostVTable
@@ -260,7 +282,10 @@ public abstract class WindowsNativeNodeBase : BaseNode
             AbiVersion = NativeAbi.Version,
             CallbackContext = GCHandle.ToIntPtr(_callbackState),
             SendSample = Marshal.GetFunctionPointerForDelegate(_sendSampleCallback),
-            Log = Marshal.GetFunctionPointerForDelegate(_logCallback)
+            Log = Marshal.GetFunctionPointerForDelegate(_logCallback),
+            PublishBroadcast = Marshal.GetFunctionPointerForDelegate(_publishBroadcastCallback),
+            SubscribeBroadcast = Marshal.GetFunctionPointerForDelegate(_subscribeBroadcastCallback),
+            UnsubscribeBroadcast = Marshal.GetFunctionPointerForDelegate(_unsubscribeBroadcastCallback)
         };
 
         _hostVTablePointer = Marshal.AllocHGlobal(NativeAbi.HostVTableStructSize);
@@ -304,14 +329,36 @@ public abstract class WindowsNativeNodeBase : BaseNode
             throw new InvalidOperationException($"Native manifest abiVersion does not match proxy ABI version {ExpectedAbiVersion}.");
     }
 
-    private void DispatchNativeEvent(NativeNodeEvent item)
+    private async Task DispatchNativeEventAsync(NativeNodeEvent item, CancellationToken cancellationToken)
     {
-        if (item.Kind == NativeNodeEventKind.Log)
+        switch (item.Kind)
         {
-            _logger?.Log(item.LogLevel, "{NativeMessage}", item.Message);
-            return;
+            case NativeNodeEventKind.Log:
+                _logger?.Log(item.LogLevel, "{NativeMessage}", item.Message);
+                return;
+            case NativeNodeEventKind.Sample:
+                DispatchNativeSample(item);
+                return;
+            case NativeNodeEventKind.BroadcastPublish:
+                await DispatchBroadcastPublishAsync(item, cancellationToken).ConfigureAwait(false);
+                return;
+            case NativeNodeEventKind.BroadcastSubscribe:
+                DispatchBroadcastSubscribe(item);
+                return;
+            case NativeNodeEventKind.BroadcastUnsubscribe:
+                DispatchBroadcastUnsubscribe(item);
+                return;
+            case NativeNodeEventKind.BroadcastReceive:
+                DispatchBroadcastReceive(item);
+                return;
+            default:
+                _logger?.LogWarning("{Node} ignored unsupported native event kind {Kind}.", DisplayName, item.Kind);
+                return;
         }
+    }
 
+    private void DispatchNativeSample(NativeNodeEvent item)
+    {
         if (!_outputPinsByName.TryGetValue(item.PinName, out var pin))
         {
             _logger?.LogError(
@@ -339,6 +386,304 @@ public abstract class WindowsNativeNodeBase : BaseNode
         }
 
         pin.SendSampleWithDispatchLog(item.Sample, "native callback", LogLevel.Trace);
+    }
+
+    private async Task DispatchBroadcastPublishAsync(
+        NativeNodeEvent item,
+        CancellationToken cancellationToken)
+    {
+        if (_topicBus is null)
+        {
+            _logger?.LogWarning(
+                "{Node} ignored native broadcast publish on {Topic}; no workflow TopicBus is available.",
+                DisplayName,
+                item.Topic);
+            return;
+        }
+
+        try
+        {
+            JsonNode? payload = string.IsNullOrWhiteSpace(item.PayloadJson)
+                ? null
+                : JsonNode.Parse(item.PayloadJson);
+            var topicMessage = BroadcastTopicCodec.FromWirePayload(item.PayloadKind, payload);
+            _broadcastSources.Add(topicMessage, new BroadcastSource());
+            await _topicBus.PublishAsync(item.Topic, topicMessage, ct: cancellationToken)
+                .ConfigureAwait(false);
+            _logger?.LogTrace(
+                "{Node} published native broadcast on {Topic} with payload kind {PayloadKind}.",
+                DisplayName,
+                item.Topic,
+                item.PayloadKind);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "{Node} failed to publish native broadcast on {Topic} with payload kind {PayloadKind}.",
+                DisplayName,
+                item.Topic,
+                item.PayloadKind);
+        }
+    }
+
+    private void DispatchBroadcastSubscribe(NativeNodeEvent item)
+    {
+        if (_topicBus is null)
+        {
+            _logger?.LogWarning(
+                "{Node} ignored native broadcast subscription for {Topic}; no workflow TopicBus is available.",
+                DisplayName,
+                item.Topic);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.Topic) || item.Receiver == IntPtr.Zero)
+        {
+            _logger?.LogWarning("{Node} rejected an invalid native broadcast subscription.", DisplayName);
+            return;
+        }
+
+        try
+        {
+            DispatchBroadcastUnsubscribe(item with { Kind = NativeNodeEventKind.BroadcastUnsubscribe });
+
+            var subscription = _topicBus.Subscribe(
+                item.Topic,
+                message => QueueNativeBroadcastReceiveAsync(message, item.Receiver, item.ReceiverContext));
+            _broadcastSubscriptions[item.Topic] =
+                new NativeBroadcastRegistration(subscription, item.Receiver, item.ReceiverContext);
+            _logger?.LogDebug("{Node} subscribed to native broadcast topic {Topic}.", DisplayName, item.Topic);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "{Node} failed to subscribe to native broadcast topic {Topic}.",
+                DisplayName,
+                item.Topic);
+        }
+    }
+
+    private void DispatchBroadcastUnsubscribe(NativeNodeEvent item)
+    {
+        if (!_broadcastSubscriptions.TryGetValue(item.Topic, out var registration))
+            return;
+
+        _broadcastSubscriptions.Remove(item.Topic);
+        registration.Subscription.Dispose();
+        _logger?.LogDebug("{Node} unsubscribed from native broadcast topic {Topic}.", DisplayName, item.Topic);
+    }
+
+    private Task QueueNativeBroadcastReceiveAsync(
+        TopicMessage message,
+        IntPtr receiver,
+        IntPtr receiverContext)
+    {
+        if (message.Payload is { } payload && _broadcastSources.TryGetValue(payload, out _))
+            return Task.CompletedTask;
+
+        try
+        {
+            var localPayload = BroadcastTopicCodec.ToLocalPayload(message.Payload);
+            var wirePayload = BroadcastTopicCodec.ToWirePayload(localPayload);
+            var payloadJson = wirePayload.Payload?.ToJsonString() ?? string.Empty;
+            var item = NativeNodeEvent.ForBroadcastReceive(
+                message.Topic,
+                wirePayload.PayloadKind,
+                payloadJson,
+                message.MessageId.ToString("N"),
+                receiver,
+                receiverContext);
+
+            if (Volatile.Read(ref _acceptEvents) == 0 || _eventChannel is null)
+                return Task.CompletedTask;
+
+            if (!_eventChannel.Writer.TryWrite(item))
+            {
+                _logger?.LogWarning(
+                    "{Node} native event queue is full; broadcast {MessageId} on {Topic} was dropped.",
+                    DisplayName,
+                    message.MessageId,
+                    message.Topic);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(
+                ex,
+                "{Node} failed to queue broadcast {MessageId} on {Topic} for the native receiver.",
+                DisplayName,
+                message.MessageId,
+                message.Topic);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void DispatchBroadcastReceive(NativeNodeEvent item)
+    {
+        try
+        {
+            using var lease = NativeBroadcastLease.Create(
+                item.Topic,
+                item.PayloadKind,
+                item.PayloadJson);
+            var receiver = Marshal.GetDelegateForFunctionPointer<ReceiveBroadcastCallback>(item.Receiver);
+            receiver(item.ReceiverContext, lease.Pointer);
+            _logger?.LogTrace(
+                "{Node} delivered native broadcast {BroadcastId} on {Topic} with payload kind {PayloadKind}.",
+                DisplayName,
+                item.BroadcastId,
+                item.Topic,
+                item.PayloadKind);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "{Node} failed to deliver native broadcast {BroadcastId} on {Topic}.",
+                DisplayName,
+                item.BroadcastId,
+                item.Topic);
+        }
+    }
+
+    private static int OnNativePublishBroadcast(IntPtr callbackContext, IntPtr message)
+    {
+        WindowsNativeNodeBase? node = null;
+        try
+        {
+            if (!TryResolveNode(callbackContext, message, out node, out var broadcast))
+                return NativeAbi.InvalidArgument;
+
+            if (node is null || Volatile.Read(ref node._acceptEvents) == 0 || node._eventChannel is null)
+                return NativeAbi.NotInitialized;
+
+            var item = NativeNodeEvent.ForBroadcastPublish(
+                broadcast.Topic,
+                broadcast.PayloadKind,
+                broadcast.PayloadJson);
+            if (!node._eventChannel.Writer.TryWrite(item))
+            {
+                node._logger?.LogWarning(
+                    "{Node} native event queue is full; broadcast publish on {Topic} was rejected.",
+                    node.DisplayName,
+                    broadcast.Topic);
+                return NativeAbi.QueueFull;
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            node?._logger?.LogError(ex, "{Node} failed to marshal a native broadcast publish callback.", node.DisplayName);
+            return NativeAbi.InternalError;
+        }
+    }
+
+    private static int OnNativeSubscribeBroadcast(
+        IntPtr callbackContext,
+        IntPtr topicPointer,
+        ulong topicLength,
+        IntPtr receive,
+        IntPtr receiverContext)
+    {
+        WindowsNativeNodeBase? node = null;
+        try
+        {
+            if (callbackContext == IntPtr.Zero || receive == IntPtr.Zero)
+                return NativeAbi.InvalidArgument;
+            node = GCHandle.FromIntPtr(callbackContext).Target as WindowsNativeNodeBase;
+            if (node is null)
+                return NativeAbi.InvalidArgument;
+
+            var topic = ReadUtf8(topicPointer, topicLength);
+            if (string.IsNullOrWhiteSpace(topic))
+                return NativeAbi.InvalidArgument;
+
+            if (Volatile.Read(ref node._acceptEvents) == 0 || node._eventChannel is null)
+                return NativeAbi.NotInitialized;
+
+            var item = NativeNodeEvent.ForBroadcastSubscribe(topic, receive, receiverContext);
+            if (!node._eventChannel.Writer.TryWrite(item))
+            {
+                node._logger?.LogWarning(
+                    "{Node} native event queue is full; broadcast subscription for {Topic} was rejected.",
+                    node.DisplayName,
+                    topic);
+                return NativeAbi.QueueFull;
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            node?._logger?.LogError(ex, "{Node} failed to marshal a native broadcast subscribe callback.", node.DisplayName);
+            return NativeAbi.InternalError;
+        }
+    }
+
+    private static int OnNativeUnsubscribeBroadcast(
+        IntPtr callbackContext,
+        IntPtr topicPointer,
+        ulong topicLength)
+    {
+        WindowsNativeNodeBase? node = null;
+        try
+        {
+            if (callbackContext == IntPtr.Zero)
+                return NativeAbi.InvalidArgument;
+            node = GCHandle.FromIntPtr(callbackContext).Target as WindowsNativeNodeBase;
+            if (node is null)
+                return NativeAbi.InvalidArgument;
+
+            var topic = ReadUtf8(topicPointer, topicLength);
+            if (string.IsNullOrWhiteSpace(topic))
+                return NativeAbi.InvalidArgument;
+
+            if (Volatile.Read(ref node._acceptEvents) == 0 || node._eventChannel is null)
+                return NativeAbi.NotInitialized;
+
+            if (!node._eventChannel.Writer.TryWrite(NativeNodeEvent.ForBroadcastUnsubscribe(topic)))
+                return NativeAbi.QueueFull;
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            node?._logger?.LogError(ex, "{Node} failed to marshal a native broadcast unsubscribe callback.", node.DisplayName);
+            return NativeAbi.InternalError;
+        }
+    }
+
+    private static bool TryResolveNode(
+        IntPtr callbackContext,
+        IntPtr messagePointer,
+        out WindowsNativeNodeBase? node,
+        out NativeBroadcastMessage broadcast)
+    {
+        broadcast = default;
+        node = null;
+        if (callbackContext == IntPtr.Zero || messagePointer == IntPtr.Zero)
+            return false;
+
+        node = GCHandle.FromIntPtr(callbackContext).Target as WindowsNativeNodeBase;
+        if (node is null)
+            return false;
+
+        var native = Marshal.PtrToStructure<AfBroadcast>(messagePointer);
+        if (native.StructSize < NativeAbi.BroadcastStructSize || native.AbiVersion != NativeAbi.Version)
+            return false;
+
+        var topic = ReadUtf8(native.Topic, native.TopicLength);
+        var payloadKind = ReadUtf8(native.PayloadKind, native.PayloadKindLength);
+        var payloadJson = ReadUtf8(native.PayloadJson, native.PayloadJsonLength);
+        if (string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(payloadKind))
+            return false;
+
+        broadcast = new NativeBroadcastMessage(topic, payloadKind, payloadJson);
+        return true;
     }
 
     private static int OnNativeSendSample(
@@ -531,11 +876,104 @@ public abstract class WindowsNativeNodeBase : BaseNode
 
         _sendSampleCallback = null;
         _logCallback = null;
+        _publishBroadcastCallback = null;
+        _subscribeBroadcastCallback = null;
+        _unsubscribeBroadcastCallback = null;
+    }
+
+    private void DisposeBroadcastSubscriptions()
+    {
+        foreach (var registration in _broadcastSubscriptions.Values)
+            registration.Subscription.Dispose();
+        _broadcastSubscriptions.Clear();
     }
 
     private void LogWarningBestEffort(Exception exception, string message)
     {
         _logger?.LogWarning(exception, "{Node}: {Message}", DisplayName, message);
+    }
+
+    private readonly record struct NativeBroadcastMessage(
+        string Topic,
+        string PayloadKind,
+        string PayloadJson);
+
+    private sealed record NativeBroadcastRegistration(
+        ITopicSubscription Subscription,
+        IntPtr Receiver,
+        IntPtr ReceiverContext);
+
+    private sealed class BroadcastSource
+    {
+    }
+
+    private sealed class NativeBroadcastLease : IDisposable
+    {
+        private IntPtr _messagePointer;
+        private readonly List<IntPtr> _buffers = new();
+
+        private NativeBroadcastLease(IntPtr messagePointer)
+        {
+            _messagePointer = messagePointer;
+        }
+
+        public IntPtr Pointer => _messagePointer;
+
+        public static NativeBroadcastLease Create(
+            string topic,
+            string payloadKind,
+            string payloadJson)
+        {
+            var lease = new NativeBroadcastLease(IntPtr.Zero);
+            var topicBuffer = lease.AllocateUtf8(topic, out var topicLength);
+            var kindBuffer = lease.AllocateUtf8(payloadKind, out var kindLength);
+            var payloadBuffer = lease.AllocateUtf8(payloadJson, out var payloadLength);
+
+            var native = new AfBroadcast
+            {
+                StructSize = (uint)NativeAbi.BroadcastStructSize,
+                AbiVersion = NativeAbi.Version,
+                Topic = topicBuffer,
+                TopicLength = topicLength,
+                PayloadKind = kindBuffer,
+                PayloadKindLength = kindLength,
+                PayloadJson = payloadBuffer,
+                PayloadJsonLength = payloadLength
+            };
+
+            lease._messagePointer = Marshal.AllocHGlobal(NativeAbi.BroadcastStructSize);
+            Marshal.StructureToPtr(native, lease._messagePointer, fDeleteOld: false);
+            return lease;
+        }
+
+        private IntPtr AllocateUtf8(string value, out ulong length)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                length = 0;
+                return IntPtr.Zero;
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(value);
+            var buffer = Marshal.AllocHGlobal(bytes.Length);
+            Marshal.Copy(bytes, 0, buffer, bytes.Length);
+            _buffers.Add(buffer);
+            length = (ulong)bytes.Length;
+            return buffer;
+        }
+
+        public void Dispose()
+        {
+            if (_messagePointer != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(_messagePointer);
+                _messagePointer = IntPtr.Zero;
+            }
+
+            foreach (var buffer in _buffers)
+                Marshal.FreeHGlobal(buffer);
+            _buffers.Clear();
+        }
     }
 
     private sealed class NativeSampleLease : IDisposable

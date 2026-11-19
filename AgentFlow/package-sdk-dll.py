@@ -50,6 +50,9 @@ WINDOWS_NATIVE_HOST_PROJECT = (
 WINDOWS_NATIVE_API_HEADER = (
     WINDOWS_NATIVE_SOURCE / "AgentFlow.NativeNodeApi" / "agentflow_node_api.h"
 )
+WINDOWS_NATIVE_BROADCAST_HEADER = (
+    WINDOWS_NATIVE_SOURCE / "AgentFlow.NativeNodeApi" / "agentflow_broadcast_helpers.h"
+)
 NATIVE_NODE_CODEGEN_PROJECT = ROOT / "Tools" / "NativeNodeCodeGen" / "NativeNodeCodeGen.csproj"
 DEMO_PROJECTS = ("Demo.Cli", "Demo.Desktop")
 
@@ -283,10 +286,18 @@ def package_windows_native_sdk(configuration: str) -> None:
         return
     if not WINDOWS_NATIVE_API_HEADER.is_file():
         raise FileNotFoundError(f"Windows native API header was not found: {WINDOWS_NATIVE_API_HEADER}")
+    if not WINDOWS_NATIVE_BROADCAST_HEADER.is_file():
+        raise FileNotFoundError(
+            f"Windows native broadcast helper header was not found: {WINDOWS_NATIVE_BROADCAST_HEADER}"
+        )
 
     header_destination = STAGING / "SDK" / "Windows" / "NativeNodeApi"
     header_destination.mkdir(parents=True, exist_ok=True)
     shutil.copy2(WINDOWS_NATIVE_API_HEADER, header_destination / WINDOWS_NATIVE_API_HEADER.name)
+    shutil.copy2(
+        WINDOWS_NATIVE_BROADCAST_HEADER,
+        header_destination / WINDOWS_NATIVE_BROADCAST_HEADER.name,
+    )
 
     codegen_output = BUILD_ROOT / "NativeNodeCodeGen" / configuration
     if codegen_output.exists():
@@ -442,7 +453,7 @@ Layout:
   SharedDlls/x64/Release/Plugins/External/<RID> Verified Release external-language node packages
   SharedDlls/x64/<Configuration>/Plugins/Windows/win-x64/<ModuleId>
                                         Windows native node DLL and manifest
-  SDK/Windows/NativeNodeApi/            Stable C ABI header for Windows native nodes
+  SDK/Windows/NativeNodeApi/            Stable C ABI and broadcast helper headers for Windows native nodes
   SDK/Windows/NativeNodeCodeGen/<Configuration>
                                         Proxy generator for Windows native node manifests
   Demo.Cli/                          Minimal command-line workflow runner source project
