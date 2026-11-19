@@ -404,6 +404,8 @@ workflow ITopicBus
 ```
 
 - Native source lives under `Plugins/Windows/Src`.
+- Windows native builds prefer the repository-portable `cmake-*/bin/cmake.exe`, fall back to PATH, and select the installed Visual Studio 18/17 generator dynamically.
+- The native build is serialized across all `PluginHost` projects by a shared file lock under `artifacts/WindowsNative`. A shared source fingerprint stamp lets later hosts reuse the completed DLL instead of reconfiguring CMake concurrently.
 - `AgentFlow.NativeNodeApi/agentflow_node_api.h` defines the ABI.
 - `AgentFlow.NativeNodeApi/agentflow_broadcast_helpers.h` provides C++ helpers for the five
   canonical broadcast payload shapes.
