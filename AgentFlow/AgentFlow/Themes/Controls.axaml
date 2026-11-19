@@ -180,6 +180,21 @@
     <Style Selector="Button.toolbtn.theme Path">
         <Setter Property="Stroke" Value="{DynamicResource BrushThemeBtnFg}" />
     </Style>
+
+    <!-- New canvas toolbar button -->
+    <Style Selector="Button.toolbtn.newcanvas">
+        <Setter Property="Background" Value="{DynamicResource BrushNewCanvasBtnBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.newcanvas:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BrushNewCanvasBtnHoverBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.newcanvas:pressed">
+        <Setter Property="Background" Value="{DynamicResource BrushNewCanvasBtnPressedBg}" />
+    </Style>
+    <Style Selector="Button.toolbtn.newcanvas Path">
+        <Setter Property="Stroke" Value="{DynamicResource BrushNewCanvasBtnFg}" />
+    </Style>
+
     <!-- Undo / Redo toolbar buttons -->
     <Style Selector="Button.toolbtn.undo">
         <Setter Property="Background" Value="{DynamicResource BrushUndoBtnBg}" />

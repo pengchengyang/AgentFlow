@@ -59,6 +59,7 @@ public sealed class Loc : ObservableObject
         ["SaveAs"] = ("Save As...", "另存为..."),
         ["OpenWorkflow"] = ("Open Workflow...", "打开工作流..."),
         ["NewWorkflow"] = ("New Workflow", "新建工作流"),
+        ["NewCanvas"] = ("New Canvas", "新建画布"),
         ["UntitledWorkflow"] = ("Untitled workflow", "未命名工作流"),
         ["ClearCanvas"] = ("Clear Canvas", "清空画布"),
         ["ResetZoom"] = ("Reset Zoom", "重置缩放"),

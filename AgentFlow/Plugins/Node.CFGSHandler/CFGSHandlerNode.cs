@@ -4,16 +4,27 @@
 // </copyright>
 // -----------------------------------------------------------------------
 
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using AgentFlow.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Node.CFGSHandler;
 
 /// <summary>
-/// Contract-only CFGS handler node. The input and output pins are reserved for the future
-/// CFGS launch/stop workflow, but no business processing is implemented yet.
+/// Builds the CFG-1 and CFG-2 BUSINESS envelopes from SLOT/FSN/IMEI batches received from the
+/// upper workflow. Launch and stop pin behavior remains reserved for a later implementation.
 /// </summary>
 public sealed class CFGSHandlerNode : BaseNode
 {
+    private const string BusinessType = "BUSINESS";
+    private const string ProtocolVersion = "1.0";
+    private const string Cfg1Location = "CFG-1";
+    private const string Cfg2Location = "CFG-2";
+    private const string IdleStatus = "IDLE";
+    private const string TestStatus = "TEST";
+
     private readonly BasePin _rawFromCfgInputPin =
         new("in_str_raw_from_cfg", DataType.STRING, PinDirection.Input, required: false);
 
@@ -44,6 +55,21 @@ public sealed class CFGSHandlerNode : BaseNode
     private readonly BasePin _confirmCfgExitOutputPin =
         new("out_str_confirmcfg_exit", DataType.STRING, PinDirection.Output);
 
+    private readonly BasePin _messageOutputPin =
+        new("output_string_message", DataType.STRING, PinDirection.Output);
+
+    private ILogger? _logger;
+    private string? _cfg1Guid;
+    private string? _cfg2Guid;
+    private long _cfg1Sequence;
+    private long _cfg2Sequence;
+
+    private sealed record SlotIdentity(int Slot, string Fsn, string Imei)
+    {
+        public bool HasCompleteIdentity =>
+            !string.IsNullOrWhiteSpace(Fsn) && !string.IsNullOrWhiteSpace(Imei);
+    }
+
     public CFGSHandlerNode()
     {
         Uuid = "CEC9E7C3-7F5D-48BD-BA1D-CCBDF22E7820";
@@ -67,6 +93,7 @@ public sealed class CFGSHandlerNode : BaseNode
         AddOutputPin(_launchCfgOutputPin);
         AddOutputPin(_stopCfgOutputPin);
         AddOutputPin(_confirmCfgExitOutputPin);
+        AddOutputPin(_messageOutputPin);
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
@@ -74,20 +101,400 @@ public sealed class CFGSHandlerNode : BaseNode
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
-        => Task.CompletedTask;
+    {
+        _logger = context.Logger;
+        _cfg1Guid = null;
+        _cfg2Guid = null;
+        _cfg1Sequence = 0;
+        _cfg2Sequence = 0;
+        return Task.CompletedTask;
+    }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
+        _logger = context.Logger;
         Running = true;
         return Task.CompletedTask;
+    }
+
+    public override void ReceiveSample(BasePin pin, Sample? value)
+    {
+        if (ReferenceEquals(pin, _fromUpperInputPin))
+        {
+            HandleUpperMessages(value);
+            return;
+        }
+
+        if (ReferenceEquals(pin, _userSettingsInputPin))
+        {
+            HandleUserSettings(value);
+        }
     }
 
     public override Task Stop(INodeContext context, CancellationToken ct = default)
     {
         Running = false;
+        _cfg1Guid = null;
+        _cfg2Guid = null;
+        _cfg1Sequence = 0;
+        _cfg2Sequence = 0;
         return Task.CompletedTask;
     }
 
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    private void HandleUserSettings(Sample? value)
+    {
+        if (value is not StringSample text || string.IsNullOrWhiteSpace(text.StringValue))
+        {
+            Fail("CFGS Handler rejected user settings: expected a non-empty STRING payload.");
+            return;
+        }
+
+        if (!TryParseGuids(text.StringValue, out var cfg1Guid, out var cfg2Guid, out var error))
+        {
+            Fail("CFGS Handler rejected user settings: {Error}.", error);
+            return;
+        }
+
+        _cfg1Guid = cfg1Guid;
+        _cfg2Guid = cfg2Guid;
+        _logger?.LogInformation(
+            "CFGS Handler cached CFG GUIDs: CFG-1={Cfg1Guid}, CFG-2={Cfg2Guid}.",
+            _cfg1Guid,
+            _cfg2Guid);
+    }
+
+    private void HandleUpperMessages(Sample? value)
+    {
+        if (value is not StringSample text || string.IsNullOrWhiteSpace(text.StringValue))
+        {
+            Fail("CFGS Handler rejected upper message: expected a non-empty STRING payload.");
+            return;
+        }
+
+        // TODO: This parser assumes the upper workflow sends SLOT/FSN/IMEI batches in the agreed
+        // MESSAGES JSON array. The transport and producer-side validation are intentionally outside
+        // this node until the upstream contract is finalized.
+        if (!TryParseSlotIdentities(
+                text.StringValue,
+                out var slots,
+                out var stoppedByDuplicate,
+                out var error))
+        {
+            if (stoppedByDuplicate)
+                Running = false;
+            else
+                Fail("CFGS Handler rejected upper message: {Error}.", error);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_cfg1Guid) || string.IsNullOrWhiteSpace(_cfg2Guid))
+        {
+            Fail(
+                "CFGS Handler cannot build CFGS messages because user settings have not supplied both GUIDs. CFG-1={Cfg1Guid}, CFG-2={Cfg2Guid}.",
+                _cfg1Guid ?? "<missing>",
+                _cfg2Guid ?? "<missing>");
+            return;
+        }
+
+        var cfg1Messages = BuildMessages(slots, 1, out var cfg1HasTestData);
+        var cfg2Messages = BuildMessages(slots, 6, out var cfg2HasTestData);
+        if (!cfg1HasTestData && !cfg2HasTestData)
+        {
+            _logger?.LogTrace("CFGS Handler skipped both envelopes because all slots are IDLE.");
+            return;
+        }
+
+        var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
+        if (cfg1HasTestData)
+        {
+            var envelope = CreateEnvelope(
+                _cfg1Guid,
+                Cfg1Location,
+                ++_cfg1Sequence,
+                timestamp,
+                cfg1Messages);
+            SendEnvelope(envelope, Cfg1Location);
+        }
+
+        if (cfg2HasTestData)
+        {
+            var envelope = CreateEnvelope(
+                _cfg2Guid,
+                Cfg2Location,
+                ++_cfg2Sequence,
+                timestamp,
+                cfg2Messages);
+            SendEnvelope(envelope, Cfg2Location);
+        }
+    }
+
+    private void SendEnvelope(JsonObject envelope, string location)
+    {
+        var json = JsonSerializer.Serialize(envelope);
+        var sample = StringSample.CreateSample();
+        sample.SetValue(json, _messageOutputPin.Name);
+        var sent = _messageOutputPin.SendSampleWithDispatchLog(
+            sample,
+            $"CFGS {location} BUSINESS envelope",
+            LogLevel.Information);
+
+        if (!sent)
+        {
+            _logger?.LogWarning(
+                "CFGS Handler could not send the {Location} envelope because {Pin} is not connected.",
+                location,
+                _messageOutputPin.Name);
+        }
+    }
+
+    private JsonArray BuildMessages(
+        IReadOnlyDictionary<int, SlotIdentity> slots,
+        int startSlot,
+        out bool hasTestData)
+    {
+        var messages = new JsonArray();
+        hasTestData = false;
+        for (var slot = startSlot; slot < startSlot + 5; slot++)
+        {
+            var hasIdentity =
+                slots.TryGetValue(slot, out var identity) &&
+                identity.HasCompleteIdentity;
+            if (hasIdentity)
+                hasTestData = true;
+
+            messages.Add(new JsonObject
+            {
+                ["SLOT"] = slot.ToString(CultureInfo.InvariantCulture),
+                ["FSN"] = hasIdentity ? identity!.Fsn : string.Empty,
+                ["IMEI"] = hasIdentity ? identity!.Imei : string.Empty,
+                ["STATUS"] = hasIdentity ? TestStatus : IdleStatus,
+            });
+        }
+
+        return messages;
+    }
+
+    private static JsonObject CreateEnvelope(
+        string guid,
+        string location,
+        long sequence,
+        string timestamp,
+        JsonArray messages)
+        => new()
+        {
+            ["GUID"] = guid,
+            ["LOCATION"] = location,
+            ["TYPE"] = BusinessType,
+            ["VERSION"] = ProtocolVersion,
+            ["SEQ"] = sequence,
+            ["TIMESTAMP"] = timestamp,
+            ["DATA"] = new JsonObject
+            {
+                ["MESSAGES"] = messages,
+            },
+        };
+
+    private bool TryParseSlotIdentities(
+        string json,
+        out IReadOnlyDictionary<int, SlotIdentity> slots,
+        out bool stoppedByDuplicate,
+        out string? error)
+    {
+        slots = new Dictionary<int, SlotIdentity>();
+        stoppedByDuplicate = false;
+        error = null;
+
+        JsonObject root;
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonObject parsed)
+            {
+                error = "message must be a JSON object";
+                return false;
+            }
+
+            root = parsed;
+        }
+        catch (JsonException ex)
+        {
+            error = $"invalid JSON: {ex.Message}";
+            return false;
+        }
+
+        if (!TryGetProperty(root, "MESSAGES", out var messagesNode) ||
+            messagesNode is not JsonArray messages ||
+            messages.Count is < 1 or > 10)
+        {
+            error = "MESSAGES must be a JSON array containing between one and ten records";
+            return false;
+        }
+
+        var parsedSlots = new Dictionary<int, SlotIdentity>();
+        for (var index = 0; index < messages.Count; index++)
+        {
+            if (messages[index] is not JsonObject message)
+            {
+                error = $"MESSAGES[{index}] must be a JSON object";
+                return false;
+            }
+
+            if (!TryGetRequiredString(message, "SLOT", out var slotText) ||
+                !int.TryParse(slotText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var slot) ||
+                slot is < 1 or > 10)
+            {
+                error = $"MESSAGES[{index}].SLOT must be an integer string from 1 through 10";
+                return false;
+            }
+
+            if (!TryGetOptionalString(message, "FSN", out var fsn) ||
+                !TryGetOptionalString(message, "IMEI", out var imei))
+            {
+                error = $"MESSAGES[{index}].FSN and IMEI must be strings when present";
+                return false;
+            }
+
+            fsn = fsn.Trim();
+            imei = imei.Trim();
+            if (string.IsNullOrEmpty(fsn) ^ string.IsNullOrEmpty(imei))
+            {
+                _logger?.LogWarning(
+                    "CFGS Handler treated MESSAGES[{Index}] SLOT {Slot} as IDLE because only one of FSN or IMEI was supplied.",
+                    index,
+                    slot);
+                fsn = string.Empty;
+                imei = string.Empty;
+            }
+
+            if (parsedSlots.ContainsKey(slot))
+            {
+                _logger?.LogWarning(
+                    "CFGS Handler found duplicate SLOT {Slot} in MESSAGES; the last value was retained and the node will stop.",
+                    slot);
+                stoppedByDuplicate = true;
+            }
+
+            parsedSlots[slot] = new SlotIdentity(slot, fsn, imei);
+        }
+
+        slots = parsedSlots;
+        return !stoppedByDuplicate;
+    }
+
+    private static bool TryParseGuids(
+        string json,
+        out string cfg1Guid,
+        out string cfg2Guid,
+        out string? error)
+    {
+        cfg1Guid = string.Empty;
+        cfg2Guid = string.Empty;
+        error = null;
+
+        JsonObject root;
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonObject parsed)
+            {
+                error = "settings must be a JSON object";
+                return false;
+            }
+
+            root = parsed;
+        }
+        catch (JsonException ex)
+        {
+            error = $"invalid settings JSON: {ex.Message}";
+            return false;
+        }
+
+        if (!TryGetProperty(root, "GUID", out var guidNode) || guidNode is not JsonObject guidObject)
+        {
+            error = "GUID must be a JSON object containing CFG-1 and CFG-2";
+            return false;
+        }
+
+        if (!TryGetValidGuid(guidObject, Cfg1Location, out cfg1Guid))
+        {
+            error = "GUID.CFG-1 must contain a valid GUID";
+            return false;
+        }
+
+        if (!TryGetValidGuid(guidObject, Cfg2Location, out cfg2Guid))
+        {
+            error = "GUID.CFG-2 must contain a valid GUID";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetValidGuid(JsonObject obj, string key, out string guid)
+    {
+        guid = string.Empty;
+        if (!TryGetRequiredString(obj, key, out var rawGuid) ||
+            !Guid.TryParse(rawGuid.Trim(), out var parsedGuid))
+        {
+            return false;
+        }
+
+        guid = parsedGuid.ToString("D").ToUpperInvariant();
+        return true;
+    }
+
+    private static bool TryGetRequiredString(JsonObject obj, string key, out string value)
+    {
+        value = string.Empty;
+        if (!TryGetProperty(obj, key, out var node) ||
+            node is not JsonValue jsonValue ||
+            !jsonValue.TryGetValue<string>(out var parsed) ||
+            string.IsNullOrWhiteSpace(parsed))
+        {
+            return false;
+        }
+
+        value = parsed;
+        return true;
+    }
+
+    private static bool TryGetOptionalString(JsonObject obj, string key, out string value)
+    {
+        value = string.Empty;
+        if (!TryGetProperty(obj, key, out var node) || node is null)
+            return true;
+
+        if (node is not JsonValue jsonValue || !jsonValue.TryGetValue<string>(out var parsed))
+            return false;
+
+        value = parsed;
+        return true;
+    }
+
+    private static bool TryGetProperty(JsonObject obj, string key, out JsonNode? node)
+    {
+        foreach (var pair in obj)
+        {
+            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                node = pair.Value;
+                return true;
+            }
+        }
+
+        node = null;
+        return false;
+    }
+
+    private static string FormatTimestamp(DateTimeOffset timestamp) =>
+        timestamp.UtcDateTime.ToString(
+            "yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'",
+            CultureInfo.InvariantCulture);
+
+    private void Fail(string message, params object?[] args)
+    {
+        Running = false;
+        _logger?.LogError(message, args);
+    }
 }

@@ -532,6 +532,27 @@ public sealed partial class RunManagerViewModel : ViewModelBase
         RunBatchWorkflowItemViewModel item,
         bool gateAlreadyHeld = false)
     {
+        var workflowPath = item.FilePath;
+        if (string.IsNullOrWhiteSpace(workflowPath))
+        {
+            _logger.LogWarning(
+                "Batch row '{DisplayName}' cannot start because the workflow path is empty.",
+                item.DisplayName);
+            return;
+        }
+
+        if (!File.Exists(workflowPath))
+        {
+            var error = $"Workflow file not found: {workflowPath}";
+            item.MarkFailed(error);
+            _statusSink(error);
+            _logger.LogWarning(
+                "Batch row '{DisplayName}' cannot start because the workflow file does not exist: {WorkflowPath}.",
+                item.DisplayName,
+                workflowPath);
+            NotifyManagerCounters();
+            return;
+        }
         var ownsGate = !gateAlreadyHeld;
         if (ownsGate && !_startGate.TryEnter())
         {
@@ -561,15 +582,6 @@ public sealed partial class RunManagerViewModel : ViewModelBase
                 _statusSink("A workflow is already running in the editor. Stop it before starting Batch Run.");
                 return;
             }
-            if (item.FilePath is null || !File.Exists(item.FilePath))
-            {
-                var error = $"Workflow file not found: {item.FilePath ?? "(missing path)"}";
-                item.MarkFailed(error);
-                _statusSink(error);
-                NotifyManagerCounters();
-                return;
-            }
-
             var manager = _rowManagers[item.Key];
             RemoveSessionsForWorkflowItem(item.Key);
 
@@ -592,7 +604,7 @@ public sealed partial class RunManagerViewModel : ViewModelBase
                 var displayName = $"{item.DisplayName} #{instanceIndex}";
                 requests.Add(WorkflowRunRequest.FromFile(
                     runId,
-                    item.FilePath ?? throw new InvalidOperationException("Workflow file path is unavailable."),
+                    workflowPath,
                     instanceIndex,
                     displayName: displayName));
             }

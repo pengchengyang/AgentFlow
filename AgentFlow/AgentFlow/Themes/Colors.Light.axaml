@@ -243,6 +243,17 @@
     <SolidColorBrush x:Key="BrushThemeBtnPressedBg" Color="{StaticResource ThemeBtnPressedBg}" />
     <SolidColorBrush x:Key="BrushThemeBtnFg" Color="{StaticResource ThemeBtnFg}" />
 
+    <!-- ============ New canvas toolbar button ============ -->
+    <Color x:Key="NewCanvasBtnBg">#ECFEFF</Color>
+    <Color x:Key="NewCanvasBtnHoverBg">#CFFAFE</Color>
+    <Color x:Key="NewCanvasBtnPressedBg">#A5F3FC</Color>
+    <Color x:Key="NewCanvasBtnFg">#0891B2</Color>
+
+    <SolidColorBrush x:Key="BrushNewCanvasBtnBg" Color="{StaticResource NewCanvasBtnBg}" />
+    <SolidColorBrush x:Key="BrushNewCanvasBtnHoverBg" Color="{StaticResource NewCanvasBtnHoverBg}" />
+    <SolidColorBrush x:Key="BrushNewCanvasBtnPressedBg" Color="{StaticResource NewCanvasBtnPressedBg}" />
+    <SolidColorBrush x:Key="BrushNewCanvasBtnFg" Color="{StaticResource NewCanvasBtnFg}" />
+
     <!-- ============ Undo / Redo toolbar buttons ============ -->
     <Color x:Key="UndoBtnBg">#E0F2FE</Color>
     <Color x:Key="UndoBtnHoverBg">#BAE6FD</Color>

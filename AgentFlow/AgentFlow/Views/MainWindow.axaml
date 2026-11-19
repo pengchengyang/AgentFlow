@@ -17,7 +17,7 @@
     <conv:InverseBoolConverter x:Key="InverseBool"/>
   </Window.Resources>
 
-  <!-- Toolbar shortcuts: F1-F9 map to toolbar buttons left-to-right, F12 clears logs. -->
+  <!-- Toolbar shortcuts: F1-F10 map to toolbar buttons left-to-right, F12 clears logs. -->
   <!-- Standard document shortcuts mirror F3 and F4 for Open and Save. -->
   <Window.KeyBindings>
     <KeyBinding Gesture="F1" Command="{Binding Main.RunCommand}" />
@@ -31,6 +31,7 @@
     <KeyBinding Gesture="F7" Command="{Binding Main.ResetZoomCommand}" />
     <KeyBinding Gesture="F8" Command="{Binding Main.OpenLoginCommand}" />
     <KeyBinding Gesture="F9" Command="{Binding Main.ToggleThemeCommand}" />
+    <KeyBinding Gesture="F10" Command="{Binding Main.NewWorkflowCommand}" />
     <KeyBinding Gesture="F12" Command="{Binding Main.ClearLogCommand}" />
   </Window.KeyBindings>
 
@@ -122,6 +123,16 @@
                     ToolTip.Tip="Toggle Theme (F9)">
               <Path Data="M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"
                     Stretch="Uniform" Width="12" Height="12" Stroke="{DynamicResource BrushThemeBtnFg}" StrokeThickness="2" Fill="Transparent"/>
+            </Button>
+            <!-- New canvas: detach the current document and start an in-memory Untitled workflow. -->
+            <Button Classes="toolbtn newcanvas" Command="{Binding Main.NewWorkflowCommand}"
+                    ToolTip.Tip="{Binding [NewCanvas], Source={x:Static s:Loc.Instance}, StringFormat={}{0} (F10)}">
+              <Viewbox Width="12" Height="12"
+                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Path Data="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z M14 2v5a1 1 0 0 0 1 1h5 M9 15h6 M12 18v-6"
+                      Width="24" Height="24" Stretch="None"
+                      StrokeThickness="2" StrokeLineCap="Round" Fill="Transparent"/>
+              </Viewbox>
             </Button>
             <!-- Undo: restore the previous graph snapshot -->
             <Button Classes="toolbtn undo" Command="{Binding Main.UndoCommand}"
