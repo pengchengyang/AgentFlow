@@ -25,6 +25,9 @@ elevation. AgentFlow must already run with an elevated administrator token, so t
 - Logs every non-empty output line at `INFORMATION` level with a `STDOUT` or `STDERR` marker.
 - Publishes the combined captured output only when non-empty.
 - Always publishes the process exit code.
+- Returns `-2` when process startup exceeds `StartTimeoutMilliseconds`.
+- Returns `-3` when a running process exceeds a non-zero `ExecutionTimeoutMilliseconds`.
+- Returns `-1` for normal launch failures.
 - Stops the active process tree when the node is stopped, cancelled, or fails while running.
 - Removes its unique temporary directory on every execution path and logs cleanup failures at `ERROR` level.
 - The elevated process inherits the AgentFlow administrator token; child processes are terminated as one process tree.
