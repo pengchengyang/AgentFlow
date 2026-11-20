@@ -18,9 +18,10 @@ using TcpSocket = System.Net.Sockets.TcpClient;
 namespace Node.CFGTcpClient;
 
 /// <summary>
-/// CFG TCP client session node. It authenticates with a local GUID, maintains a persistent
-/// reconnectable TCP session, sends PING heartbeats, buffers business envelopes while offline,
-/// and transports complete JSON envelopes inside the shared semicolon frame.
+/// CFG TCP client session node. It waits for a runtime GUID on input_string_guid, authenticates
+/// with that GUID, maintains a persistent reconnectable TCP session, sends PING heartbeats,
+/// buffers business envelopes while offline, and transports complete JSON envelopes inside the
+/// shared semicolon frame.
 /// </summary>
 public sealed class CFGTcpClientNode : BaseNode
 {
@@ -41,6 +42,8 @@ public sealed class CFGTcpClientNode : BaseNode
 
     private readonly object _endpointGate = new();
     private readonly object _supervisorStartGate = new();
+    private readonly object _pendingBusinessInputGate = new();
+    private readonly Queue<string> _pendingBusinessInputs = new();
     private readonly SemaphoreSlim _stopLock = new(1, 1);
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private TcpSocket? _client;
@@ -73,6 +76,7 @@ public sealed class CFGTcpClientNode : BaseNode
     private DateTimeOffset _lastReceivedUtc = DateTimeOffset.UtcNow;
     private volatile bool _authenticated;
     private volatile bool _endpointInputReceived;
+    private volatile bool _guidInputReceived;
 
     private long _sentFrames;
     private long _receivedFrames;
@@ -91,6 +95,9 @@ public sealed class CFGTcpClientNode : BaseNode
     public override string Category => "C";
     public override bool RequiresPersistentHost => true;
 
+    public BasePin GuidInputPin { get; } =
+        new("input_string_guid", DataType.STRING, PinDirection.Input, required: false);
+
     public BasePin EndpointInputPin { get; } =
         new("input_string_endpoint", DataType.STRING, PinDirection.Input, required: false);
 
@@ -102,6 +109,7 @@ public sealed class CFGTcpClientNode : BaseNode
 
     public override void AddPins()
     {
+        AddInputPin(GuidInputPin);
         AddInputPin(EndpointInputPin);
         AddInputPin(MessageInputPin);
         AddOutputPin(MessageOutputPin);
@@ -178,10 +186,27 @@ public sealed class CFGTcpClientNode : BaseNode
         _context = context;
         await Stop(context, ct).ConfigureAwait(false);
 
-        _clientGuid = (ParameterValues.GetString(Param("ClientGuid").Value, string.Empty) ?? string.Empty).Trim();
-        if (!ProtocolMessage.IsGuid(_clientGuid, out var normalizedGuid))
-            throw new InvalidOperationException("CFG TCP client parameter ClientGuid must be a valid GUID.");
-        _clientGuid = normalizedGuid;
+        var configuredGuid =
+            (ParameterValues.GetString(Param("ClientGuid").Value, string.Empty) ?? string.Empty).Trim();
+        _clientGuid = string.Empty;
+        if (string.IsNullOrWhiteSpace(configuredGuid))
+        {
+            context.Logger.LogInformation(
+                "CFG TCP client initialized without a configured GUID; waiting for input_string_guid.");
+        }
+        else if (ProtocolMessage.IsGuid(configuredGuid, out var normalizedConfiguredGuid))
+        {
+            _clientGuid = normalizedConfiguredGuid;
+            context.Logger.LogInformation(
+                "CFG TCP client configured GUID fallback={Guid}; connection still waits for input_string_guid.",
+                _clientGuid);
+        }
+        else
+        {
+            context.Logger.LogWarning(
+                "CFG TCP client ignored invalid ClientGuid parameter {Guid}; waiting for input_string_guid.",
+                configuredGuid);
+        }
 
         _host = (ParameterValues.GetString(Param("ServerHost").Value, "127.0.0.1") ?? "127.0.0.1").Trim();
         _port = ReadBoundedInt(context, "ServerPort", DefaultServerPort, 1, 65535);
@@ -201,8 +226,8 @@ public sealed class CFGTcpClientNode : BaseNode
 
         _sendChannel = CreateSendChannel(_sendQueueCapacity);
         context.Logger.LogInformation(
-            "CFG TCP client initialized GUID={Guid}, target={Host}:{Port}, connectMode={ConnectMode}, protocol={Version}, authTimeout={AuthTimeout}s, authenticationTimeout={AuthenticationTimeout}ms, heartbeat={Heartbeat}s, reconnectDelay={Reconnect}s",
-            _clientGuid, _host, _port, _connectMode, _protocolVersion, _authTimeoutSeconds, _authenticationTimeoutMilliseconds, _heartbeatIntervalSeconds, _reconnectDelaySeconds);
+            "CFG TCP client initialized target={Host}:{Port}, connectMode={ConnectMode}, protocol={Version}, authTimeout={AuthTimeout}s, authenticationTimeout={AuthenticationTimeout}ms, heartbeat={Heartbeat}s, reconnectDelay={Reconnect}s; waiting for input_string_guid.",
+            _host, _port, _connectMode, _protocolVersion, _authTimeoutSeconds, _authenticationTimeoutMilliseconds, _heartbeatIntervalSeconds, _reconnectDelaySeconds);
 
         if (_connectMode == WaitForEndpointConnectMode && EndpointInputPin.ConnectedPin is null)
         {
@@ -222,16 +247,24 @@ public sealed class CFGTcpClientNode : BaseNode
         _context = context;
         Running = true;
 
-        if (_connectMode == WaitForEndpointConnectMode && !_endpointInputReceived)
+        if (!_guidInputReceived)
         {
             var endpoint = GetEndpoint();
             context.Logger.LogInformation(
-                "CFG TCP client is waiting for the first input_string_endpoint value before connecting; configured fallback is {Host}:{Port}.",
+                "CFG TCP client is running and waiting for input_string_guid before connecting; configured fallback target is {Host}:{Port}.",
                 endpoint.Host, endpoint.Port);
             return Task.CompletedTask;
         }
 
-        TryStartConnectionSupervisor(context);
+        if (!TryStartConnectionSupervisor(context))
+        {
+            var endpoint = GetEndpoint();
+            context.Logger.LogInformation(
+                "CFG TCP client is waiting for input_string_endpoint before connecting; configured fallback target is {Host}:{Port}.",
+                endpoint.Host, endpoint.Port);
+            return Task.CompletedTask;
+        }
+
         context.Logger.LogInformation(
             "CFG TCP client is running: GUID={Guid}, target={Host}:{Port}, connectMode={ConnectMode}.",
             _clientGuid, _host, _port, _connectMode);
@@ -289,7 +322,14 @@ public sealed class CFGTcpClientNode : BaseNode
             DisposeCurrentConnection();
             cts?.Dispose();
             _endpointInputReceived = false;
+            _guidInputReceived = false;
+            _clientGuid = string.Empty;
             _location = string.Empty;
+            lock (_pendingBusinessInputGate)
+            {
+                _pendingBusinessInputs.Clear();
+            }
+
             SetIdle();
             context.Logger.LogInformation(
                 "CFG TCP client stopped: sent={Sent}, received={Received}, cached={Cached}, dropped={Dropped}",
@@ -309,6 +349,12 @@ public sealed class CFGTcpClientNode : BaseNode
 
     public override void ReceiveSample(BasePin pin, Sample? value)
     {
+        if (ReferenceEquals(pin, GuidInputPin))
+        {
+            HandleGuidInput(value);
+            return;
+        }
+
         if (ReferenceEquals(pin, EndpointInputPin))
         {
             HandleEndpointInput(value);
@@ -317,6 +363,46 @@ public sealed class CFGTcpClientNode : BaseNode
 
         if (ReferenceEquals(pin, MessageInputPin))
             HandleBusinessInput(value);
+    }
+
+    private void HandleGuidInput(Sample? value)
+    {
+        if (value is not StringSample text || text.StringValue is null)
+        {
+            _logger?.LogError("CFG TCP client ignored GUID input: expected StringSample.");
+            return;
+        }
+
+        if (!ProtocolMessage.IsGuid(text.StringValue.Trim(), out var normalizedGuid))
+        {
+            _logger?.LogError(
+                "CFG TCP client rejected input_string_guid value {Guid}: expected a valid GUID.",
+                text.StringValue);
+            return;
+        }
+
+        var guidChanged = false;
+        lock (_endpointGate)
+        {
+            guidChanged = !string.Equals(_clientGuid, normalizedGuid, StringComparison.Ordinal);
+            _clientGuid = normalizedGuid;
+            _guidInputReceived = true;
+            if (guidChanged)
+            {
+                _authenticated = false;
+                _location = string.Empty;
+                _connectionCts?.Cancel();
+            }
+        }
+
+        _logger?.LogInformation(
+            "CFG TCP client received runtime GUID={Guid}; persisted parameters were not modified.",
+            normalizedGuid);
+
+        ReplayPendingBusinessInputs();
+
+        if (Running && _context is not null)
+            TryStartConnectionSupervisor(_context);
     }
 
     private void HandleEndpointInput(Sample? value)
@@ -345,7 +431,7 @@ public sealed class CFGTcpClientNode : BaseNode
             "CFG TCP client runtime endpoint changed to {Host}:{Port}; persisted parameters were not modified.",
             host, port);
 
-        if (_connectMode == WaitForEndpointConnectMode && Running && _context is not null)
+        if (_guidInputReceived && Running && _context is not null)
             TryStartConnectionSupervisor(_context);
     }
 
@@ -368,7 +454,9 @@ public sealed class CFGTcpClientNode : BaseNode
     {
         lock (_supervisorStartGate)
         {
-            if (!Running || _supervisorTask is not null || _cts is null)
+            if (!Running || !_guidInputReceived || _supervisorTask is not null || _cts is null)
+                return false;
+            if (_connectMode == WaitForEndpointConnectMode && !_endpointInputReceived)
                 return false;
 
             var cts = _cts;
@@ -406,10 +494,21 @@ public sealed class CFGTcpClientNode : BaseNode
             return;
         }
 
-        if (!ProtocolMessage.TryParseObject(text.StringValue, out var input, out var error))
+        HandleBusinessInputText(text.StringValue, channel);
+    }
+
+    private void HandleBusinessInputText(string inputText, Channel<JsonObject> channel)
+    {
+        if (!ProtocolMessage.TryParseObject(inputText, out var input, out var error))
         {
             Interlocked.Increment(ref _droppedFrames);
             _logger?.LogError("CFG TCP client rejected message input: {Error}.", error);
+            return;
+        }
+
+        if (!_guidInputReceived)
+        {
+            CachePendingBusinessInput(inputText);
             return;
         }
 
@@ -476,6 +575,45 @@ public sealed class CFGTcpClientNode : BaseNode
         {
             _logger?.LogTrace("CFG TCP client queued business SEQ={Sequence}.", envelope[ProtocolConstants.Sequence]);
         }
+    }
+
+    private void CachePendingBusinessInput(string inputText)
+    {
+        lock (_pendingBusinessInputGate)
+        {
+            if (_pendingBusinessInputs.Count >= _sendQueueCapacity)
+            {
+                Interlocked.Increment(ref _droppedFrames);
+                _logger?.LogError(
+                    "CFG TCP client pending business queue is full; input was dropped while waiting for input_string_guid.");
+                return;
+            }
+
+            _pendingBusinessInputs.Enqueue(inputText);
+        }
+
+        _logger?.LogTrace(
+            "CFG TCP client cached business input while waiting for input_string_guid.");
+    }
+
+    private void ReplayPendingBusinessInputs()
+    {
+        string[] pending;
+        lock (_pendingBusinessInputGate)
+        {
+            if (_pendingBusinessInputs.Count == 0)
+                return;
+
+            pending = _pendingBusinessInputs.ToArray();
+            _pendingBusinessInputs.Clear();
+        }
+
+        var channel = _sendChannel;
+        if (channel is null)
+            return;
+
+        foreach (var inputText in pending)
+            HandleBusinessInputText(inputText, channel);
     }
 
     private static bool TryResolveBusinessLocation(

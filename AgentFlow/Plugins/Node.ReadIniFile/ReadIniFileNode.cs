@@ -28,6 +28,7 @@ public sealed class ReadIniFileNode : BaseNode
     private readonly object _loadGate = new();
 
     private ILogger? _logger;
+    private bool _initialDefaultLoaded;
 
     public ReadIniFileNode()
     {
@@ -70,6 +71,20 @@ public sealed class ReadIniFileNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        Running = false;
+        _initialDefaultLoaded = false;
+
+        var configuredPath =
+            ParameterValues.GetString(Param("IniPath").Value) ?? DefaultIniPath;
+
+        if (string.IsNullOrWhiteSpace(configuredPath))
+        {
+            _logger?.LogDebug(
+                "Read INI File skipped initialization because the configured IniPath is empty.");
+            return Task.CompletedTask;
+        }
+
+        _initialDefaultLoaded = LoadAndPublish(null);
         return Task.CompletedTask;
     }
 
@@ -79,7 +94,15 @@ public sealed class ReadIniFileNode : BaseNode
         Running = true;
 
         var inputPath = GetCurrentInputPath();
-        LoadAndPublish(inputPath);
+        if (!string.IsNullOrWhiteSpace(inputPath))
+        {
+            LoadAndPublish(inputPath);
+        }
+        else if (!_initialDefaultLoaded)
+        {
+            LoadAndPublish(null);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -121,7 +144,7 @@ public sealed class ReadIniFileNode : BaseNode
         return Task.CompletedTask;
     }
 
-    private void LoadAndPublish(string? runtimePath)
+    private bool LoadAndPublish(string? runtimePath)
     {
         lock (_loadGate)
         {
@@ -136,7 +159,7 @@ public sealed class ReadIniFileNode : BaseNode
                         "Read INI File rejected {FilePath}: {Error}",
                         fullPath,
                         error);
-                    return;
+                    return false;
                 }
 
                 foreach (var warning in parsed.Warnings)
@@ -179,6 +202,8 @@ public sealed class ReadIniFileNode : BaseNode
                     parsed.Values.Count,
                     fullPath,
                     sent);
+
+                return true;
             }
             catch (Exception ex)
             {
@@ -187,6 +212,7 @@ public sealed class ReadIniFileNode : BaseNode
                     "Read INI File failed to load {Path}: {Message}",
                     runtimePath ?? Param("IniPath").Value,
                     ex.Message);
+                return false;
             }
         }
     }

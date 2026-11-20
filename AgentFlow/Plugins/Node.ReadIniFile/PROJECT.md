@@ -29,10 +29,12 @@ Relative paths are resolved against the AgentFlow working directory with
 `Path.GetFullPath`. Matching single or double quotes around the path are removed. The resolved
 absolute path is included in output dispatch logging.
 
-During `Run`, the node reads once using the path available on the input pin or the configured
-fallback. If a new path arrives while the node is running, the node immediately rereads and
-republishes the JSON. Input received before `Run` remains stored on the pin and is used when
-`Run` starts.
+During initialization, the node attempts to read and publish the configured `IniPath` when it
+is non-empty. Initialization publication does not set `Running = true`. During `Run`, a path
+already cached on the input pin takes priority over the configured default. If initialization
+already published the configured default successfully, `Run` does not publish that same file
+again. If a new path arrives while the node is running, the node immediately rereads and
+republishes the JSON.
 
 ## Supported INI Styles
 
@@ -107,9 +109,17 @@ The following failures log an error and set `Running = false`:
 
 ## Lifecycle
 
-`Initialize` captures the logger. `Run` sets `Running = true`, resolves the effective path,
-and performs the initial read. `Stop` and `Shutdown` set `Running = false`. No file watcher or
-automatic refresh is used; rereading occurs only when `Run` starts or a new input path arrives.
+`Initialize` captures the logger, resets the initial-load marker, and attempts to parse and
+publish the configured default `IniPath` when it is non-empty. A successful initialization
+load records that the default file was already published but does not set `Running = true`.
+Initialization failures log an error without failing the lifecycle call, and `Run` may retry
+the configured path.
+
+`Run` sets `Running = true`. It reads a cached runtime input path when one is available;
+otherwise it reads the configured default only if initialization did not already publish it.
+`ReceiveSample` continues to handle dynamic runtime paths while the node is running. `Stop`
+and `Shutdown` set `Running = false`. No file watcher or automatic refresh is used; rereading
+occurs only when `Run` starts, initialization succeeds, or a new input path arrives.
 
 ## Build
 

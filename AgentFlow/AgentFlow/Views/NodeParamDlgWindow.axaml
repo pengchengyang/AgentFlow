@@ -225,26 +225,35 @@
               <ListBox ItemsSource="{Binding VisibleItems}"
                        SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                        Background="Transparent" BorderThickness="0" Padding="20,20,20,10"
-                       ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                <ListBox.Styles>
-                  <Style Selector="ListBoxItem">
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       ItemContainerTheme="{StaticResource ParamListItemTheme}">
+                <ListBox.Resources>
+                  <ControlTheme x:Key="ParamListItemTheme" TargetType="ListBoxItem">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="MinHeight" Value="0"/>
                     <Setter Property="CornerRadius" Value="0"/>
                     <Setter Property="Focusable" Value="False"/>
-                  </Style>
-                  <Style Selector="ListBoxItem /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="CornerRadius" Value="0"/>
-                    <Setter Property="Padding" Value="0"/>
-                  </Style>
-                  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Transparent"/>
-                  </Style>
-                  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Transparent"/>
-                  </Style>
-
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                    <Setter Property="Template">
+                      <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{TemplateBinding BorderBrush}"
+                                          BorderThickness="{TemplateBinding BorderThickness}"
+                                          CornerRadius="{TemplateBinding CornerRadius}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Content="{TemplateBinding Content}"
+                                          Padding="{TemplateBinding Padding}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                      </ControlTemplate>
+                    </Setter>
+                  </ControlTheme>
+                </ListBox.Resources>
+                <ListBox.Styles>
                   <Style Selector="Border.groupHeader">
                     <Setter Property="Background" Value="{DynamicResource BrushDlgContentBg}"/>
                     <Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}"/>
@@ -267,12 +276,6 @@
                   <Style Selector="Border.propRow">
                     <Setter Property="Background" Value="Transparent"/>
                     <Setter Property="MinHeight" Value="32"/>
-                  </Style>
-                  <Style Selector="Border.propRow.hover">
-                    <Setter Property="Background" Value="{DynamicResource BrushDlgGroupBg}"/>
-                  </Style>
-                  <Style Selector="Border.propRow.selected">
-                    <Setter Property="Background" Value="{DynamicResource BrushDlgGroupHoverBg}"/>
                   </Style>
                   <Style Selector="TextBox">
                     <Setter Property="CornerRadius" Value="8"/>
@@ -340,9 +343,7 @@
                   </DataTemplate>
 
                   <DataTemplate DataType="{x:Type vm:ParameterEditRow}" x:DataType="vm:ParameterEditRow">
-                    <Border Classes="propRow"
-                            Classes.selected="{Binding $parent[ListBoxItem].IsSelected}"
-                            Classes.hover="{Binding $parent[ListBoxItem].IsPointerOver}">
+                    <Border Classes="propRow">
                       <Grid ColumnDefinitions="160,*">
                         <TextBlock Classes="propName" Grid.Column="0"
                                    Text="{Binding Label}" Margin="0,0,16,0"

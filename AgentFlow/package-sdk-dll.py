@@ -84,6 +84,8 @@ def run(command: list[str | Path], *, cwd: Path = ROOT) -> None:
         [str(part) for part in command],
         cwd=str(cwd),
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if completed.returncode != 0:
@@ -110,11 +112,13 @@ def find_visual_studio_msbuild() -> Path | None:
             ],
             cwd=str(ROOT),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )
         if completed.returncode == 0:
-            for line in completed.stdout.splitlines():
+            for line in (completed.stdout or "").splitlines():
                 candidate = Path(line.strip())
                 if candidate.is_file():
                     return candidate
@@ -135,13 +139,15 @@ def msbuild_property(project: Path, property_name: str) -> str:
         ["dotnet", "msbuild", str(project), "-nologo", f"-getProperty:{property_name}"],
         cwd=str(ROOT),
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         check=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or
+        raise RuntimeError((completed.stderr or "").strip() or (completed.stdout or "").strip() or
                            f"Failed to read {property_name} from {project}.")
-    value = completed.stdout.strip()
+    value = (completed.stdout or "").strip()
     if not value:
         raise RuntimeError(f"{property_name} is empty for {project}.")
     return value
@@ -506,7 +512,7 @@ def main() -> int:
     target_framework = msbuild_property(
         ROOT / "AgentFlow.Contracts" / "AgentFlow.Contracts.csproj", "AgentFlowTargetFramework")
     plugin_framework = msbuild_property(
-        ROOT / "Plugins" / "Node.AutoStart" / "Node.AutoStart.csproj", "PluginTargetFramework")
+        ROOT / "AgentFlow.Contracts" / "AgentFlow.Contracts.csproj", "PluginTargetFramework")
 
     for path in (STAGING, BUILD_ROOT):
         if path.exists():
