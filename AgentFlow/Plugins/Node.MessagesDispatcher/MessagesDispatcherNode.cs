@@ -1,25 +1,27 @@
 // -----------------------------------------------------------------------
-// <copyright company="Your Company" file="AutoStartNode.cs">
+// <copyright company="Your Company" file="MessagesDispatcherNode.cs">
 //     Copyright (c) Your Company. All rights reserved.
 // </copyright>
 // -----------------------------------------------------------------------
 
 using System.Text.Json;
 using AgentFlow.Contracts;
+using AgentFlow.Shared.RTS.CFG.Broadcasts;
+using BroadcastKit;
+using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace Node.AutoStart;
+namespace Node.MessagesDispatcher;
 
 /// <summary>
-/// Workflow control node that receives a JSON object containing a MESSAGES array, validates each
-/// business message, emits each individual message through the output selected by its SLOT value,
-/// and forwards a workflow-start request to the host. The actual workflow-start action is supplied
-/// by the host through <see cref="IWorkflowStartRequestSink"/>.
+/// Validates a JSON object containing a fixed five-record MESSAGES array, dispatches each
+/// STATUS=TEST record to its SLOT-specific output pin, and requests one workflow start when
+/// the batch contains test data.
 /// </summary>
-public sealed class AutoStartNode : BaseNode
+public sealed class MessagesDispatcherNode : BaseNode
 {
-    private readonly BasePin _startPin =
-        new("input_string_start", DataType.STRING, PinDirection.Input, required: false);
+    private readonly BasePin _messagesInputPin =
+        new("in_string_messages", DataType.STRING, PinDirection.Input, required: false);
 
     private readonly BasePin _readyAPin =
         new("output_string_readyA", DataType.STRING, PinDirection.Output);
@@ -40,8 +42,10 @@ public sealed class AutoStartNode : BaseNode
 
     private INodeContext? _context;
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
+    private ITopicSubscription? _launcherStartSubscription;
 
-    public AutoStartNode()
+    public MessagesDispatcherNode()
     {
         _readyPins = new[]
         {
@@ -57,13 +61,13 @@ public sealed class AutoStartNode : BaseNode
         AddPins();
     }
 
-    public override string Name => "Auto Start";
-    public override string DisplayName { get; set; } = "Auto Start";
+    public override string Name => "Messages Dispatcher";
+    public override string DisplayName { get; set; } = "Messages Dispatcher";
     public override string Category => "C";
 
     public override void AddPins()
     {
-        AddInputPin(_startPin);
+        AddInputPin(_messagesInputPin);
         foreach (var readyPin in _readyPins)
             AddOutputPin(readyPin);
     }
@@ -76,6 +80,16 @@ public sealed class AutoStartNode : BaseNode
     {
         _context = context;
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
+
+        DisposeSubscriptions();
+        _launcherStartSubscription = _topicBus.Subscribe(
+            CFGBroadcastSubscriptions.CFGLauncherStart,
+            OnLauncherStartBroadcastAsync);
+
+        _logger?.LogTrace(
+            "Messages Dispatcher subscribed to launcher start broadcasts on {StartTopic} during initialization.",
+            CFGBroadcastSubscriptions.CFGLauncherStart);
         return Task.CompletedTask;
     }
 
@@ -85,44 +99,98 @@ public sealed class AutoStartNode : BaseNode
         _logger = context.Logger;
         Running = true;
         _logger?.LogTrace(
-            "AutoStart is waiting for JSON objects containing a fixed five-record MESSAGES array with SLOT/FSN/IMEI/STATUS values.");
+            "Messages Dispatcher is waiting for JSON objects containing a fixed five-record MESSAGES array with SLOT/FSN/IMEI/STATUS values.");
         return Task.CompletedTask;
     }
 
     public override Task Stop(INodeContext context, CancellationToken ct = default)
     {
         Running = false;
+        DisposeSubscriptions();
+        _topicBus = null;
         _logger = null;
         _context = null;
         return Task.CompletedTask;
     }
 
-    public override void ReceiveSample(BasePin pin, Sample? value)
+    private Task OnLauncherStartBroadcastAsync(TopicMessage message)
     {
-        if (!ReferenceEquals(pin, _startPin))
-            return;
+        try
+        {
+            if (!string.Equals(
+                    message.Topic,
+                    CFGBroadcastSubscriptions.CFGLauncherStart,
+                    StringComparison.Ordinal))
+            {
+                _logger?.LogWarning(
+                    "Messages Dispatcher ignored broadcast from unexpected topic {Topic}.",
+                    message.Topic);
+                return Task.CompletedTask;
+            }
 
-        if (!Running)
-            return;
+            if (message.Payload is not BroadcastTopicMessage
+                {
+                    Sample: StringSample { StringValue: { } payload }
+                })
+            {
+                _logger?.LogWarning(
+                    "Messages Dispatcher ignored launcher start broadcast because the payload did not contain a StringSample with a non-null value.");
+                return Task.CompletedTask;
+            }
 
-        if (value is not StringSample input ||
-            input.StringValue is not { } inputText)
+            if (string.Equals(payload, CFGLauncherStartSignals.CFGRequest, StringComparison.Ordinal))
+            {
+                _logger?.LogTrace(
+                    "Messages Dispatcher ignored its own launcher run request broadcast on {Topic}.",
+                    message.Topic);
+                return Task.CompletedTask;
+            }
+
+            _logger?.LogInformation(
+                "Messages Dispatcher received launcher start broadcast on {Topic}: {Payload}",
+                message.Topic,
+                payload);
+
+            ProcessInput(payload, _context);
+        }
+        catch (Exception ex)
         {
             _logger?.LogError(
-                "AutoStart ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
-                pin.Name,
-                value?.Type.ToString() ?? "null");
-            return;
+                ex,
+                "Messages Dispatcher failed to process launcher start broadcast on {Topic}: {Message}",
+                message.Topic,
+                ex.Message);
         }
 
-        ProcessInput(inputText, pin.Context);
+        return Task.CompletedTask;
+    }
+
+    public override void ReceiveSample(BasePin pin, Sample? value)
+    {
+        if (ReferenceEquals(pin, _messagesInputPin))
+        {
+            if (!Running)
+                return;
+
+            if (value is not StringSample input ||
+                input.StringValue is not { } inputText)
+            {
+                _logger?.LogError(
+                    "Messages Dispatcher ignored invalid input on {Pin}: expected StringSample with non-null StringValue, got {Type}.",
+                    pin.Name,
+                    value?.Type.ToString() ?? "null");
+                return;
+            }
+
+            ProcessInput(inputText, pin.Context);
+        }
     }
 
     private void ProcessInput(string inputText, INodeContext? pinContext)
     {
         if (string.IsNullOrWhiteSpace(inputText))
         {
-            _logger?.LogError("AutoStart ignored empty input.");
+            _logger?.LogError("Messages Dispatcher ignored empty input.");
             return;
         }
 
@@ -135,7 +203,7 @@ public sealed class AutoStartNode : BaseNode
         {
             _logger?.LogError(
                 ex,
-                "AutoStart ignored invalid JSON input: {Payload}",
+                "Messages Dispatcher ignored invalid JSON input: {Payload}",
                 inputText);
             return;
         }
@@ -146,7 +214,7 @@ public sealed class AutoStartNode : BaseNode
             if (root.ValueKind != JsonValueKind.Object)
             {
                 _logger?.LogError(
-                    "AutoStart rejected input because the top-level JSON value must be an object: {Payload}",
+                    "Messages Dispatcher rejected input because the top-level JSON value must be an object: {Payload}",
                     inputText);
                 return;
             }
@@ -154,7 +222,7 @@ public sealed class AutoStartNode : BaseNode
             if (!TryGetPropertyIgnoreCase(root, "MESSAGES", out var messages))
             {
                 _logger?.LogError(
-                    "AutoStart rejected input because the top-level MESSAGES property is missing: {Payload}",
+                    "Messages Dispatcher rejected input because the top-level MESSAGES property is missing: {Payload}",
                     inputText);
                 return;
             }
@@ -162,7 +230,7 @@ public sealed class AutoStartNode : BaseNode
             if (messages.ValueKind != JsonValueKind.Array)
             {
                 _logger?.LogError(
-                    "AutoStart rejected input because MESSAGES must be a JSON array: {Payload}",
+                    "Messages Dispatcher rejected input because MESSAGES must be a JSON array: {Payload}",
                     inputText);
                 return;
             }
@@ -170,7 +238,7 @@ public sealed class AutoStartNode : BaseNode
             if (messages.GetArrayLength() != 5)
             {
                 _logger?.LogError(
-                    "AutoStart rejected input because MESSAGES must contain exactly five records: {Payload}",
+                    "Messages Dispatcher rejected input because MESSAGES must contain exactly five records: {Payload}",
                     inputText);
                 return;
             }
@@ -182,7 +250,7 @@ public sealed class AutoStartNode : BaseNode
                 if (!TryReadMessage(message, index, out var parsed, out var messageError))
                 {
                     _logger?.LogError(
-                        "AutoStart rejected MESSAGES item {Index}: {Error}. Payload: {Payload}",
+                        "Messages Dispatcher rejected MESSAGES item {Index}: {Error}. Payload: {Payload}",
                         index,
                         messageError,
                         message.GetRawText());
@@ -195,7 +263,9 @@ public sealed class AutoStartNode : BaseNode
 
             if (!TryValidateSlotSet(parsedMessages, out var slotSetError))
             {
-                _logger?.LogError("AutoStart rejected MESSAGES slot set: {Error}.", slotSetError);
+                _logger?.LogError(
+                    "Messages Dispatcher rejected MESSAGES slot set: {Error}.",
+                    slotSetError);
                 return;
             }
 
@@ -206,7 +276,7 @@ public sealed class AutoStartNode : BaseNode
                 if (string.Equals(item.Status, "IDLE", StringComparison.OrdinalIgnoreCase))
                 {
                     _logger?.LogWarning(
-                        "AutoStart skipped SLOT {Slot} MESSAGES item {Index} because STATUS=IDLE; no output was dispatched.",
+                        "Messages Dispatcher skipped SLOT {Slot} MESSAGES item {Index} because STATUS=IDLE; no output was dispatched.",
                         item.Slot,
                         messageIndex);
                     continue;
@@ -233,7 +303,7 @@ public sealed class AutoStartNode : BaseNode
         if (readyPin is null)
         {
             _logger?.LogError(
-                "AutoStart could not map SLOT {Slot} from MESSAGES item {Index} to a ready output pin.",
+                "Messages Dispatcher could not map SLOT {Slot} from MESSAGES item {Index} to a ready output pin.",
                 slot,
                 index);
             return;
@@ -313,8 +383,14 @@ public sealed class AutoStartNode : BaseNode
         out string? error)
     {
         error = null;
+        if (messages.Count == 0)
+        {
+            error = "MESSAGES must contain exactly five records";
+            return false;
+        }
+
         var expectedStartSlot = messages[0].Slot <= 5 ? 1 : 6;
-        var seen = new bool[5];
+        var seenSlots = new bool[5];
         foreach (var message in messages)
         {
             if (message.Slot < expectedStartSlot || message.Slot > expectedStartSlot + 4)
@@ -324,18 +400,18 @@ public sealed class AutoStartNode : BaseNode
             }
 
             var slotIndex = message.Slot - expectedStartSlot;
-            if (seen[slotIndex])
+            if (seenSlots[slotIndex])
             {
-                error = $"SLOT {message.Slot} appears more than once";
+                error = $"MESSAGES contains SLOT {message.Slot} more than once";
                 return false;
             }
 
-            seen[slotIndex] = true;
+            seenSlots[slotIndex] = true;
         }
 
-        for (var index = 0; index < seen.Length; index++)
+        for (var index = 0; index < seenSlots.Length; index++)
         {
-            if (!seen[index])
+            if (!seenSlots[index])
             {
                 error = $"MESSAGES must contain SLOT {expectedStartSlot + index} exactly once";
                 return false;
@@ -351,13 +427,16 @@ public sealed class AutoStartNode : BaseNode
         if (startSink is null)
         {
             _logger?.LogWarning(
-                "AutoStart parsed a valid TEST business batch, but no IWorkflowStartRequestSink service is registered.");
+                "Messages Dispatcher parsed a valid TEST business batch, but no IWorkflowStartRequestSink service is registered.");
             return;
         }
 
         if (!startSink.RequestStart(Name, triggerMessage))
-            _logger?.LogTrace("AutoStart start request was not accepted by the host.");
+            _logger?.LogTrace("Messages Dispatcher start request was not accepted by the host.");
     }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     private BasePin? GetReadyPin(int slot) => slot switch
     {
@@ -416,10 +495,20 @@ public sealed class AutoStartNode : BaseNode
         return false;
     }
 
-    /// <summary>
-    /// Final application-exit hook. Runtime resources were already released by Stop; this node
-    /// currently has no additional process-exit cleanup.
-    /// </summary>
+    private void DisposeSubscriptions()
+    {
+        _launcherStartSubscription?.Dispose();
+        _launcherStartSubscription = null;
+    }
+
+    /// <summary>Final application-exit hook; runtime resources were already released by Stop.</summary>
     public override Task Shutdown(INodeContext context, CancellationToken ct = default)
-        => Task.CompletedTask;
+    {
+        Running = false;
+        DisposeSubscriptions();
+        _topicBus = null;
+        _logger = null;
+        _context = null;
+        return Task.CompletedTask;
+    }
 }

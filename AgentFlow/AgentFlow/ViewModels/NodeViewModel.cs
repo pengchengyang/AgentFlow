@@ -264,9 +264,9 @@ public partial class NodeViewModel : ViewModelBase
     {
         Model = model;
         DisplayName = model.Node.DisplayName ?? "";
-        // Match the sidebar icon color: accent/tint/pins all follow the node-name initial letter, not the category.
-        Accent = CategoryColors.AccentByInitial(Title);
-        AccentTint = CategoryColors.AccentTintByInitial(Title);
+        // Match the sidebar icon color: accent/tint/pins follow the stable node type name, not the editable display name.
+        Accent = CategoryColors.AccentByInitial(Model.Name);
+        AccentTint = CategoryColors.AccentTintByInitial(Model.Name);
 
         foreach (var pin in model.Inputs)
             Inputs.Add(new PinViewModel(this, pin));

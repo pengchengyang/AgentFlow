@@ -11,9 +11,10 @@ using Microsoft.Extensions.Logging;
 namespace Node.UserSettings;
 
 /// <summary>
-/// Parses the fixed AgentFlow user-settings INI file.
-/// Each section name is the dictionary key and every non-empty content line is
-/// stored as one value in the section's ordered value collection.
+/// Parses the AgentFlow user-settings INI shape and converts between section dictionaries
+/// and the array-valued JSON format emitted by <c>Node.ReadIniFile</c>.
+/// Each section name is the dictionary key and every non-empty content line is stored as one
+/// value in the section's ordered value collection.
 /// </summary>
 public sealed class UserSettingsParser
 {
@@ -121,10 +122,33 @@ public sealed class UserSettingsParser
     /// </summary>
     public bool TryFromJson(string? json, out IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
     {
+        if (!TryParseJson(json, out settings, out var error))
+        {
+            _logger?.LogError("Failed to parse UserSettings JSON: {Error}.", error);
+            return false;
+        }
+
+        Settings = settings;
+        _logger?.LogInformation(
+            "Parsed UserSettings JSON with {SectionCount} sections.",
+            settings.Count);
+        return true;
+    }
+
+    /// <summary>
+    /// Parses a JSON dictionary whose values are arrays of strings. The dictionary keys are
+    /// case-insensitive and each value preserves its original casing and order.
+    /// </summary>
+    public static bool TryParseJson(
+        string? json,
+        out IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
+        out string? error)
+    {
         settings = EmptySettings();
+        error = null;
         if (string.IsNullOrWhiteSpace(json))
         {
-            _logger?.LogError("Cannot parse UserSettings JSON because the payload is empty.");
+            error = "payload is empty";
             return false;
         }
 
@@ -133,7 +157,7 @@ public sealed class UserSettingsParser
             var raw = JsonSerializer.Deserialize<Dictionary<string, List<string>?>>(json);
             if (raw is null)
             {
-                _logger?.LogError("Cannot parse UserSettings JSON because the payload is null.");
+                error = "payload is null";
                 return false;
             }
 
@@ -153,20 +177,15 @@ public sealed class UserSettingsParser
                     values.AddRange(pair.Value);
             }
 
-            var parsed = merged.ToDictionary(
+            settings = merged.ToDictionary(
                 pair => pair.Key,
                 pair => (IReadOnlyList<string>)pair.Value.ToArray(),
                 StringComparer.OrdinalIgnoreCase);
-            Settings = parsed;
-            settings = parsed;
-            _logger?.LogInformation(
-                "Parsed UserSettings JSON with {SectionCount} sections.",
-                parsed.Count);
             return true;
         }
         catch (JsonException ex)
         {
-            _logger?.LogError(ex, "Failed to parse UserSettings JSON.");
+            error = ex.Message;
             return false;
         }
     }

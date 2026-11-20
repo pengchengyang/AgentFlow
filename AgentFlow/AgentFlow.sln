@@ -42,13 +42,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.FACTLogCollector", "Pl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.DatabaseWriter", "Plugins\Node.DatabaseWriter\Node.DatabaseWriter.csproj", "{33C89FE8-60DB-4C79-BC61-FA53496C4761}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.AutoStart", "Plugins\Node.AutoStart\Node.AutoStart.csproj", "{3E5456BD-DE6F-4F1D-99A3-152E8328C606}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.MessagesDispatcher", "Plugins\Node.MessagesDispatcher\Node.MessagesDispatcher.csproj", "{3E5456BD-DE6F-4F1D-99A3-152E8328C606}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.ProcessRunner", "Plugins\Node.ProcessRunner\Node.ProcessRunner.csproj", "{58936BED-3B90-0F00-7F1E-B54A6598756E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentFlow.Shared", "AgentFlow.Shared\AgentFlow.Shared.csproj", "{F4BE65DB-BE1C-4426-AFB1-7D989379BEFC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.AutoStop", "Plugins\Node.AutoStop\Node.AutoStop.csproj", "{E7881DF9-1E35-48E2-8162-E0BEB6109316}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.AutoRunStop", "Plugins\Node.AutoRunStop\Node.AutoRunStop.csproj", "{E7881DF9-1E35-48E2-8162-E0BEB6109316}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node.UserSettings", "Plugins\Node.UserSettings\Node.UserSettings.csproj", "{D5E23740-ACE8-4F26-874D-8D43A8E2085E}"
 EndProject

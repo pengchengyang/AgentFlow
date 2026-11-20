@@ -135,7 +135,7 @@ Batch Run 面板仍可以保留全局操作，例如：
 
 - 每行实例数量限制为 1–50；输入非法值在 Start 前自动归一化。
 - `MaxConcurrency=0` 表示整个 Batch 面板不限制并发；非零值由所有 Batch 行共享。
-- Batch 行级 `Start` 与工具栏 `Run` 使用相同的持久运行语义：启动后保持 Running，直到用户点击行级 `Stop`/`Stop All`、节点失败或 `AutoStop` 请求结束；Batch 不再把有限工作流在 Run 返回后自动完成。
+- Batch 行级 `Start` 与工具栏 `Run` 使用相同的持久运行语义：启动后保持 Running，直到用户点击行级 `Stop`/`Stop All`、节点失败或 `AutoRunStop` 请求结束；Batch 不再把有限工作流在 Run 返回后自动完成。
 - Stop/Shutdown 的节点级失败写入运行结果的 `CleanupError`；成功运行如果清理失败会显示为 Failed。
 - Batch 运行中禁用该行 `Open`，避免路径显示与实际运行内容不一致。
 - 排队中的实例可以被单独 Stop，并立即以 Cancelled 结果退出，不必等待其他实例释放并发名额。

@@ -8,13 +8,15 @@
 using System.Collections.Specialized;
 using System.Linq;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Media;
-using Avalonia.Threading;
+using Avalonia.Styling;
 using AgentFlow.Services;
 using AgentFlow.Core;
 using AgentFlow.ViewModels;
@@ -89,8 +91,50 @@ public sealed class GraphCanvas : Control
     private static readonly Color ColorConnecting = Color.Parse("#F59E0B");
     private static readonly Color ColorFailed = Color.Parse("#EF4444");
 
-    private readonly DispatcherTimer _spinTimer;
-    private double _spinAngle;   // current rotation (degrees) of the running indicators
+    /// <summary>Current rotation in degrees for every running or connecting node indicator.</summary>
+    public static readonly StyledProperty<double> SpinAngleProperty =
+        AvaloniaProperty.Register<GraphCanvas, double>(nameof(SpinAngle));
+
+    private static readonly Animation SpinAnimation = new()
+    {
+        Duration = TimeSpan.FromSeconds(6),
+        // Avalonia rejects RunAsync for infinite animations. Run one full rotation at a time
+        // and restart it while any node remains active.
+        IterationCount = new IterationCount(1),
+        PlaybackBehavior = PlaybackBehavior.Always,
+        Children =
+        {
+            new KeyFrame
+            {
+                Cue = new Cue(0d),
+                Setters =
+                {
+                    new Setter(SpinAngleProperty, 0d)
+                }
+            },
+            new KeyFrame
+            {
+                Cue = new Cue(1d),
+                Setters =
+                {
+                    new Setter(SpinAngleProperty, 360d)
+                }
+            }
+        }
+    };
+
+    private CancellationTokenSource? _spinAnimationCancellation;
+
+    static GraphCanvas()
+    {
+        AffectsRender<GraphCanvas>(SpinAngleProperty);
+    }
+
+    public double SpinAngle
+    {
+        get => GetValue(SpinAngleProperty);
+        private set => SetValue(SpinAngleProperty, value);
+    }
 
     // Hover tooltip state for a node title that was ellipsized (Plan A).
     private bool _hoverTitleActive;
@@ -116,9 +160,6 @@ public sealed class GraphCanvas : Control
 
     public GraphCanvas()
     {
-        _spinTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
-        _spinTimer.Tick += OnSpinTick;
-
         Focusable = true;
         ClipToBounds = true;
         DragDrop.SetAllowDrop(this, true);
@@ -133,25 +174,64 @@ public sealed class GraphCanvas : Control
                 vm.PropertyChanged += OnVmPropertyChanged;
             }
         };
+        AttachedToVisualTree += (_, _) => UpdateSpinAnimation();
+        DetachedFromVisualTree += (_, _) => StopSpinAnimation();
     }
 
     private CanvasViewModel? Vm => DataContext as CanvasViewModel;
 
     // ================= Running indicator animation =================
 
-    /// <summary>Advance the spin angle on each timer tick (only while a node is running).</summary>
-    private void OnSpinTick(object? sender, EventArgs e)
-    {
-        _spinAngle = (_spinAngle + 2.0) % 360;   // ~60°/s ≈ one rotation every 6s (slow, smooth)
-        InvalidateVisual();
-    }
-
-    /// <summary>Start the spinner while any node is executing or still starting up; stop when all are idle (avoids wasted redraws).</summary>
+    /// <summary>Start the spinner while any node is executing or still starting up; stop when all are idle.</summary>
     private void UpdateSpinAnimation()
     {
         bool anyActive = Vm?.Nodes.Any(n => n.Running || n.Connecting) ?? false;
-        if (anyActive && !_spinTimer.IsEnabled) _spinTimer.Start();
-        else if (!anyActive && _spinTimer.IsEnabled) _spinTimer.Stop();
+        if (anyActive && _spinAnimationCancellation is null)
+            StartSpinAnimation();
+        else if (!anyActive && _spinAnimationCancellation is not null)
+            StopSpinAnimation();
+    }
+
+    private void StartSpinAnimation()
+    {
+        var cancellation = new CancellationTokenSource();
+        _spinAnimationCancellation = cancellation;
+        _ = RunSpinAnimationAsync(cancellation);
+    }
+
+    private async Task RunSpinAnimationAsync(CancellationTokenSource cancellation)
+    {
+        var cancellationToken = cancellation.Token;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+                await SpinAnimation.RunAsync(this, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the workflow stops or the canvas leaves the visual tree.
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Spin animation stopped unexpectedly: {ex}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_spinAnimationCancellation, cancellation))
+                _spinAnimationCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+
+    private void StopSpinAnimation()
+    {
+        var cancellation = _spinAnimationCancellation;
+        if (cancellation is null)
+            return;
+
+        _spinAnimationCancellation = null;
+        cancellation.Cancel();
+        SetCurrentValue(SpinAngleProperty, 0d);
     }
 
     // ================= Layout =================
@@ -363,7 +443,7 @@ public sealed class GraphCanvas : Control
             : node.Connecting ? ColorConnecting
             : node.Failed || node.Started ? ColorFailed
             : ColorMuted;
-        var indicatorAngle = node.Running || node.Connecting ? _spinAngle : 0;
+        var indicatorAngle = node.Running || node.Connecting ? SpinAngle : 0;
         DrawRefreshIndicator(ctx, iconCenter, iconSize, indicatorColor, indicatorAngle);
 
         // Meta rows below the header tint: Name (type id) and DependsOn, both ellipsized to fit the card width.
@@ -1083,5 +1163,3 @@ public sealed class GraphCanvas : Control
             UpdateSpinAnimation();
     }
 }
-
-

@@ -5,7 +5,8 @@
 `Node.CFGConfimer` validates complete CFG protocol envelopes for the current local GUID and configured location.
 
 - `TYPE` equal to `BUSINESS` routes the validated `DATA.MESSAGES` payload through `output_string_messages`.
-- Any other `TYPE` routes the complete original envelope through `output_string_others`.
+- Any other `TYPE`, including `RUN` and `RUN_ACK`, routes the complete original envelope through
+  `output_string_others`.
 - Any validation failure logs an error and sets `Running = false`.
 
 Each transport frame carries exactly one envelope. `VERSION` and `SEQ` are ignored. Semicolons remain transport frame delimiters and are not interpreted inside the node.
@@ -47,11 +48,11 @@ A `BUSINESS` envelope is additionally checked for:
 - `DATA.MESSAGES` as exactly five records for the configured location: SLOT 1-5 for `CFG-1` and SLOT 6-10 for `CFG-2`.
 - Each record containing `SLOT`, `FSN`, `IMEI`, and `STATUS` (`IDLE` or `TEST`), with unique and complete slots.
 
-Timestamp comparison is performed in UTC. Equal, older, missing, or invalid timestamps are rejected. Successful BUSINESS output is wrapped as `{"MESSAGES":[...]}` so `Node.AutoStart` can continue parsing the array.
+Timestamp comparison is performed in UTC. Equal, older, missing, or invalid timestamps are rejected. Successful BUSINESS output is wrapped as `{"MESSAGES":[...]}` so `Node.MessagesDispatcher` can continue parsing the array.
 
 ### Other envelope types
 
-Non-`BUSINESS` envelopes do not require `DATA.MESSAGES` and are not compared against the BUSINESS timestamp cache. The complete original envelope is emitted as compact JSON through `output_string_others`.
+Non-`BUSINESS` envelopes do not require `DATA.MESSAGES` and are not compared against the BUSINESS timestamp cache. The complete original envelope is emitted as compact JSON through `output_string_others`. `RUN` is logged as a startup control message; `RUN_ACK` is handled by the CFG TCP client transport and is forwarded unchanged if it reaches this node.
 
 Any validation failure logs an `ERROR` and sets `Running = false`:
 

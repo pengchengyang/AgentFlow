@@ -129,7 +129,7 @@ The launcher publishes `CFGBroadcastSubscriptions.CFGLauncherSettings` using
 | `2` | `SLOT` | `_slot` |
 | `3` | `PORTHUB` | `_porthub` |
 
-`Node.AutoStop` owns the `CFGBroadcastSubscriptions.CFGLauncherStop` broadcast.
+`Node.AutoRunStop` owns the `CFGBroadcastSubscriptions.CFGLauncherStop` broadcast.
 
 ## Launcher Command Broadcast
 

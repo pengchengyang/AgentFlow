@@ -477,7 +477,7 @@ public abstract class BaseNode
 
         // New hierarchical layout: parameters.<Zone>.<Group> = [ params ].
         foreach (var zoneGroup in _nodeParameters
-                     .Where(p => !string.IsNullOrEmpty(p.Name))
+                     .Where(p => p.IsPersistent && !string.IsNullOrEmpty(p.Name))
                      .GroupBy(p => p.Zone ?? string.Empty))
         {
             var zoneKey = zoneGroup.Key;
@@ -595,6 +595,8 @@ public abstract class BaseNode
                                 p.Name == param.Key && (p.Group ?? string.Empty) == entry.Key);
                             if (np is null)
                                 continue;
+                            if (!np.IsPersistent)
+                                continue;
 
                             np.Value = TryConvertValue(param.Value, np.Type);
                         }
@@ -633,6 +635,11 @@ public abstract class BaseNode
                 np.Group = groupKey;
                 np.Zone = string.IsNullOrEmpty(zone) ? ReadString(obj, "zone", "Zone") : zone;
             }
+
+            // Runtime-only parameters are intentionally ignored even if an older document
+            // contains a same-named value.
+            if (!np.IsPersistent)
+                continue;
 
             if (ReadString(obj, "type", "Type") is string typeName &&
                 Type.GetType(typeName) is { } restoredType)

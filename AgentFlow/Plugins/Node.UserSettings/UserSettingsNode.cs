@@ -5,7 +5,6 @@
 // -----------------------------------------------------------------------
 
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using AgentFlow.Contracts;
 using BroadcastKit;
 using BroadcastKit.Contracts;
@@ -15,15 +14,12 @@ using Microsoft.Extensions.Logging;
 namespace Node.UserSettings;
 
 /// <summary>
-/// Loads the fixed INI file during initialization, validates and caches its GUID, broadcasts
-/// the non-GUID keyed settings snapshot for GUI consumers, and publishes runtime endpoint,
-/// SLOT, and one-time GUID outputs during Run.
+/// Receives the JSON dictionary produced by Node.ReadIniFile, validates and caches its GUID,
+/// broadcasts the non-GUID keyed settings snapshot for GUI consumers, and publishes runtime
+/// endpoint, SLOT, settings, and one-time GUID outputs.
 /// </summary>
 public sealed class UserSettingsNode : BaseNode
 {
-    private readonly BasePin _readyInputPin =
-        new("input_string_ready", DataType.STRING, PinDirection.Input, required: false);
-
     private readonly BasePin _settingsBroadcastInputPin =
         new("input_string_settings", DataType.STRING, PinDirection.Input, required: false);
 
@@ -55,8 +51,6 @@ public sealed class UserSettingsNode : BaseNode
 
     private readonly record struct SlotAssignment(int Slot, string PortHub);
 
-    private const string SettingsDirectory = @"C:\AC710\UserSettings";
-    private const string SettingsFilePath = @"C:\AC710\UserSettings\UserSettings.ini";
     private const string GuidSectionName = "GUID";
 
     private ILogger? _logger;
@@ -64,6 +58,7 @@ public sealed class UserSettingsNode : BaseNode
     private IReadOnlyDictionary<string, IReadOnlyList<string>>? _settings;
     private string? _guid;
     private bool _guidSent;
+    private bool _runtimeOutputsPublishedForCurrentSettings;
 
     public UserSettingsNode()
     {
@@ -87,7 +82,6 @@ public sealed class UserSettingsNode : BaseNode
 
     public override void AddPins()
     {
-        AddInputPin(_readyInputPin);
         AddInputPin(_settingsBroadcastInputPin);
         foreach (var outputPin in _slotOutputPins)
             AddOutputPin(outputPin);
@@ -119,33 +113,15 @@ public sealed class UserSettingsNode : BaseNode
     {
         _logger = context.Logger;
         _topicBus = ResolveTopicBus(context);
-
-        var parser = new UserSettingsParser(_logger, SettingsDirectory, SettingsFilePath);
-        if (!parser.TryLoad(out var settings))
-        {
-            _settings = null;
-            _guid = null;
-            _guidSent = false;
-            Running = false;
-            throw new InvalidOperationException(
-                $"UserSettings could not load the required settings file '{SettingsFilePath}'.");
-        }
-
-        if (!TryGetRequiredGuid(settings, out var guid))
-        {
-            _settings = null;
-            _guid = null;
-            _guidSent = false;
-            Running = false;
-            throw new InvalidOperationException(
-                $"UserSettings requires a valid GUID in section [{GuidSectionName}] of '{SettingsFilePath}'.");
-        }
-
-        _settings = settings;
-        _guid = guid;
+        _settings = null;
+        _guid = null;
         _guidSent = false;
-        PublishSettingsJson(settings);
-        await PublishInitializationSnapshotAsync(settings, ct).ConfigureAwait(false);
+        _runtimeOutputsPublishedForCurrentSettings = false;
+
+        _logger?.LogTrace(
+            "UserSettings awaits JSON settings from {Pin}; the node no longer reads an INI file directly.",
+            _settingsBroadcastInputPin.Name);
+        await Task.CompletedTask;
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
@@ -153,21 +129,20 @@ public sealed class UserSettingsNode : BaseNode
         _logger = context.Logger;
         _topicBus = ResolveTopicBus(context);
 
+        Running = true;
         if (_settings is not { } settings)
         {
-            Running = false;
-            throw new InvalidOperationException(
-                $"UserSettings has no initialized settings for '{SettingsFilePath}'.");
+            _logger?.LogInformation(
+                "UserSettings is running and waiting for settings JSON on {Pin}.",
+                _settingsBroadcastInputPin.Name);
+            return Task.CompletedTask;
         }
 
-        Running = true;
-        PublishEndpoint(settings);
-        PublishSettingsBySlot(settings);
-        PublishGuidOnce();
+        if (!_runtimeOutputsPublishedForCurrentSettings)
+            PublishRuntimeOutputs(settings);
         _logger?.LogTrace(
-            "UserSettings is running with profile {Profile} and cached settings from {FilePath}.",
-            Param("Profile").Value,
-            SettingsFilePath);
+            "UserSettings is running with profile {Profile} and received settings.",
+            Param("Profile").Value);
         return Task.CompletedTask;
     }
 
@@ -177,6 +152,7 @@ public sealed class UserSettingsNode : BaseNode
         _settings = null;
         _guid = null;
         _guidSent = false;
+        _runtimeOutputsPublishedForCurrentSettings = false;
         _topicBus = null;
         _logger = null;
         return Task.CompletedTask;
@@ -188,21 +164,6 @@ public sealed class UserSettingsNode : BaseNode
         {
             HandleSettingsBroadcast(value);
         }
-
-        if (ReferenceEquals(pin, _readyInputPin))
-        {
-            if (value is not StringSample { StringValue: { } inputText })
-            {
-                return;
-            }
-
-            _logger?.LogTrace(
-                "UserSettings received readiness input through {Pin} for profile {Profile}: {Input}. " +
-                "The settings JSON output is published during Initialize; runtime output pins are published during Run.",
-                pin.Name,
-                Param("Profile").Value,
-                inputText);
-        }
     }
 
     private void HandleSettingsBroadcast(Sample? value)
@@ -212,19 +173,47 @@ public sealed class UserSettingsNode : BaseNode
             _logger?.LogError(
                 "UserSettings rejected settings broadcast input through {Pin}: expected a non-empty STRING payload.",
                 _settingsBroadcastInputPin.Name);
+            ClearSettingsState();
+            Running = false;
             return;
         }
 
-        if (!TryParseSettingsDictionary(inputText, out var samplesByKey, out var error))
+        if (!UserSettingsParser.TryParseJson(inputText, out var settings, out var error))
         {
             _logger?.LogError(
                 "UserSettings rejected settings broadcast input through {Pin}: {Error}.",
                 _settingsBroadcastInputPin.Name,
                 error);
+            ClearSettingsState();
+            Running = false;
             return;
         }
 
-        _ = PublishSettingsDictionaryAsync(samplesByKey, inputText);
+        if (!TryGetRequiredGuid(settings, out var guid))
+        {
+            ClearSettingsState();
+            Running = false;
+            return;
+        }
+
+        _settings = settings;
+        _guid = guid;
+        _guidSent = false;
+        _runtimeOutputsPublishedForCurrentSettings = false;
+
+        if (Running)
+            PublishRuntimeOutputs(settings);
+
+        _ = PublishSettingsSnapshotAsync(settings, CancellationToken.None);
+        _ = PublishSettingsDictionaryAsync(CreateSamplesByKey(settings), inputText);
+    }
+
+    private void ClearSettingsState()
+    {
+        _settings = null;
+        _guid = null;
+        _guidSent = false;
+        _runtimeOutputsPublishedForCurrentSettings = false;
     }
 
     private async Task PublishSettingsDictionaryAsync(
@@ -250,61 +239,53 @@ public sealed class UserSettingsNode : BaseNode
         }
     }
 
-    private static bool TryParseSettingsDictionary(
-        string json,
-        out IReadOnlyDictionary<string, Sample> samplesByKey,
-        out string? error)
+    private static IReadOnlyDictionary<string, Sample> CreateSamplesByKey(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
     {
-        samplesByKey = new Dictionary<string, Sample>(StringComparer.Ordinal);
-        error = null;
-
-        JsonObject root;
-        try
+        var samples = new Dictionary<string, Sample>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in settings)
         {
-            if (JsonNode.Parse(json) is not JsonObject parsed)
+            if (IsGuidSection(pair.Key))
             {
-                error = "payload must be a JSON object containing string key/value pairs";
-                return false;
+                foreach (var rawValue in pair.Value)
+                {
+                    if (string.IsNullOrWhiteSpace(rawValue))
+                        continue;
+
+                    var separatorIndex = rawValue.LastIndexOf('=');
+                    var key = separatorIndex > 0
+                        ? rawValue[..separatorIndex].Trim()
+                        : GuidSectionName;
+                    var value = separatorIndex >= 0
+                        ? rawValue[(separatorIndex + 1)..].Trim()
+                        : rawValue.Trim();
+                    if (key.Length == 0 || value.Length == 0)
+                        continue;
+
+                    AddSample(samples, key, value);
+                }
+
+                continue;
             }
 
-            root = parsed;
-        }
-        catch (JsonException ex)
-        {
-            error = $"invalid JSON: {ex.Message}";
-            return false;
-        }
+            var text = pair.Value.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            if (text is null)
+                continue;
 
-        if (root.Count == 0)
-        {
-            error = "payload dictionary must contain at least one entry";
-            return false;
+            AddSample(samples, pair.Key, text);
         }
 
-        var samples = new Dictionary<string, Sample>(StringComparer.Ordinal);
-        foreach (var pair in root)
-        {
-            if (string.IsNullOrWhiteSpace(pair.Key))
-            {
-                error = "dictionary keys cannot be empty";
-                return false;
-            }
+        return samples;
+    }
 
-            if (pair.Value is not JsonValue jsonValue ||
-                !jsonValue.TryGetValue<string>(out var text) ||
-                string.IsNullOrWhiteSpace(text))
-            {
-                error = $"dictionary value for key '{pair.Key}' must be a non-empty string";
-                return false;
-            }
-
-            var sample = StringSample.CreateSample();
-            sample.SetValue(text, pair.Key);
-            samples[pair.Key] = sample;
-        }
-
-        samplesByKey = samples;
-        return true;
+    private static void AddSample(
+        IDictionary<string, Sample> samples,
+        string key,
+        string value)
+    {
+        var sample = StringSample.CreateSample();
+        sample.SetValue(value, key);
+        samples[key] = sample;
     }
 
     private void PublishSettingsJson(
@@ -326,6 +307,17 @@ public sealed class UserSettingsNode : BaseNode
             "UserSettings settings JSON",
             LogLevel.Information);
     }
+
+    private void PublishRuntimeOutputs(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
+    {
+        PublishSettingsJson(settings);
+        PublishEndpoint(settings);
+        PublishSettingsBySlot(settings);
+        PublishGuidOnce();
+        _runtimeOutputsPublishedForCurrentSettings = true;
+    }
+
     private void PublishEndpoint(
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
     {
@@ -396,7 +388,7 @@ public sealed class UserSettingsNode : BaseNode
         }
     }
 
-    private async Task PublishInitializationSnapshotAsync(
+    private async Task PublishSettingsSnapshotAsync(
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
         CancellationToken ct)
     {
@@ -426,16 +418,16 @@ public sealed class UserSettingsNode : BaseNode
 
             var broadcastJson = JsonSerializer.Serialize(GetSettingsWithoutGuid(settings));
             _logger?.LogInformation(
-                "UserSettings published initialization settings JSON to launcher settings broadcast: {Json}",
+                "UserSettings published settings JSON to launcher settings broadcast: {Json}",
                 broadcastJson);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            _logger?.LogDebug("UserSettings initialization settings broadcast was canceled.");
+            _logger?.LogDebug("UserSettings settings snapshot broadcast was canceled.");
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "UserSettings failed to publish initialization settings to launcher settings broadcast.");
+            _logger?.LogError(ex, "UserSettings failed to publish settings snapshot to launcher settings broadcast.");
         }
     }
 
@@ -527,36 +519,45 @@ public sealed class UserSettingsNode : BaseNode
         if (!settings.TryGetValue(GuidSectionName, out var values) || values.Count == 0)
         {
             _logger?.LogError(
-                "UserSettings requires section [{Section}] in '{FilePath}', but the section is missing or empty.",
-                GuidSectionName,
-                SettingsFilePath);
+                "UserSettings requires section [{Section}] in the received settings JSON, but the section is missing or empty.",
+                GuidSectionName);
             return false;
         }
 
         var rawGuid = values
-            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-            ?.Trim();
+            .Select(ExtractGuidCandidate)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
         if (rawGuid is null)
         {
             _logger?.LogError(
-                "UserSettings requires a non-empty GUID value in section [{Section}] of '{FilePath}'.",
-                GuidSectionName,
-                SettingsFilePath);
+                "UserSettings requires a non-empty GUID value in section [{Section}] of the received settings JSON.",
+                GuidSectionName);
             return false;
         }
 
         if (!Guid.TryParse(rawGuid, out var parsedGuid))
         {
             _logger?.LogError(
-                "UserSettings rejected GUID value {Guid} in section [{Section}] of '{FilePath}' because the format is invalid.",
+                "UserSettings rejected GUID value {Guid} in section [{Section}] of the received settings JSON because the format is invalid.",
                 rawGuid,
-                GuidSectionName,
-                SettingsFilePath);
+                GuidSectionName);
             return false;
         }
 
         guid = parsedGuid.ToString("D").ToUpperInvariant();
         return true;
+    }
+
+    private static string? ExtractGuidCandidate(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+            return null;
+
+        var value = rawValue.Trim();
+        var separatorIndex = value.LastIndexOf('=');
+        return separatorIndex >= 0
+            ? value[(separatorIndex + 1)..].Trim()
+            : value;
     }
 
     private void PublishGuidOnce()
@@ -573,8 +574,8 @@ public sealed class UserSettingsNode : BaseNode
 
         if (_guidOutputPin.TargetCount == 0)
         {
-            _logger?.LogError(
-                "UserSettings failed to publish GUID {Guid} because output pin {Pin} is not connected.",
+            _logger?.LogTrace(
+                "UserSettings skipped GUID {Guid} because optional output pin {Pin} is not connected.",
                 _guid,
                 _guidOutputPin.Name);
             return;

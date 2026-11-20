@@ -614,7 +614,7 @@ public sealed partial class RunManagerViewModel : ViewModelBase
                 FailurePolicy,
                 // Keep Batch Start semantics aligned with the toolbar Run command: starting a
                 // workflow means leaving it Running until the user stops it, a node fails, or an
-                // AutoStop node requests shutdown. Do not let a finite-looking graph complete and
+                // Auto Run Stop node requests shutdown. Do not let a finite-looking graph complete and
                 // tear itself down immediately just because no node overrides RequiresPersistentHost.
                 WorkflowRunMode.Persistent);
             _statusSink($"Starting workflow row '{item.DisplayName}' with {requests.Count} instance(s)...");

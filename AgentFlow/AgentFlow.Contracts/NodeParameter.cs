@@ -29,6 +29,12 @@ public sealed class NodeParameter
     public bool IsEditable { get; set; }
 
     /// <summary>
+    /// Whether this parameter is written to workflow JSON. Runtime-only parameters remain visible
+    /// in the parameter dialog but are skipped by <see cref="BaseNode.SerializeParameters"/>.
+    /// </summary>
+    public bool IsPersistent { get; set; } = true;
+
+    /// <summary>
     /// Zone identifier: the top-level section this parameter belongs to. Zones form the
     /// left-hand navigation list of the parameter dialog; each zone owns one or more
     /// <see cref="Group"/> sections. Null or empty means the default zone.
@@ -68,6 +74,7 @@ public sealed class NodeParameter
     /// <param name="zone">Top-level section (dialog left-hand list); null/empty = default zone.</param>
     /// <param name="editor">Editor hint for the property dialog.</param>
     /// <param name="options">Choices for a select-style editor.</param>
+    /// <param name="isPersistent">Whether the parameter is serialized into the workflow document.</param>
     public NodeParameter(
         string name,
         Type type,
@@ -76,12 +83,14 @@ public sealed class NodeParameter
         string? group = null,
         string? zone = null,
         ParameterEditorKind editor = ParameterEditorKind.Auto,
-        IReadOnlyList<string>? options = null)
+        IReadOnlyList<string>? options = null,
+        bool isPersistent = true)
     {
         Name = name;
         Type = type;
         Value = value;
         IsEditable = isEditable;
+        IsPersistent = isPersistent;
         Zone = zone;
         Group = group;
         Editor = editor;

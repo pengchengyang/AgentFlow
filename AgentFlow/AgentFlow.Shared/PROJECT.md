@@ -47,26 +47,29 @@ containing C# types are renamed.
   - Carries the parsed key/value dictionary as `BroadcastTopicMessage.SamplesByKey`,
     with one string sample per key.
 - `CFGBroadcastSubscriptions.CFGUserSettingsGuid`: `CFG.UserSettings.Guid.D7D7367B-61A4-4CE7-B41B-E2E1E4B55F91`
-  - Published by `Node.UserSettings` when `input_string_settings` receives a JSON dictionary.
-  - Carries the dictionary as `BroadcastTopicMessage.SamplesByKey`, with one string sample per key.
+  - Published by `Node.UserSettings` when `input_string_settings` receives the JSON dictionary
+    produced by `Node.ReadIniFile`.
+  - Carries the accepted settings as `BroadcastTopicMessage.SamplesByKey`, with one representative
+    string sample per key. GUID values use their raw GUID as the key unless the input uses a
+    `NAME=GUID` form.
 - `CFGBroadcastSubscriptions.CFGLauncherSettings`: `FACT.Launcher.Settings.48D865B9-AB18-4DD0-A7A8-0F79D63EEDBB`
   - Used to exchange launcher settings between nodes and GUI hosts.
-  - `Node.UserSettings` publishes the complete keyed initialization snapshot during
-    `Initialize`; `Node.FACTLauncher` publishes its current launcher settings.
+  - `Node.UserSettings` publishes the complete keyed settings snapshot after receiving valid
+    JSON from `Node.ReadIniFile`; `Node.FACTLauncher` publishes its current launcher settings.
   - Both publishing and subscribing code must reference this shared constant instead of
     duplicating the literal string.
 - `CFGBroadcastSubscriptions.CFGLauncherStart`: `FACT.Launcher.Start.660079D0-4F28-4B98-8C7D-81EF060AC9DD`
   - Used as the request topic for a launcher start command.
 - `CFGBroadcastSubscriptions.CFGLauncherStartReply`: `FACT.Launcher.Start.Reply.C394EB3B-0382-45B2-A27A-91E82FD37917`
   - Used by launcher instances to send correlated start confirmations.
-- `CFGLauncherStartSignals.CFGRequest`: `Start`
-  - Shared request payload value.
-- `CFGLauncherStartSignals.CFGStarted`: `Started`
-  - Shared successful reply payload value.
+- `CFGLauncherStartSignals.CFGRequest`: `Run.5E789207-406A-482B-8362-FE093FE615A4`
+  - Shared launcher run-request payload value.
+- `CFGLauncherStartSignals.CFGStarted`: `Running.AD263DB8-07E0-46C6-A506-A1D18E42F4B7`
+  - Shared successful running-state reply payload value.
 - `CFGBroadcastSubscriptions.CFGLauncherStop`: `FACT.Launcher.Stop.628779B8-57FF-407F-B252-FD9C448B67CC`
   - Shared launcher stop topic retained for workflow-control components.
 - `CFGBroadcastSubscriptions.CFGAutoStopExit`: `Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8`
-  - Published by `Node.AutoStop` when its complete input string parses as a JSON object with
+  - Published by `Node.AutoRunStop` when its complete input string parses as a JSON object with
     top-level string property `TYPE` set exactly to `DISCONNECT`.
   - Carries one `StringSample` with value `{"Request":"Stop"}`.
 - `CFGBroadcastSubscriptions.CFGLauncherCommand`: `FACT.Launcher.Command.C3578D71-A049-43B8-AFE1-2482C1D0FFDD`

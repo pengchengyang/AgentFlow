@@ -33,7 +33,7 @@ public static class CFGBroadcastSubscriptions
     /// <summary>Subscription used to publish parsed PRI file settings as a keyed Sample dictionary.</summary>
     public const string CFGPriFileSettings = "Pri.File.Settings.00850D6A-1F19-4040-B2D2-BA4E3E8E0F93";
 
-    /// <summary>Subscription used to broadcast the Auto Stop exit JSON payload.</summary>
+    /// <summary>Subscription used by Node.AutoRunStop to broadcast the stop request payload.</summary>
     public const string CFGAutoStopExit = "Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8";
 
     /// <summary>Subscription used to publish pass, fail, total, and yield values.</summary>
@@ -43,6 +43,6 @@ public static class CFGBroadcastSubscriptions
 /// <summary>Shared payload values for the launcher start request/reply protocol.</summary>
 public static class CFGLauncherStartSignals
 {
-    public const string CFGRequest = "Start";
-    public const string CFGStarted = "Started";
+    public const string CFGRequest = "Run.5E789207-406A-482B-8362-FE093FE615A4";
+    public const string CFGStarted = "Running.AD263DB8-07E0-46C6-A506-A1D18E42F4B7";
 }

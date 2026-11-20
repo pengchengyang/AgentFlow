@@ -15,6 +15,8 @@ internal static class ProtocolConstants
     public const string Auth = "AUTH";
     public const string AuthOk = "AUTH_OK";
     public const string AuthFail = "AUTH_FAIL";
+    public const string Run = "RUN";
+    public const string RunAck = "RUN_ACK";
     public const string Business = "BUSINESS";
     public const string Ping = "PING";
     public const string Pong = "PONG";

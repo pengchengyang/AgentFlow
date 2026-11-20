@@ -406,8 +406,21 @@ public sealed class CFGTcpClientNode : BaseNode
             return;
         }
 
-        if (!ProtocolMessage.TryParseObject(text.StringValue, out var input, out var error) ||
-            !ProtocolMessage.TryCreateBusinessTemplate(input, out var data, out error))
+        if (!ProtocolMessage.TryParseObject(text.StringValue, out var input, out var error))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFG TCP client rejected message input: {Error}.", error);
+            return;
+        }
+
+        if (ProtocolMessage.TryGetString(input, ProtocolConstants.Type, out var inputType) &&
+            string.Equals(inputType, ProtocolConstants.RunAck, StringComparison.OrdinalIgnoreCase))
+        {
+            HandleProtocolEnvelopeInput(input, inputType);
+            return;
+        }
+
+        if (!ProtocolMessage.TryCreateBusinessTemplate(input, out var data, out error))
         {
             Interlocked.Increment(ref _droppedFrames);
             _logger?.LogError("CFG TCP client rejected business input: {Error}.", error);
@@ -831,13 +844,21 @@ public sealed class CFGTcpClientNode : BaseNode
                 _lastReceivedUtc = DateTimeOffset.UtcNow;
 
                 if (string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase))
+                {
                     _logger?.LogTrace("CFG TCP client received PONG for GUID={Guid}.", _clientGuid);
+                }
                 else if (string.Equals(type, ProtocolConstants.AuthFail, StringComparison.OrdinalIgnoreCase))
+                {
                     throw new IOException("server sent AUTH_FAIL after authentication");
+                }
                 else if (IsControlEnvelopeType(type))
+                {
                     _logger?.LogTrace("CFG TCP client ignored control TYPE {Type}.", type);
+                }
                 else
+                {
                     PublishMessageEnvelope(frame, type);
+                }
             }
         }
     }
@@ -913,6 +934,68 @@ public sealed class CFGTcpClientNode : BaseNode
         {
             _writeLock.Release();
         }
+    }
+
+    private void HandleProtocolEnvelopeInput(JsonObject envelope, string type)
+    {
+        var channel = _sendChannel;
+        if (channel is null)
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFG TCP client ignored protocol input before initialization.");
+            return;
+        }
+
+        if (!ProtocolMessage.TryValidateEnvelope(envelope, out var error, requireLocation: true))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFG TCP client rejected {Type} input: {Error}.", type, error);
+            return;
+        }
+
+        if (!ProtocolMessage.TryGetGuid(envelope, ProtocolConstants.Guid, out var guid) ||
+            !string.Equals(guid, _clientGuid, StringComparison.Ordinal))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFG TCP client rejected {Type} input with mismatched GUID.", type);
+            return;
+        }
+
+        if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Location, out var location) ||
+            !string.Equals(ProtocolMessage.NormalizeLocation(location), _location, StringComparison.Ordinal))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError(
+                "CFG TCP client rejected {Type} input with mismatched LOCATION {Location}; expected {Expected}.",
+                type,
+                location,
+                _location);
+            return;
+        }
+
+        if (!ProtocolMessage.TryGetString(envelope, ProtocolConstants.Version, out var version) ||
+            !string.Equals(version, _protocolVersion, StringComparison.Ordinal))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFG TCP client rejected {Type} input with mismatched VERSION.", type);
+            return;
+        }
+
+        var clonedEnvelope = envelope.DeepClone().AsObject();
+        if (!channel.Writer.TryWrite(clonedEnvelope))
+        {
+            Interlocked.Increment(ref _droppedFrames);
+            _logger?.LogError("CFG TCP client send queue is full; {Type} frame was dropped.", type);
+            return;
+        }
+
+        Interlocked.Increment(ref _cachedFrames);
+        _logger?.LogInformation(
+            "CFG TCP client queued {Type} for GUID={Guid}, LOCATION={Location}, SEQ={Sequence}.",
+            type,
+            _clientGuid,
+            _location,
+            ProtocolMessage.Get(envelope, ProtocolConstants.Sequence)?.ToJsonString() ?? "?");
     }
 
     private void PublishMessageEnvelope(string frame, string type)

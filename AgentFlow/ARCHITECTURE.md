@@ -90,7 +90,7 @@ Pin 的 `ConnectedPin` 引用中，节点之间不直接持有彼此。
 
 ### 4.4 多实例运行管理
 
-Core 提供 `WorkflowRunManager` 和 `WorkflowRunSession`，用于在同一进程内运行多个独立工作流实例。每个 Session 拥有独立的 `NodeRegistryScope`、外部 Worker Runtime、`TopicBus` 广播实例、NodeServiceRegistry、WorkflowGraph、Node 实例、CancellationToken、日志工厂以及最终结果；实例之间不会共享运行中的节点对象、外部 Worker 进程或广播订阅。Batch Run 的 `AutoStop` 只请求当前 RunId 停止，不会隐式取消整批。
+Core 提供 `WorkflowRunManager` 和 `WorkflowRunSession`，用于在同一进程内运行多个独立工作流实例。每个 Session 拥有独立的 `NodeRegistryScope`、外部 Worker Runtime、`TopicBus` 广播实例、NodeServiceRegistry、WorkflowGraph、Node 实例、CancellationToken、日志工厂以及最终结果；实例之间不会共享运行中的节点对象、外部 Worker 进程或广播订阅。Batch Run 的 `AutoRunStop` 只请求当前 RunId 停止，不会隐式取消整批。
 
 默认失败策略是 `ContinueOthers`：一个实例失败只记录自身失败，不影响其他实例。CLI 通过该共享运行管理器启动同一工作流的多实例或不同工作流的混合批次，并在 Ctrl+C 时请求所有实例执行 Stop/Shutdown 后统一汇总退出状态。
 
@@ -98,7 +98,7 @@ Desktop 明确区分两种运行模式：工具栏 `Editor Run` 用于画布内�
 
 每个实例日志使用 `RunId` 标签写入 UI 日志面板；Log 面板支持按 RunId 或前缀筛选，并为每个 RunId 单独保留最近 50 条 ERROR 日志。关闭窗口时 Desktop 会同时等待编辑器运行和所有批量实例完成 Stop/Shutdown 后再退出。Stop/Shutdown 的节点级失败会进入 `CleanupError`，成功运行如果清理失败会降级为 Failed，避免资源泄漏被静默忽略。
 
-自动化集成测试覆盖同工作流/不同工作流多实例、失败隔离、StopAll、广播隔离、AutoStop 仅停止当前实例、单批与跨管理器全局并发限制、10 实例压力运行、排队实例 Stop、Auto 有限工作流、清理失败上报及 StopAll 旧结果清理；同时实际启动 Python、C、C++ 外部节点各自 3 个实例，验证每组实例拥有独立的 Worker 进程、各自产生双输入/双输出结果且互不共享。
+自动化集成测试覆盖同工作流/不同工作流多实例、失败隔离、StopAll、广播隔离、AutoRunStop 仅停止当前实例、单批与跨管理器全局并发限制、10 实例压力运行、排队实例 Stop、Auto 有限工作流、清理失败上报及 StopAll 旧结果清理；同时实际启动 Python、C、C++ 外部节点各自 3 个实例，验证每组实例拥有独立的 Worker 进程、各自产生双输入/双输出结果且互不共享。
 
 CLI 支持多工作流、多实例、全局 `--max-concurrency`、`--failure-policy ContinueOthers|CancelBatch`、`--run-mode RunOnce|Auto|Persistent`，并可通过 `--output-json` 输出包含 RunId、状态、时间、ExitCode、Error、CleanupError 和 EffectiveError 的稳定 JSON 结果。退出码约定为：0 全部成功；1 至少一个失败或取消；2 参数错误；130 Ctrl+C。
 ### 4.5 分层序列化

@@ -2,16 +2,18 @@
 
 ## Purpose
 
-`Node.CFGSHandler` converts an upper-workflow `SLOT`/`FSN`/`IMEI` batch into two complete
-CFGS `BUSINESS` envelopes, one for `CFG-1` slots 1-5 and one for `CFG-2` slots 6-10. Launch,
-stop, and confirmation pin behavior remains reserved for future CFGS control flow.
+`Node.CFGSHandler` converts an upper-workflow `SLOT`/`FSN`/`IMEI` batch into CFGS startup control
+and `BUSINESS` envelopes. The first non-empty batch sends one `RUN` envelope to each configured
+CFG, then sends `BUSINESS` to the groups that contain test data. `RUN_ACK` messages received
+through `in_str_raw_from_cfg` are validated and logged. Launch, stop, and confirmation pin behavior
+remains reserved for future CFGS control flow.
 
 ## Contract Surface
 
 - Display name: `CFGS Handler`
 - Category: `Protocol`
 - Input pins:
-  - `in_str_raw_from_cfg` (`STRING`, optional, reserved)
+  - `in_str_raw_from_cfg` (`STRING`, optional): accepts complete CFG envelopes and consumes `RUN_ACK`.
   - `in_str_from_upper` (`STRING`, optional)
   - `in_str_user_settings` (`STRING`, optional)
   - `in_int64_cfgstart_ret` (`INT64`, optional, reserved)
@@ -63,6 +65,10 @@ node when either GUID has not been supplied.
 
 ## Output
 
+Before the first accepted batch is sent, the node emits one `TYPE=RUN` envelope for `CFG-1` and
+one for `CFG-2`, using the configured GUIDs and locations. `RUN` is sent only once until the node
+is stopped, reinitialized, or receives a different GUID mapping.
+
 Each accepted batch builds two fixed five-record `DATA.MESSAGES` arrays:
 
 - `CFG-1`: slots `1` through `5`
@@ -74,9 +80,11 @@ whose five records are all `IDLE` is not sent. Non-empty groups are sent in orde
 
 ## Lifecycle
 
-`Initialize` resets cached GUIDs and sequence counters. `Run` sets `Running = true`. `Stop`
-sets `Running = false` and clears runtime-only state. Validation failures also set
-`Running = false` as defined above.
+`Initialize` resets cached GUIDs, sequence counters, and RUN acknowledgement state. `Run`
+sets `Running = true`. `Stop` sets `Running = false` and clears runtime-only state. Validation
+failures also set `Running = false` as defined above. A valid `RUN_ACK` must match the configured
+GUID and location and carry `DATA.RESULT=OK`; success and failure are logged at information
+and error level respectively.
 
 ## Build
 

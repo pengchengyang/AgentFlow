@@ -389,6 +389,8 @@ public sealed class CFGSTcpServerNode : BaseNode
 
         var requiresLocation =
             string.Equals(type, ProtocolConstants.Business, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, ProtocolConstants.Run, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(type, ProtocolConstants.RunAck, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(type, ProtocolConstants.Ping, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(type, ProtocolConstants.Pong, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(type, ProtocolConstants.AuthOk, StringComparison.OrdinalIgnoreCase) ||

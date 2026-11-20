@@ -215,7 +215,7 @@ internal sealed class WorkflowRunSession : IWorkflowStopRequestSink
 
                 await engine.StartAsync(graph, _stopCts.Token).ConfigureAwait(false);
                 logger.LogInformation(
-                    "Persistent workflow instance {RunId} started; waiting for Stop or Auto Stop.",
+                    "Persistent workflow instance {RunId} started; waiting for Stop or Auto Run Stop.",
                     RunId);
 
                 await WaitForPersistentRunEndAsync(engine, _stopCts.Token).ConfigureAwait(false);

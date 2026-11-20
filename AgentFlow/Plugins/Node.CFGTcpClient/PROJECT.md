@@ -11,7 +11,7 @@ while disconnected, and transports complete JSON envelopes inside the shared `;J
 | Pin | Direction | Type | Behavior |
 | --- | --- | --- | --- |
 | `input_string_endpoint` | Input | STRING | Runtime `host:port` target. In `WaitForEndpoint` mode the first valid value starts connecting; later values reconnect. It does not modify persisted `ServerHost` or `ServerPort`. |
-| `input_string_message` | Input | STRING | Accepts a BUSINESS JSON object with a `DATA` object. The client stamps its own GUID, authenticated LOCATION, VERSION, SEQ, and TIMESTAMP, and validates the one-to-five-record `MESSAGES` contract. |
+| `input_string_message` | Input | STRING | Accepts either a BUSINESS JSON object with a `DATA` object or a complete `RUN_ACK` protocol envelope. BUSINESS input is stamped and validated by the client; `RUN_ACK` is validated against the authenticated session and queued unchanged. |
 | `output_string_message` | Output | STRING | Emits the original complete JSON envelope for every authenticated TYPE except `AUTH`, `AUTH_OK`, `AUTH_FAIL`, `PING`, and `PONG`. `DATA.MESSAGES` is neither extracted nor used as a forwarding gate. |
 
 ## Identity
@@ -56,6 +56,8 @@ connections, failed `AUTH` attempts, and reconnect delays.
 - Inbound envelopes with a different GUID or LOCATION are ignored.
 - Business input must contain one to five records for the configured LOCATION. `CFG-1` uses SLOT 1-5 and `CFG-2` uses SLOT 6-10. Slots must be unique within one envelope but do not need to cover the full range. Each record contains SLOT, FSN, IMEI, and STATUS; STATUS is IDLE, TEST, OK, or NG.
 - Every authenticated received envelope whose TYPE is not `AUTH`, `AUTH_OK`, `AUTH_FAIL`, `PING`, or `PONG` is forwarded unchanged to `output_string_message`. The node does not require `DATA.MESSAGES` to exist for forwarding.
+- A valid `RUN` is forwarded unchanged to `output_string_message`; the client does not generate `RUN_ACK` itself.
+- `RUN_ACK` produced by AutoRunStop is accepted on `input_string_message`, validated against the current GUID, LOCATION, VERSION, and protocol envelope shape, then sent unchanged to CFGS.
 - Connection state is published on `CFGSTcpProtocolBroadcasts.CFGTcpClientConnectionStatus`.
 
 ## Build

@@ -19,6 +19,7 @@ namespace Node.CFGConfimer;
 /// </summary>
 public sealed class CFGConfimerNode : BaseNode
 {
+    private const string RunType = "RUN";
     private const string BusinessType = "BUSINESS";
 
     private readonly object _stateGate = new();
@@ -307,6 +308,13 @@ public sealed class CFGConfimerNode : BaseNode
 
     private void ProcessOtherMessage(JsonObject envelope, string type)
     {
+        if (string.Equals(type, RunType, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger?.LogInformation(
+                "CFG Confimer received RUN startup control for LOCATION {Location}; forwarding the original envelope.",
+                Get(envelope, "LOCATION")?.ToJsonString() ?? "<unknown>");
+        }
+
         var json = JsonSerializer.Serialize(envelope);
         var sample = StringSample.CreateSample();
         sample.SetValue(json, OthersOutputPin.Name);

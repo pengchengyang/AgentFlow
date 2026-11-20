@@ -13,11 +13,13 @@ using Microsoft.Extensions.Logging;
 namespace Node.CFGSHandler;
 
 /// <summary>
-/// Builds the CFG-1 and CFG-2 BUSINESS envelopes from SLOT/FSN/IMEI batches received from the
-/// upper workflow. Launch and stop pin behavior remains reserved for a later implementation.
+/// Builds the CFG-1 and CFG-2 startup and BUSINESS envelopes from SLOT/FSN/IMEI batches received
+/// from the upper workflow. Launch and stop pin behavior remains reserved for a later implementation.
 /// </summary>
 public sealed class CFGSHandlerNode : BaseNode
 {
+    private const string RunType = "RUN";
+    private const string RunAckType = "RUN_ACK";
     private const string BusinessType = "BUSINESS";
     private const string ProtocolVersion = "1.0";
     private const string Cfg1Location = "CFG-1";
@@ -63,6 +65,10 @@ public sealed class CFGSHandlerNode : BaseNode
     private string? _cfg2Guid;
     private long _cfg1Sequence;
     private long _cfg2Sequence;
+    private bool _cfg1RunSent;
+    private bool _cfg2RunSent;
+    private bool _cfg1RunAckReceived;
+    private bool _cfg2RunAckReceived;
 
     private sealed record SlotIdentity(int Slot, string Fsn, string Imei)
     {
@@ -107,6 +113,10 @@ public sealed class CFGSHandlerNode : BaseNode
         _cfg2Guid = null;
         _cfg1Sequence = 0;
         _cfg2Sequence = 0;
+        _cfg1RunSent = false;
+        _cfg2RunSent = false;
+        _cfg1RunAckReceived = false;
+        _cfg2RunAckReceived = false;
         return Task.CompletedTask;
     }
 
@@ -128,7 +138,11 @@ public sealed class CFGSHandlerNode : BaseNode
         if (ReferenceEquals(pin, _userSettingsInputPin))
         {
             HandleUserSettings(value);
+            return;
         }
+
+        if (ReferenceEquals(pin, _rawFromCfgInputPin))
+            HandleCfgMessage(value);
     }
 
     public override Task Stop(INodeContext context, CancellationToken ct = default)
@@ -138,6 +152,10 @@ public sealed class CFGSHandlerNode : BaseNode
         _cfg2Guid = null;
         _cfg1Sequence = 0;
         _cfg2Sequence = 0;
+        _cfg1RunSent = false;
+        _cfg2RunSent = false;
+        _cfg1RunAckReceived = false;
+        _cfg2RunAckReceived = false;
         return Task.CompletedTask;
     }
 
@@ -160,6 +178,10 @@ public sealed class CFGSHandlerNode : BaseNode
 
         _cfg1Guid = cfg1Guid;
         _cfg2Guid = cfg2Guid;
+        _cfg1RunSent = false;
+        _cfg2RunSent = false;
+        _cfg1RunAckReceived = false;
+        _cfg2RunAckReceived = false;
         _logger?.LogInformation(
             "CFGS Handler cached CFG GUIDs: CFG-1={Cfg1Guid}, CFG-2={Cfg2Guid}.",
             _cfg1Guid,
@@ -207,47 +229,71 @@ public sealed class CFGSHandlerNode : BaseNode
             return;
         }
 
+        EnsureRunSent();
+
         var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
         if (cfg1HasTestData)
         {
-            var envelope = CreateEnvelope(
+            var envelope = CreateBusinessEnvelope(
                 _cfg1Guid,
                 Cfg1Location,
                 ++_cfg1Sequence,
                 timestamp,
                 cfg1Messages);
-            SendEnvelope(envelope, Cfg1Location);
+            SendEnvelope(envelope, Cfg1Location, BusinessType);
         }
 
         if (cfg2HasTestData)
         {
-            var envelope = CreateEnvelope(
+            var envelope = CreateBusinessEnvelope(
                 _cfg2Guid,
                 Cfg2Location,
                 ++_cfg2Sequence,
                 timestamp,
                 cfg2Messages);
-            SendEnvelope(envelope, Cfg2Location);
+            SendEnvelope(envelope, Cfg2Location, BusinessType);
         }
     }
 
-    private void SendEnvelope(JsonObject envelope, string location)
+    private void EnsureRunSent()
+    {
+        if (!_cfg1RunSent)
+            _cfg1RunSent = SendRun(_cfg1Guid!, Cfg1Location, ref _cfg1Sequence);
+        if (!_cfg2RunSent)
+            _cfg2RunSent = SendRun(_cfg2Guid!, Cfg2Location, ref _cfg2Sequence);
+    }
+
+    private bool SendRun(string guid, string location, ref long sequence)
+    {
+        var envelope = CreateControlEnvelope(
+            guid,
+            location,
+            RunType,
+            ++sequence,
+            FormatTimestamp(DateTimeOffset.UtcNow));
+        return SendEnvelope(envelope, location, RunType);
+    }
+
+    private bool SendEnvelope(JsonObject envelope, string location, string type)
     {
         var json = JsonSerializer.Serialize(envelope);
         var sample = StringSample.CreateSample();
         sample.SetValue(json, _messageOutputPin.Name);
         var sent = _messageOutputPin.SendSampleWithDispatchLog(
             sample,
-            $"CFGS {location} BUSINESS envelope",
+            $"CFGS {location} {type} envelope",
             LogLevel.Information);
 
         if (!sent)
         {
             _logger?.LogWarning(
-                "CFGS Handler could not send the {Location} envelope because {Pin} is not connected.",
+                "CFGS Handler could not send the {Location} {Type} envelope because {Pin} is not connected.",
                 location,
+                type,
                 _messageOutputPin.Name);
         }
+
+        return sent;
     }
 
     private JsonArray BuildMessages(
@@ -277,7 +323,7 @@ public sealed class CFGSHandlerNode : BaseNode
         return messages;
     }
 
-    private static JsonObject CreateEnvelope(
+    private static JsonObject CreateBusinessEnvelope(
         string guid,
         string location,
         long sequence,
@@ -296,6 +342,127 @@ public sealed class CFGSHandlerNode : BaseNode
                 ["MESSAGES"] = messages,
             },
         };
+
+    private static JsonObject CreateControlEnvelope(
+        string guid,
+        string location,
+        string type,
+        long sequence,
+        string timestamp)
+        => new()
+        {
+            ["GUID"] = guid,
+            ["LOCATION"] = location,
+            ["TYPE"] = type,
+            ["VERSION"] = ProtocolVersion,
+            ["SEQ"] = sequence,
+            ["TIMESTAMP"] = timestamp,
+            ["DATA"] = new JsonObject(),
+        };
+
+    private void HandleCfgMessage(Sample? value)
+    {
+        if (value is not StringSample text || string.IsNullOrWhiteSpace(text.StringValue))
+        {
+            Fail("CFGS Handler rejected CFG message: expected a non-empty STRING payload.");
+            return;
+        }
+
+        JsonObject envelope;
+        try
+        {
+            if (JsonNode.Parse(text.StringValue) is not JsonObject parsed)
+            {
+                Fail("CFGS Handler rejected CFG message: payload must be a JSON object.");
+                return;
+            }
+
+            envelope = parsed;
+        }
+        catch (JsonException ex)
+        {
+            Fail("CFGS Handler rejected CFG message: invalid JSON: {Message}", ex.Message);
+            return;
+        }
+
+        if (!TryGetRequiredString(envelope, "TYPE", out var type))
+        {
+            Fail("CFGS Handler rejected CFG message: TYPE is required.");
+            return;
+        }
+
+        if (!string.Equals(type, RunAckType, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger?.LogTrace(
+                "CFGS Handler ignored CFG message TYPE {Type}; only RUN_ACK is consumed.",
+                type);
+            return;
+        }
+
+        if (!TryGetRequiredString(envelope, "GUID", out var guidText) ||
+            !Guid.TryParse(guidText, out var guid))
+        {
+            Fail("CFGS Handler rejected RUN_ACK: GUID is invalid.");
+            return;
+        }
+
+        if (!TryGetRequiredString(envelope, "LOCATION", out var location))
+        {
+            Fail("CFGS Handler rejected RUN_ACK: LOCATION is required.");
+            return;
+        }
+
+        var normalizedGuid = guid.ToString("D").ToUpperInvariant();
+        var normalizedLocation = location.Trim().ToUpperInvariant();
+        if ((normalizedLocation != Cfg1Location ||
+             !string.Equals(normalizedGuid, _cfg1Guid, StringComparison.Ordinal)) &&
+            (normalizedLocation != Cfg2Location ||
+             !string.Equals(normalizedGuid, _cfg2Guid, StringComparison.Ordinal)))
+        {
+            Fail(
+                "CFGS Handler rejected RUN_ACK for unexpected GUID/LOCATION: {Guid}/{Location}.",
+                normalizedGuid,
+                normalizedLocation);
+            return;
+        }
+
+        if (!TryGetProperty(envelope, "DATA", out var dataNode) || dataNode is not JsonObject data ||
+            !TryGetRequiredString(data, "RESULT", out var result))
+        {
+            Fail("CFGS Handler rejected RUN_ACK: DATA.RESULT is required.");
+            return;
+        }
+
+        var state = string.Empty;
+        TryGetOptionalString(data, "STATE", out state);
+
+        if (!string.Equals(result.Trim(), "OK", StringComparison.OrdinalIgnoreCase))
+        {
+            Fail(
+                "CFGS Handler received RUN_ACK with failure result for {Location}: RESULT={Result}, STATE={State}.",
+                normalizedLocation,
+                result,
+                state);
+            return;
+        }
+
+        if (normalizedLocation == Cfg1Location)
+        {
+            _cfg1RunAckReceived = true;
+        }
+        else
+        {
+            _cfg2RunAckReceived = true;
+        }
+
+        _logger?.LogInformation(
+            "CFGS Handler received RUN_ACK for {Location}; RESULT={Result}, STATE={State}, CFG-1 acknowledged={Cfg1Acknowledged}, CFG-2 acknowledged={Cfg2Acknowledged}.",
+            normalizedLocation,
+            result,
+            state,
+            _cfg1RunAckReceived,
+            _cfg2RunAckReceived);
+    }
 
     private bool TryParseSlotIdentities(
         string json,

@@ -14,6 +14,7 @@ namespace Node.Sender;
 /// Command-driven source node: the user invokes "Send Once", "Continuous Send" or
 /// "Stop Continuous Send" from the editor context menu. Continuous sends snapshot all
 /// parameters when the loop starts, so a running workflow never observes parameter changes.
+/// The continuous send count is a runtime-only parameter configured from the node dialog.
 /// For INT32 and INT64 sources, each successful continuous send advances the value by one.
 /// </summary>
 public sealed class SenderNode : BaseNode
@@ -61,12 +62,22 @@ public sealed class SenderNode : BaseNode
         AddParameter(new NodeParameter(
             "IntervalMs", typeof(int), 1000,
             isEditable: true, group: "General", zone: "SenderZone"));
+        AddParameter(new NodeParameter(
+            "ContinuousSendCount", typeof(long), 0L,
+            isEditable: true, group: "General", zone: "SenderZone",
+            isPersistent: false));
     }
 
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
         if (parameters.TryGetValue("DataType", out var dt) && dt is not null)
             Param("DataType").Value = ParameterValues.GetString(dt, "string") ?? "string";
+        if (parameters.TryGetValue("ContinuousSendCount", out var count) && count is not null &&
+            long.TryParse(ParameterValues.GetString(count, "0")?.Trim(), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out var parsedCount))
+        {
+            Param("ContinuousSendCount").Value = parsedCount;
+        }
 
         ApplyDataType(Param("DataType").Value);
     }
@@ -196,6 +207,7 @@ public sealed class SenderNode : BaseNode
         var dataType = ParseDataType(Param("DataType").Value);
         var rawValue = ParameterValues.GetString(Param("Value").Value, "") ?? "";
         var rawInterval = ParameterValues.GetString(Param("IntervalMs").Value, "1000") ?? "1000";
+        var rawSendCount = ParameterValues.GetString(Param("ContinuousSendCount").Value, "0") ?? "0";
 
         if (!TryParseValue(dataType, rawValue, out var value, out var error))
         {
@@ -209,6 +221,14 @@ public sealed class SenderNode : BaseNode
             ctx.Logger.LogWarning(
                 "Sender could not start continuous send: IntervalMs must be an integer >= 1 (got '{Interval}').",
                 rawInterval);
+            return;
+        }
+
+        if (!long.TryParse(rawSendCount.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var sendCount))
+        {
+            ctx.Logger.LogWarning(
+                "Sender could not start continuous send: ContinuousSendCount must be an int64 (got '{Count}').",
+                rawSendCount);
             return;
         }
 
@@ -234,25 +254,30 @@ public sealed class SenderNode : BaseNode
             _continuousCts?.Dispose();
             cts = new CancellationTokenSource();
             _continuousCts = cts;
-            task = Task.Run(() => ContinuousLoopAsync(dataType, value, intervalMs, ctx.Logger, cts.Token));
+            task = Task.Run(() => ContinuousLoopAsync(
+                dataType, value, intervalMs, sendCount, ctx.Logger, cts.Token));
             _continuousTask = task;
         }
 
         ctx.Logger.LogInformation(
-            "Sender started continuous send: {Type} value {Value}, interval {IntervalMs}ms.",
-            dataType, FormatValue(dataType, value), intervalMs);
+            "Sender started continuous send: {Type} value {Value}, interval {IntervalMs}ms, count {Count}.",
+            dataType, FormatValue(dataType, value), intervalMs,
+            sendCount > 0 ? sendCount.ToString(CultureInfo.InvariantCulture) : "unlimited");
     }
 
     private async Task ContinuousLoopAsync(
         DataType dataType,
         object? value,
         int intervalMs,
+        long sendCount,
         ILogger logger,
         CancellationToken ct)
     {
+        long sentCount = 0;
+
         try
         {
-            while (!ct.IsCancellationRequested)
+            while (!ct.IsCancellationRequested && (sendCount <= 0 || sentCount < sendCount))
             {
                 if (!Running)
                 {
@@ -267,6 +292,13 @@ public sealed class SenderNode : BaseNode
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Sender stopped continuous send after a send failure.");
+                    return;
+                }
+
+                sentCount++;
+                if (sendCount > 0 && sentCount >= sendCount)
+                {
+                    logger.LogInformation("Sender completed continuous send after {Count} sends.", sentCount);
                     return;
                 }
 
