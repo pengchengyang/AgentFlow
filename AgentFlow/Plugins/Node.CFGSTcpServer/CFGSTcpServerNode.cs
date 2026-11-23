@@ -26,6 +26,13 @@ namespace Node.CFGSTcpServer;
 public sealed class CFGSTcpServerNode : BaseNode
 {
     private const int DefaultPort = 9000;
+    private const string ImmediateStartMode = "Immediate";
+    private const string WaitForEndpointStartMode = "WaitForEndpoint";
+    private static readonly string[] StartModeOptions =
+    {
+        ImmediateStartMode,
+        WaitForEndpointStartMode,
+    };
     private const int DefaultAuthTimeoutSeconds = 5;
     private const int DefaultHeartbeatTimeoutSeconds = 30;
     private const int DefaultMaxUnauthenticatedClients = 8;
@@ -37,6 +44,7 @@ public sealed class CFGSTcpServerNode : BaseNode
     private const int DefaultReceiveBufferSize = 4096;
 
     private readonly object _configGate = new();
+    private readonly object _startGate = new();
     private readonly object _pendingGate = new();
     private readonly ConcurrentDictionary<int, ClientSession> _sessions = new();
     private readonly ConcurrentDictionary<string, ClientSession> _sessionsByGuid =
@@ -54,6 +62,7 @@ public sealed class CFGSTcpServerNode : BaseNode
     private Task? _sendTask;
     private Task? _maintenanceTask;
     private ILogger? _logger;
+    private INodeContext? _context;
     private ITopicBus? _topicBus;
 
     private string _host = "0.0.0.0";
@@ -69,6 +78,8 @@ public sealed class CFGSTcpServerNode : BaseNode
     private int _writeTimeoutSeconds = DefaultWriteTimeoutSeconds;
     private int _receiveBufferSize = DefaultReceiveBufferSize;
     private bool _configLoaded;
+    private string _startMode = ImmediateStartMode;
+    private int? _runtimeEndpointPort;
     private int _nextSessionId;
 
     private long _acceptedConnections;
@@ -93,6 +104,9 @@ public sealed class CFGSTcpServerNode : BaseNode
     public BasePin ConfigInputPin { get; } =
         new("input_string_client_config", DataType.STRING, PinDirection.Input, required: false);
 
+    public BasePin EndpointInputPin { get; } =
+        new("input_string_endpoint", DataType.STRING, PinDirection.Input, required: false);
+
     public BasePin MessageInputPin { get; } =
         new("input_string_message", DataType.STRING, PinDirection.Input, required: false);
 
@@ -102,6 +116,7 @@ public sealed class CFGSTcpServerNode : BaseNode
     public override void AddPins()
     {
         AddInputPin(ConfigInputPin);
+        AddInputPin(EndpointInputPin);
         AddInputPin(MessageInputPin);
         AddOutputPin(MessageOutputPin);
     }
@@ -113,6 +128,9 @@ public sealed class CFGSTcpServerNode : BaseNode
             isEditable: true, group: "Connection", zone: "CFGSTcpServerZone"));
         AddParameter(new NodeParameter("Port", typeof(int), DefaultPort,
             isEditable: true, group: "Connection", zone: "CFGSTcpServerZone"));
+        AddParameter(new NodeParameter("StartMode", typeof(string), ImmediateStartMode,
+            isEditable: true, group: "Connection", zone: "CFGSTcpServerZone",
+            editor: ParameterEditorKind.SingleSelect, options: StartModeOptions));
         AddParameter(new NodeParameter("ProtocolVersion", typeof(string), "1.0",
             isEditable: true, group: "Protocol", zone: "CFGSTcpServerZone"));
         AddParameter(new NodeParameter("AuthTimeoutSeconds", typeof(int), DefaultAuthTimeoutSeconds,
@@ -139,6 +157,7 @@ public sealed class CFGSTcpServerNode : BaseNode
     {
         ApplyIfPresent(parameters, "Host", value => Param("Host").Value = ParameterValues.GetString(value, "0.0.0.0") ?? "0.0.0.0");
         ApplyIfPresent(parameters, "Port", value => Param("Port").Value = ParameterValues.GetInt(value, DefaultPort));
+        ApplyIfPresent(parameters, "StartMode", value => Param("StartMode").Value = ParameterValues.GetString(value, ImmediateStartMode) ?? ImmediateStartMode);
         ApplyIfPresent(parameters, "ProtocolVersion", value => Param("ProtocolVersion").Value = ParameterValues.GetString(value, "1.0") ?? "1.0");
         ApplyIfPresent(parameters, "AuthTimeoutSeconds", value => Param("AuthTimeoutSeconds").Value = ParameterValues.GetInt(value, DefaultAuthTimeoutSeconds));
         ApplyIfPresent(parameters, "HeartbeatTimeoutSeconds", value => Param("HeartbeatTimeoutSeconds").Value = ParameterValues.GetInt(value, DefaultHeartbeatTimeoutSeconds));
@@ -166,8 +185,10 @@ public sealed class CFGSTcpServerNode : BaseNode
         _topicBus = context.GetService<ITopicBus>() ?? TopicBus.Instance;
         await Stop(context, ct).ConfigureAwait(false);
 
+        _context = context;
         _host = (ParameterValues.GetString(Param("Host").Value, "0.0.0.0") ?? "0.0.0.0").Trim();
         _port = ReadBoundedInt(context, "Port", DefaultPort, 1, 65535);
+        _startMode = NormalizeStartMode(context);
         _protocolVersion = (ParameterValues.GetString(Param("ProtocolVersion").Value, "1.0") ?? "1.0").Trim();
         _authTimeoutSeconds = ReadBoundedInt(context, "AuthTimeoutSeconds", DefaultAuthTimeoutSeconds, 1, 300);
         _heartbeatTimeoutSeconds = ReadBoundedInt(context, "HeartbeatTimeoutSeconds", DefaultHeartbeatTimeoutSeconds, 1, 3600);
@@ -180,46 +201,107 @@ public sealed class CFGSTcpServerNode : BaseNode
         _receiveBufferSize = ReadBoundedInt(context, "ReceiveBufferSize", DefaultReceiveBufferSize, 64, 1_048_576);
 
         context.Logger.LogInformation(
-            "CFGS TCP server initialized for {Host}:{Port}; protocol={Version}, authTimeout={AuthTimeout}s, heartbeatTimeout={HeartbeatTimeout}s",
-            _host, _port, _protocolVersion, _authTimeoutSeconds, _heartbeatTimeoutSeconds);
+            "CFGS TCP server initialized for {Host}:{Port}; startMode={StartMode}, protocol={Version}, authTimeout={AuthTimeout}s, heartbeatTimeout={HeartbeatTimeout}s",
+            _host, _port, _startMode, _protocolVersion, _authTimeoutSeconds, _heartbeatTimeoutSeconds);
+
+        if (_startMode == WaitForEndpointStartMode && EndpointInputPin.ConnectedPin is null)
+        {
+            context.Logger.LogInformation(
+                "CFGS TCP server StartMode=WaitForEndpoint but input_string_endpoint is not connected; Run will remain running and wait indefinitely for a runtime port.");
+        }
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
-        if (!_configLoaded)
-            throw new InvalidOperationException("CFGS TCP server requires input_string_client_config before Run.");
-
         if (_cts is not null)
             throw new InvalidOperationException("CFGS TCP server is already running.");
 
-        var address = ResolveBindAddress(_host);
-        var listener = new TcpListener(address, _port);
-        try
-        {
-            listener.Start();
-        }
-        catch (Exception ex) when (ex is SocketException or InvalidOperationException)
-        {
-            listener.Stop();
-            SetFailed();
-            context.Logger.LogError(ex, "CFGS TCP server could not bind to {Host}:{Port}.", _host, _port);
-            throw new InvalidOperationException($"CFGS TCP server could not bind to {_host}:{_port}.", ex);
-        }
-
-        _listener = listener;
+        _context = context;
         _cts = new CancellationTokenSource();
         _sendChannel = CreateSendChannel(_sendQueueCapacity);
         Running = true;
 
         var token = _cts.Token;
-        _acceptTask = Task.Run(() => AcceptLoopAsync(context, listener, token), CancellationToken.None);
         _sendTask = Task.Run(() => SendLoopAsync(context, _sendChannel.Reader, token), CancellationToken.None);
         _maintenanceTask = Task.Run(() => MaintenanceLoopAsync(context, token), CancellationToken.None);
 
-        context.Logger.LogInformation(
-            "CFGS TCP server is running on {Host}:{Port}; configured clients={Clients}.",
-            _host, _port, _clientDefinitions.Count);
+        var started = TryStartListener(context, throwOnFailure: true);
+        if (!started)
+        {
+            bool configLoaded;
+            lock (_configGate)
+                configLoaded = _configLoaded;
+            context.Logger.LogInformation(
+                "CFGS TCP server is running and waiting for a runtime endpoint port; startMode={StartMode}, configLoaded={ConfigLoaded}, fallback={Host}:{Port}.",
+                _startMode, configLoaded, _host, _port);
+        }
+
         return Task.CompletedTask;
+    }
+
+    private string NormalizeStartMode(INodeContext context)
+    {
+        var configured = (ParameterValues.GetString(Param("StartMode").Value, ImmediateStartMode) ?? ImmediateStartMode).Trim();
+        if (string.Equals(configured, ImmediateStartMode, StringComparison.OrdinalIgnoreCase))
+            return ImmediateStartMode;
+        if (string.Equals(configured, WaitForEndpointStartMode, StringComparison.OrdinalIgnoreCase))
+            return WaitForEndpointStartMode;
+
+        context.Logger.LogWarning(
+            "CFGS TCP server parameter StartMode={StartMode} is invalid; using {Fallback}.",
+            configured, ImmediateStartMode);
+        Param("StartMode").Value = ImmediateStartMode;
+        return ImmediateStartMode;
+    }
+
+    private bool TryStartListener(INodeContext context, bool throwOnFailure)
+    {
+        lock (_startGate)
+        {
+            if (_listener is not null)
+                return true;
+            if (!Running || _cts is null)
+                return false;
+
+            bool configLoaded;
+            lock (_configGate)
+                configLoaded = _configLoaded;
+
+            if (_startMode == WaitForEndpointStartMode &&
+                (!configLoaded || !_runtimeEndpointPort.HasValue))
+            {
+                return false;
+            }
+
+            var port = _runtimeEndpointPort ?? _port;
+            var address = ResolveBindAddress(_host);
+            var listener = new TcpListener(address, port);
+            try
+            {
+                listener.Start();
+            }
+            catch (Exception ex) when (ex is SocketException or InvalidOperationException)
+            {
+                listener.Stop();
+                SetFailed();
+                Running = false;
+                _cts.Cancel();
+                _sendChannel?.Writer.TryComplete();
+                context.Logger.LogError(ex, "CFGS TCP server could not bind to {Host}:{Port}.", _host, port);
+                if (throwOnFailure)
+                    throw new InvalidOperationException($"CFGS TCP server could not bind to {_host}:{port}.", ex);
+                return false;
+            }
+
+            _listener = listener;
+            var token = _cts.Token;
+            _acceptTask = Task.Run(() => AcceptLoopAsync(context, listener, token), CancellationToken.None);
+
+            context.Logger.LogInformation(
+                "CFGS TCP server is running on {Host}:{Port}; startMode={StartMode}, configured clients={Clients}.",
+                _host, port, _startMode, _clientDefinitions.Count);
+            return true;
+        }
     }
 
     public override async Task Stop(INodeContext context, CancellationToken ct = default)
@@ -306,45 +388,148 @@ public sealed class CFGSTcpServerNode : BaseNode
             return;
         }
 
+        if (ReferenceEquals(pin, EndpointInputPin))
+        {
+            HandleEndpointInput(value);
+            return;
+        }
+
         if (ReferenceEquals(pin, MessageInputPin))
             HandleOutgoingMessage(value);
     }
 
     private void HandleClientConfig(Sample? value)
     {
-        if (_cts is not null || Running)
+        bool alreadyLoaded;
+        lock (_configGate)
+            alreadyLoaded = _configLoaded;
+        if (alreadyLoaded)
         {
             _logger?.LogWarning(
-                "CFGS TCP server ignored a client configuration replacement while running; restart the node to apply it.");
+                "CFGS TCP server ignored a client configuration replacement after the first load; restart the node to apply a different configuration.");
             return;
         }
 
         if (value is not StringSample text || text.StringValue is null)
         {
-            _configLoaded = false;
             _logger?.LogError("CFGS TCP server ignored client configuration: expected StringSample.");
             return;
         }
 
         if (!ProtocolMessage.TryParseClientConfig(text.StringValue, out var config, out var error))
         {
-            _configLoaded = false;
             _logger?.LogError("CFGS TCP server rejected client configuration: {Error}.", error);
             return;
         }
 
         lock (_configGate)
         {
-            _clientDefinitions = config.Clients;
-            _configLoaded = true;
+            if (_configLoaded)
+            {
+                alreadyLoaded = true;
+            }
+            else
+            {
+                _clientDefinitions = config.Clients;
+                _configLoaded = true;
+                alreadyLoaded = false;
+            }
+        }
+
+        if (alreadyLoaded)
+        {
+            _logger?.LogWarning(
+                "CFGS TCP server ignored a client configuration replacement after the first load; restart the node to apply a different configuration.");
+            return;
+        }
+
+        if (config.Port is { } configuredPort)
+        {
+            var portApplied = false;
+            lock (_startGate)
+            {
+                if (_listener is null)
+                {
+                    _runtimeEndpointPort = configuredPort;
+                    portApplied = true;
+                }
+                else
+                {
+                    _logger?.LogWarning(
+                        "CFGS TCP server ignored PORT.LISTEN={Port} from client configuration because the listener has already started.",
+                        configuredPort);
+                }
+            }
+
+            if (portApplied)
+            {
+                _logger?.LogInformation(
+                    "CFGS TCP server accepted runtime listen port {Port} from input_string_client_config.",
+                    configuredPort);
+            }
         }
 
         _logger?.LogInformation(
             "CFGS TCP server loaded {Count} configured client GUIDs: {Clients}.",
             config.Count,
             string.Join(", ", config.Clients.Values.Select(item => $"{item.Guid}:{item.Location}")));
+
+        if (Running && _context is not null)
+        {
+            if (!TryStartListener(_context, throwOnFailure: false) &&
+                Running &&
+                _startMode == WaitForEndpointStartMode)
+            {
+                _logger?.LogInformation(
+                    "CFGS TCP server loaded client configuration and is waiting for a runtime endpoint port.");
+            }
+        }
     }
 
+    private void HandleEndpointInput(Sample? value)
+    {
+        if (value is not StringSample text || text.StringValue is null)
+        {
+            _logger?.LogError("CFGS TCP server ignored endpoint input: expected StringSample.");
+            return;
+        }
+
+        if (!ProtocolMessage.TryParsePort(text.StringValue, out var port))
+        {
+            _logger?.LogError(
+                "CFGS TCP server rejected endpoint port {Port}: expected an integer from 1 through 65535.",
+                text.StringValue);
+            return;
+        }
+
+        lock (_startGate)
+        {
+            if (_listener is not null)
+            {
+                _logger?.LogWarning(
+                    "CFGS TCP server ignored runtime port {Port} because the listener has already started.",
+                    port);
+                return;
+            }
+
+            _runtimeEndpointPort = port;
+        }
+
+        _logger?.LogInformation(
+            "CFGS TCP server accepted runtime listen port {Port} from input_string_endpoint.",
+            port);
+
+        if (Running && _context is not null)
+        {
+            if (!TryStartListener(_context, throwOnFailure: false) &&
+                Running &&
+                _startMode == WaitForEndpointStartMode)
+            {
+                _logger?.LogInformation(
+                    "CFGS TCP server has a runtime endpoint port and is waiting for input_string_client_config.");
+            }
+        }
+    }
     private void HandleOutgoingMessage(Sample? value)
     {
         if (value is not StringSample text || text.StringValue is null)

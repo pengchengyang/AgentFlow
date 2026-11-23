@@ -10,25 +10,49 @@ heartbeat, `;JSON;` envelope framing, GUID-to-LOCATION validation, authenticated
 
 | Pin | Direction | Type | Behavior |
 | --- | --- | --- | --- |
-| `input_string_client_config` | Input | STRING | Accepts the client whitelist JSON before `Run`. Replacing config while running is ignored. |
+| `input_string_client_config` | Input | STRING | Accepts the JSON produced by `Node.ReadIniFile`. The first valid payload may arrive before or after `Run`; later replacements are ignored. |
+| `input_string_endpoint` | Input | STRING | Optional runtime listen port. In `WaitForEndpoint` mode the server remains running until both configuration and a valid port are available. |
 | `input_string_message` | Input | STRING | Accepts a complete JSON envelope. BUSINESS, RUN, and RUN_ACK messages require a matching `LOCATION`; the `GUID` selects the destination session. |
 | `output_string_message` | Output | STRING | Emits the original complete JSON envelope for every authenticated TYPE except `AUTH`, `AUTH_OK`, `AUTH_FAIL`, `PING`, and `PONG`. `DATA.MESSAGES` is neither extracted nor used as a forwarding gate. |
 
 ## Client Configuration
 
+The primary input is the flat JSON emitted by `Node.ReadIniFile` after reading
+`C:\RTSResources\UserSettingsCFGS\UserSettingsCFGS.ini`:
+
 ```json
 {
-  "version": "1.0",
-  "clients": [
-    { "LOCATION": "CFG-1", "GUID": "11111111-2222-3333-4444-555555555555" },
-    { "LOCATION": "CFG-2", "GUID": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE" }
-  ]
+  "GUID": [
+    "CFG-1=CA7EFFA7-A2EB-4AC0-864A-1E1100D40B90",
+    "CFG-2=CA7EFFA7-A2EB-4AC0-864A-1E1100D40B92"
+  ],
+  "PORT.LISTEN": ["9000"],
+  "SLOT.SLOTS": ["1,2,3,4,5,6,7,8,9,10"],
+  "PORTHUB.PORTHUBS": ["5:1,23:1,7:2,8:2,9:2,6:1,21:1,9:2,3:2,25:2"]
 }
 ```
 
-The GUID count is the authenticated-client limit. Unknown or duplicate GUIDs are rejected.
-`ROLE` is accepted as a legacy alias when `LOCATION` is absent; both values must match when supplied
-together. The server never broadcasts a business message to all clients.
+Each `GUID` entry uses `LOCATION=GUID` form and supports `CFG-1` or `CFG-2`.
+`PORT.LISTEN` is optional, but when present its first non-empty value must be an integer
+from `1` through `65535`. The port is cached as a runtime listen-port source. The GUID count
+is the authenticated-client limit. Unknown or duplicate GUIDs are rejected.
+
+The first valid configuration is loaded once. A replacement received later is ignored until
+the node is restarted. The legacy `clients` array format is still accepted for existing workflows.
+
+## Start Modes
+
+`StartMode` is a single-select parameter:
+
+| Value | Behavior |
+| --- | --- |
+| `Immediate` | Default. `Run` starts the listener immediately using `PORT.LISTEN` when already cached, otherwise the configured `Port`. Client configuration may still arrive after `Run`. |
+| `WaitForEndpoint` | `Run` keeps the node running without binding. The listener starts after both a valid runtime port (`PORT.LISTEN` or `input_string_endpoint`) and the first client configuration are available. |
+
+`input_string_endpoint` accepts only a plain integer port. It is optional, and an unconnected
+pin does not prevent `Run`; the node remains running indefinitely while waiting for a runtime
+port when `StartMode=WaitForEndpoint`. The configured `Host` always supplies the bind address,
+and the runtime port does not modify persisted parameters.
 
 ## Envelope Contract
 
@@ -44,7 +68,8 @@ validates the top-level envelope but does not interpret `DATA` while forwarding 
 
 ## Runtime Behavior
 
-- The configured listener binds when `Run` starts. A bind failure fails the node with an error.
+- `Immediate` binds during `Run`. `WaitForEndpoint` binds only after both a runtime port and the first client configuration are available.
+- A bind failure fails the node with an error. Waiting for an endpoint or configuration keeps `Running = true`.
 - Authenticated envelopes must carry LOCATION matching the GUID configuration.
 - Outgoing BUSINESS input must contain one to five records for the target LOCATION. `CFG-1` uses SLOT 1-5 and `CFG-2` uses SLOT 6-10. Slots must be unique within one envelope but do not need to cover the full range. Each record contains SLOT, FSN, IMEI, and STATUS; STATUS is IDLE, TEST, OK, or NG.
 - Every authenticated received envelope whose TYPE is not `AUTH`, `AUTH_OK`, `AUTH_FAIL`, `PING`, or `PONG` is forwarded unchanged to `output_string_message`. This includes `RUN`, `RUN_ACK`, `BUSINESS`, `DISCONNECT`, and future non-control types. `DATA.MESSAGES` is optional for forwarding.

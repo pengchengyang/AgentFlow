@@ -19,6 +19,9 @@ public:
     const char* LastError() const;
 
 private:
+    static void AF_CALL OnBroadcast(void* receiverContext, const AfBroadcast* message);
+    void HandleBroadcast(const AfBroadcast* message);
+
     AfStatus Log(int32_t level, const char* message);
     void SetLastError(const char* message);
 
@@ -26,5 +29,6 @@ private:
     void* callbackContext_ = nullptr;
     bool initialized_ = false;
     bool running_ = false;
+    bool broadcastSubscribed_ = false;
     std::string lastError_;
 };

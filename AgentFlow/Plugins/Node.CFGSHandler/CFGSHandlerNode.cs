@@ -36,26 +36,35 @@ public sealed class CFGSHandlerNode : BaseNode
     private readonly BasePin _userSettingsInputPin =
         new("in_str_user_settings", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _cfgStartReturnInputPin =
-        new("in_int64_cfgstart_ret", DataType.INT64, PinDirection.Input, required: false);
+    private readonly BasePin _runReturnInt64InputPin =
+        new("int64_run_ret", DataType.INT64, PinDirection.Input, required: false);
 
-    private readonly BasePin _cfgExitReturnInputPin =
-        new("in_int64_cfgexit_ret", DataType.INT64, PinDirection.Input, required: false);
+    private readonly BasePin _exitReturnInt64InputPin =
+        new("int64_exit_ret", DataType.INT64, PinDirection.Input, required: false);
 
-    private readonly BasePin _cfgStartReturnStringInputPin =
-        new("in_str_cfgstart_ret", DataType.STRING, PinDirection.Input, required: false);
+    private readonly BasePin _runReturnStringInputPin =
+        new("str_run_ret", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _cfgExitReturnStringInputPin =
-        new("in_str_cfgexit_ret", DataType.STRING, PinDirection.Input, required: false);
+    private readonly BasePin _stopReturnStringInputPin =
+        new("str_stop_ret", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _launchCfgOutputPin =
-        new("out_str_launch_cfg", DataType.STRING, PinDirection.Output);
+    private readonly BasePin _stopReturnInt64InputPin =
+        new("int64_stop_ret", DataType.INT64, PinDirection.Input, required: false);
 
-    private readonly BasePin _stopCfgOutputPin =
-        new("out_stop_cfg", DataType.STRING, PinDirection.Output);
+    private readonly BasePin _exitReturnStringInputPin =
+        new("str_exit_ret", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _confirmCfgExitOutputPin =
-        new("out_str_confirmcfg_exit", DataType.STRING, PinDirection.Output);
+    private readonly BasePin _cmdRunCfgOutputPin =
+        new("cmd_run_cfg", DataType.STRING, PinDirection.Output);
+
+    private readonly BasePin _cmdStopCfgOutputPin =
+        new("cmd_stop_cfg", DataType.STRING, PinDirection.Output);
+
+    private readonly BasePin _cmdExitCfgOutputPin =
+        new("cmd_exit_cfg", DataType.STRING, PinDirection.Output);
+
+    private readonly BasePin _cmdSureExitCfgOutputPin =
+        new("cmd_sure_exit_cfg", DataType.STRING, PinDirection.Output);
 
     private readonly BasePin _messageOutputPin =
         new("output_string_message", DataType.STRING, PinDirection.Output);
@@ -92,13 +101,16 @@ public sealed class CFGSHandlerNode : BaseNode
         AddInputPin(_rawFromCfgInputPin);
         AddInputPin(_fromUpperInputPin);
         AddInputPin(_userSettingsInputPin);
-        AddInputPin(_cfgStartReturnInputPin);
-        AddInputPin(_cfgExitReturnInputPin);
-        AddInputPin(_cfgStartReturnStringInputPin);
-        AddInputPin(_cfgExitReturnStringInputPin);
-        AddOutputPin(_launchCfgOutputPin);
-        AddOutputPin(_stopCfgOutputPin);
-        AddOutputPin(_confirmCfgExitOutputPin);
+        AddInputPin(_runReturnInt64InputPin);
+        AddInputPin(_exitReturnInt64InputPin);
+        AddInputPin(_runReturnStringInputPin);
+        AddInputPin(_exitReturnStringInputPin);
+        AddInputPin(_stopReturnStringInputPin);
+        AddInputPin(_stopReturnInt64InputPin);
+        AddOutputPin(_cmdRunCfgOutputPin);
+        AddOutputPin(_cmdStopCfgOutputPin);
+        AddOutputPin(_cmdExitCfgOutputPin);
+        AddOutputPin(_cmdSureExitCfgOutputPin);
         AddOutputPin(_messageOutputPin);
     }
 

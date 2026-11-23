@@ -1,9 +1,11 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Reflection;
 using AgentFlow.Contracts;
 using Microsoft.Extensions.Logging;
+using Node.CFGSTcpServer;
 using Node.TcpClient;
 using Node.TcpServer;
 
@@ -250,6 +252,76 @@ static async Task RunTestsAsync()
     await retryClient.Stop(retryContext);
     Check("retry client Stop succeeds");
 
+    var cfgRequestedPort = GetFreePort();
+    var cfgFallbackPort = GetFreePort();
+    var cfgGuid = "11111111-2222-3333-4444-555555555555";
+    var cfgServer = new CFGSTcpServerNode();
+    cfgServer.Configure(new Dictionary<string, object?>
+    {
+        ["Host"] = "127.0.0.1",
+        ["Port"] = cfgFallbackPort,
+        ["StartMode"] = "WaitForEndpoint",
+        ["WriteTimeoutSeconds"] = 2,
+        ["ReceiveBufferSize"] = 128,
+    });
+
+    var cfgContext = new TestContext(loggerFactory.CreateLogger("cfgs-server"));
+    await cfgServer.Initialize(cfgContext);
+    await cfgServer.Run(cfgContext);
+    Assert(cfgServer.Running, "WaitForEndpoint CFGS server must remain running before config arrives");
+    Assert(!await CanConnectAsync(cfgRequestedPort), "WaitForEndpoint must not bind before port and config arrive");
+
+    var cfgJson = $"{{\"GUID\":[\"CFG-1={cfgGuid}\"],\"PORT.LISTEN\":[\"{cfgRequestedPort}\"]}}";
+    cfgServer.ReceiveSample(cfgServer.ConfigInputPin, StringSampleWith(cfgJson));
+    Assert(cfgServer.Running, "CFGS server must keep running after the first config is loaded");
+
+    using var cfgPeer = new TcpClient();
+    await cfgPeer.ConnectAsync(IPAddress.Loopback, cfgRequestedPort).WaitAsync(TimeSpan.FromSeconds(3));
+    var cfgStream = cfgPeer.GetStream();
+    var timestamp = DateTimeOffset.UtcNow.ToString("O");
+    var authFrame = $";{{\"GUID\":\"{cfgGuid}\",\"TYPE\":\"AUTH\",\"VERSION\":\"1.0\",\"SEQ\":1,\"TIMESTAMP\":\"{timestamp}\",\"DATA\":{{}}}};";
+    await cfgStream.WriteAsync(Encoding.UTF8.GetBytes(authFrame));
+    var cfgResponse = await ReadSemicolonFrameAsync(cfgStream, TimeSpan.FromSeconds(3));
+    Assert(cfgResponse.Contains("\"TYPE\":\"AUTH_OK\"", StringComparison.Ordinal),
+        "CFGS server must authenticate a GUID parsed from Node.ReadIniFile JSON");
+    Check("CFGS server loads ReadIni JSON and delayed PORT.LISTEN");
+
+    await cfgServer.Stop(cfgContext);
+    Check("CFGS server Stop succeeds after delayed start");
+    var cfgPinPort = GetFreePort();
+    var cfgPinFallbackPort = GetFreePort();
+    var cfgPinGuid = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+    var cfgPinServer = new CFGSTcpServerNode();
+    cfgPinServer.Configure(new Dictionary<string, object?>
+    {
+        ["Host"] = "127.0.0.1",
+        ["Port"] = cfgPinFallbackPort,
+        ["StartMode"] = "WaitForEndpoint",
+        ["WriteTimeoutSeconds"] = 2,
+        ["ReceiveBufferSize"] = 128,
+    });
+
+    var cfgPinContext = new TestContext(loggerFactory.CreateLogger("cfgs-server-pin"));
+    await cfgPinServer.Initialize(cfgPinContext);
+    await cfgPinServer.Run(cfgPinContext);
+    var cfgPinConfig = $"{{\"GUID\":[\"CFG-2={cfgPinGuid}\"]}}";
+    cfgPinServer.ReceiveSample(cfgPinServer.ConfigInputPin, StringSampleWith(cfgPinConfig));
+    Assert(cfgPinServer.Running, "CFGS server without a config port must remain running");
+    Assert(!await CanConnectAsync(cfgPinPort), "CFGS server must wait for input_string_endpoint when config has no port");
+
+    cfgPinServer.ReceiveSample(cfgPinServer.EndpointInputPin, StringSampleWith(cfgPinPort.ToString()));
+    using var cfgPinPeer = new TcpClient();
+    await cfgPinPeer.ConnectAsync(IPAddress.Loopback, cfgPinPort).WaitAsync(TimeSpan.FromSeconds(3));
+    var cfgPinStream = cfgPinPeer.GetStream();
+    var pinTimestamp = DateTimeOffset.UtcNow.ToString("O");
+    var pinAuthFrame = $";{{\"GUID\":\"{cfgPinGuid}\",\"TYPE\":\"AUTH\",\"VERSION\":\"1.0\",\"SEQ\":1,\"TIMESTAMP\":\"{pinTimestamp}\",\"DATA\":{{}}}};";
+    await cfgPinStream.WriteAsync(Encoding.UTF8.GetBytes(pinAuthFrame));
+    var pinResponse = await ReadSemicolonFrameAsync(cfgPinStream, TimeSpan.FromSeconds(3));
+    Assert(pinResponse.Contains("\"TYPE\":\"AUTH_OK\"", StringComparison.Ordinal),
+        "CFGS server must start and authenticate after a runtime port arrives on input_string_endpoint");
+    Check("CFGS server accepts delayed input_string_endpoint port");
+
+    await cfgPinServer.Stop(cfgPinContext);
     var invalid = new TcpServerNode();
     invalid.Configure(new Dictionary<string, object?>
     {
@@ -351,6 +423,38 @@ static async Task WaitUntil(Func<bool> condition, string message, int seconds = 
     }
 }
 
+static async Task<bool> CanConnectAsync(int port)
+{
+    using var client = new TcpClient();
+    try
+    {
+        await client.ConnectAsync(IPAddress.Loopback, port).WaitAsync(TimeSpan.FromMilliseconds(500));
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+static async Task<string> ReadSemicolonFrameAsync(NetworkStream stream, TimeSpan timeout)
+{
+    using var cts = new CancellationTokenSource(timeout);
+    var builder = new StringBuilder();
+    var semicolons = 0;
+    var buffer = new byte[1];
+    while (semicolons < 2)
+    {
+        var read = await stream.ReadAsync(buffer.AsMemory(0, 1), cts.Token);
+        if (read == 0)
+            throw new IOException("Connection closed before a complete CFGS frame arrived");
+        builder.Append((char)buffer[0]);
+        if (buffer[0] == (byte)';')
+            semicolons++;
+    }
+
+    return builder.ToString();
+}
 static int GetFreePort()
 {
     using var listener = new TcpListener(IPAddress.Loopback, 0);

@@ -13,6 +13,9 @@ static_assert(sizeof(AfSample) == 64, "AfSample must remain 64 bytes on Windows 
 static_assert(offsetof(AfSample, data) == 48, "AfSample.data offset changed unexpectedly.");
 static_assert(offsetof(AfSample, dataSize) == 56, "AfSample.dataSize offset changed unexpectedly.");
 
+constexpr const char* UpperCaseBroadcastTopic = "Node.NativeUpperCase.Windows.Output";
+constexpr const char* UpperCaseSubscriptionTopic = "Node.NativeUpperCase.Windows.Control";
+
 } // namespace
 
 NativeUpperCaseNode::NativeUpperCaseNode(const AfNodeHostVTable& host, void* callbackContext)
@@ -20,8 +23,22 @@ NativeUpperCaseNode::NativeUpperCaseNode(const AfNodeHostVTable& host, void* cal
 }
 
 AfStatus NativeUpperCaseNode::Initialize() {
+    initialized_ = false;
+
+    const AfStatus subscriptionStatus = agentflow_native::subscribe_broadcast(
+        host_,
+        callbackContext_,
+        UpperCaseSubscriptionTopic,
+        &NativeUpperCaseNode::OnBroadcast,
+        this);
+    if (subscriptionStatus != AF_OK) {
+        SetLastError("NativeUpperCase could not subscribe to its control broadcast topic.");
+        return subscriptionStatus;
+    }
+
+    broadcastSubscribed_ = true;
     initialized_ = true;
-    return Log(AF_LOG_INFO, "NativeUpperCase initialized.");
+    return Log(AF_LOG_INFO, "NativeUpperCase initialized and subscribed.");
 }
 
 AfStatus NativeUpperCaseNode::Run() {
@@ -31,6 +48,48 @@ AfStatus NativeUpperCaseNode::Run() {
     }
     running_ = true;
     return Log(AF_LOG_INFO, "NativeUpperCase is running.");
+}
+
+void AF_CALL NativeUpperCaseNode::OnBroadcast(
+    void* receiverContext,
+    const AfBroadcast* message) {
+    auto* node = static_cast<NativeUpperCaseNode*>(receiverContext);
+    if (node != nullptr)
+        node->HandleBroadcast(message);
+}
+
+void NativeUpperCaseNode::HandleBroadcast(const AfBroadcast* message) {
+    if (message == nullptr ||
+        message->structSize < sizeof(AfBroadcast) ||
+        message->abiVersion != AF_ABI_VERSION ||
+        message->topic == nullptr ||
+        message->topicLength == 0) {
+        Log(AF_LOG_WARNING, "NativeUpperCase ignored an invalid broadcast.");
+        return;
+    }
+
+    std::string topic(message->topic, static_cast<size_t>(message->topicLength));
+    std::string payloadKind;
+    if (message->payloadKind != nullptr && message->payloadKindLength > 0) {
+        payloadKind.assign(
+            message->payloadKind,
+            static_cast<size_t>(message->payloadKindLength));
+    }
+
+    std::string payloadJson;
+    if (message->payloadJson != nullptr && message->payloadJsonLength > 0) {
+        payloadJson.assign(
+            message->payloadJson,
+            static_cast<size_t>(message->payloadJsonLength));
+    }
+
+    // TODO: Parse payloadJson with the project's agreed JSON parser when this control
+    // topic receives real commands. This example only demonstrates native subscription.
+    const std::string logMessage =
+        "NativeUpperCase received broadcast topic=" + topic +
+        ", payloadKind=" + payloadKind +
+        ", payloadBytes=" + std::to_string(payloadJson.size()) + ".";
+    Log(AF_LOG_INFO, logMessage.c_str());
 }
 
 AfStatus NativeUpperCaseNode::ReceiveSample(const AfSample* sample) {
@@ -72,6 +131,18 @@ AfStatus NativeUpperCaseNode::ReceiveSample(const AfSample* sample) {
     result.data = reinterpret_cast<const uint8_t*>(output.data());
     result.dataSize = output.size();
 
+    const AfStatus broadcastStatus = agentflow_native::publish_sample_broadcast(
+        host_,
+        callbackContext_,
+        UpperCaseBroadcastTopic,
+        result);
+    if (broadcastStatus != AF_OK) {
+        SetLastError("NativeUpperCase could not publish the transformed sample broadcast.");
+        return broadcastStatus;
+    }
+
+    Log(AF_LOG_TRACE, "NativeUpperCase published an output broadcast.");
+
     const char* pinName = "output_string";
     const AfStatus status = host_.sendSample(
         callbackContext_,
@@ -95,6 +166,19 @@ AfStatus NativeUpperCaseNode::Stop() {
 AfStatus NativeUpperCaseNode::Shutdown() {
     running_ = false;
     initialized_ = false;
+
+    if (broadcastSubscribed_) {
+        const AfStatus unsubscribeStatus = agentflow_native::unsubscribe_broadcast(
+            host_,
+            callbackContext_,
+            UpperCaseSubscriptionTopic);
+        broadcastSubscribed_ = false;
+        if (unsubscribeStatus != AF_OK) {
+            SetLastError("NativeUpperCase could not unsubscribe from its control broadcast topic.");
+            return unsubscribeStatus;
+        }
+    }
+
     return Log(AF_LOG_INFO, "NativeUpperCase shut down.");
 }
 

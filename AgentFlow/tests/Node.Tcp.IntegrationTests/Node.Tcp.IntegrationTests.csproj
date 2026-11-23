@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Plugins\Node.TcpClient\Node.TcpClient.csproj" />
     <ProjectReference Include="..\..\Plugins\Node.TcpServer\Node.TcpServer.csproj" />
+    <ProjectReference Include="..\..\Plugins\Node.CFGSTcpServer\Node.CFGSTcpServer.csproj" />
     <ProjectReference Include="..\..\AgentFlow.Contracts\AgentFlow.Contracts.csproj" />
   </ItemGroup>
 </Project>

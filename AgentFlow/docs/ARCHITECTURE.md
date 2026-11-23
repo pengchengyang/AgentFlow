@@ -451,7 +451,7 @@ and receive hooks without implementing final business behavior yet:
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
 | `Node.ProcessRunner` | Windows command runner using the already-elevated AgentFlow host token; streams stdout/stderr lines to the log panel in real time, applies millisecond start/execution timeouts, and publishes the final combined output | `input_string_cmd` string input; `output_string_ret` string output and `output_int64_ret` int64 output |
 | `Node.Heartbeat` | Immediately forwards each input sample and repeatedly publishes a cloned copy of the latest sample on a fixed interval | `input` and `output`; configurable data type and `IntervalMilliseconds` |
-| `Node.CFGSHandler` | Builds CFG-1/CFG-2 BUSINESS envelopes from SLOT/FSN/IMEI batches; launch and stop pins remain reserved | `in_str_raw_from_cfg`, `in_str_from_upper`, `in_str_user_settings`, CFG return inputs; `out_str_launch_cfg`, `out_stop_cfg`, `out_str_confirmcfg_exit`, `output_string_message` |
+| `Node.CFGSHandler` | Builds CFG-1/CFG-2 BUSINESS envelopes from SLOT/FSN/IMEI batches; launch, stop, and exit pins remain reserved | `in_str_raw_from_cfg`, `in_str_from_upper`, `in_str_user_settings`, `int64_run_ret`, `int64_exit_ret`, `str_run_ret`, `str_exit_ret`, `str_stop_ret`, `int64_stop_ret`; `cmd_run_cfg`, `cmd_stop_cfg`, `cmd_exit_cfg`, `cmd_sure_exit_cfg`, `output_string_message` |
 
 `Node.UserSettings` consumes the array-valued JSON dictionary produced by `Node.ReadIniFile`; it no longer reads the fixed INI file itself. On a valid payload it requires a `GUID` section, normalizes the first valid GUID to uppercase `8-4-4-4-12` form, caches the settings, publishes runtime settings/endpoint/SLOT/GUID outputs when running, publishes the remaining keyed `SampleListsByKey` snapshot to GUI consumers through `CFGLauncherSettings`, and publishes representative keyed values through `CFGUserSettingsGuid`. Initialization tolerates settings that have not arrived yet, while invalid JSON or an invalid GUID stops the node. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
 
@@ -484,11 +484,15 @@ invoke final application `Shutdown`.
 
 The CFG/CFGS session nodes add protocol-level framing and identity on top of TCP:
 
-- `Node.CFGSTcpServer` accepts a client whitelist on `input_string_client_config`, maps GUIDs to
-  `CFG-1` or `CFG-2`, authenticates one active session per configured GUID, validates outgoing
-  and incoming BUSINESS payloads, routes envelopes by target GUID, maintains bounded offline
-  queues and PING/PONG heartbeats, and emits client BUSINESS envelopes through
-  `output_string_message`.
+- `Node.CFGSTcpServer` accepts the flat `Node.ReadIniFile` JSON on
+  `input_string_client_config`, maps `LOCATION=GUID` entries to `CFG-1` or `CFG-2`, and reads
+  `PORT.LISTEN` as an optional runtime listen-port source. It supports `Immediate` and
+  `WaitForEndpoint` start modes, keeps `Running = true` while waiting, accepts an optional
+  integer port on `input_string_endpoint`, loads only the first client configuration, authenticates
+  one active session per configured GUID, validates outgoing and incoming BUSINESS payloads,
+  routes envelopes by target GUID, maintains bounded offline queues and PING/PONG heartbeats,
+  and emits client BUSINESS envelopes through `output_string_message`.
+
 - `Node.CFGTcpClient` authenticates with its configured `ClientGuid`, obtains the authoritative
   `LOCATION` from `AUTH_OK`, supports `Immediate` and `WaitForEndpoint` connection modes,
   reconnects automatically, retains the last authenticated location for offline queueing,

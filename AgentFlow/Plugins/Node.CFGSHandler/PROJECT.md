@@ -16,14 +16,17 @@ remains reserved for future CFGS control flow.
   - `in_str_raw_from_cfg` (`STRING`, optional): accepts complete CFG envelopes and consumes `RUN_ACK`.
   - `in_str_from_upper` (`STRING`, optional)
   - `in_str_user_settings` (`STRING`, optional)
-  - `in_int64_cfgstart_ret` (`INT64`, optional, reserved)
-  - `in_int64_cfgexit_ret` (`INT64`, optional, reserved)
-  - `in_str_cfgstart_ret` (`STRING`, optional, reserved)
-  - `in_str_cfgexit_ret` (`STRING`, optional, reserved)
+  - `int64_run_ret` (`INT64`, optional, reserved)
+  - `int64_exit_ret` (`INT64`, optional, reserved)
+  - `str_run_ret` (`STRING`, optional, reserved)
+  - `str_exit_ret` (`STRING`, optional, reserved)
+  - `str_stop_ret` (`STRING`, optional, reserved)
+  - `int64_stop_ret` (`INT64`, optional, reserved)
 - Output pins:
-  - `out_str_launch_cfg` (`STRING`, reserved)
-  - `out_stop_cfg` (`STRING`, reserved)
-  - `out_str_confirmcfg_exit` (`STRING`, reserved)
+  - `cmd_run_cfg` (`STRING`, reserved)
+  - `cmd_stop_cfg` (`STRING`, reserved)
+  - `cmd_exit_cfg` (`STRING`, reserved)
+  - `cmd_sure_exit_cfg` (`STRING`, reserved)
   - `output_string_message` (`STRING`)
 
 ## Message Input
