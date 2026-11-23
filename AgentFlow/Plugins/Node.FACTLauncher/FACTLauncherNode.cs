@@ -21,6 +21,7 @@ public sealed class FACTLauncherNode : BaseNode
 {
     private const string DefaultDisplayName = "FACT Launcher";
     private const string DefaultPosition = "A";
+    private const string FactLogsRootDirectory = @"C:\AC710\OUT\Logs";
     private static readonly string[] PositionOptions = { "A", "B", "C", "D", "F" };
 
     private readonly BasePin _slotFsnImeiInputPin =
@@ -40,6 +41,9 @@ public sealed class FACTLauncherNode : BaseNode
 
     private readonly BasePin _retOutputPin =
         new("output_int64_ret", DataType.INT64, PinDirection.Output);
+
+    private readonly BasePin _flatFilePathOutputPin =
+        new("out_str_flatfilepath", DataType.STRING, PinDirection.Output);
 
     private readonly object _inputGate = new();
     private ILogger? _logger;
@@ -83,6 +87,7 @@ public sealed class FACTLauncherNode : BaseNode
         AddOutputPin(_outputPin);
         AddOutputPin(_cmdOutputPin);
         AddOutputPin(_retOutputPin);
+        AddOutputPin(_flatFilePathOutputPin);
     }
 
     protected override void AddParam()
@@ -248,6 +253,8 @@ public sealed class FACTLauncherNode : BaseNode
                 ex.Message);
         }
 
+        PublishLatestFlatFilePath(ret);
+
         try
         {
             if (!TryBuildBusinessHostPayload(ret, out var json, out var error))
@@ -276,6 +283,101 @@ public sealed class FACTLauncherNode : BaseNode
                 "FACTLauncher failed to publish RET business result {Ret} through {Pin}: {Message}",
                 ret,
                 _outputPin.Name,
+                ex.Message);
+        }
+    }
+
+    private void PublishLatestFlatFilePath(long ret)
+    {
+        string? fsn;
+        lock (_inputGate)
+            fsn = _fsn;
+
+        if (string.IsNullOrWhiteSpace(fsn))
+        {
+            _logger?.LogWarning(
+                "FACTLauncher cannot locate the flat-file log for RET {Ret} because no FSN is cached.",
+                ret);
+            return;
+        }
+
+        try
+        {
+            if (!Directory.Exists(FactLogsRootDirectory))
+            {
+                _logger?.LogWarning(
+                    "FACTLauncher cannot locate the flat-file log for FSN {Fsn} because directory {Directory} does not exist.",
+                    fsn,
+                    FactLogsRootDirectory);
+                return;
+            }
+
+            var matches = Directory
+                .EnumerateFiles(FactLogsRootDirectory, "*.xml", SearchOption.AllDirectories)
+                .Where(path => Path.GetFileName(path).Contains(fsn, StringComparison.OrdinalIgnoreCase))
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .ThenByDescending(file => file.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (matches.Count == 0)
+            {
+                _logger?.LogWarning(
+                    "FACTLauncher found no flat-file log XML containing FSN {Fsn} under {Directory} for RET {Ret} ({Status}).",
+                    fsn,
+                    FactLogsRootDirectory,
+                    ret,
+                    GetRetStatus(ret));
+                return;
+            }
+
+            var match = matches[0];
+            if (matches.Count > 1)
+            {
+                _logger?.LogWarning(
+                    "FACTLauncher found {Count} flat-file log XML files containing FSN {Fsn}; using the newest file {Path}.",
+                    matches.Count,
+                    fsn,
+                    match.FullName);
+            }
+
+            _logger?.LogInformation(
+                "FACTLauncher resolved flat-file log for FSN {Fsn}, RET {Ret} ({Status}): {Path}",
+                fsn,
+                ret,
+                GetRetStatus(ret),
+                match.FullName);
+
+            if (_flatFilePathOutputPin.TargetCount == 0)
+            {
+                _logger?.LogTrace(
+                    "FACTLauncher skipped flat-file path output for FSN {Fsn} because optional output pin {Pin} is not connected.",
+                    fsn,
+                    _flatFilePathOutputPin.Name);
+                return;
+            }
+
+            var output = StringSample.CreateSample();
+            output.SetValue(match.FullName, _flatFilePathOutputPin.Name);
+            var sent = _flatFilePathOutputPin.SendSampleWithDispatchLog(
+                output,
+                $"flat-file path for FSN {fsn}",
+                LogLevel.Information);
+            if (!sent)
+            {
+                _logger?.LogError(
+                    "FACTLauncher failed to publish flat-file path {Path} through {Pin}.",
+                    match.FullName,
+                    _flatFilePathOutputPin.Name);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(
+                ex,
+                "FACTLauncher failed to search flat-file logs for FSN {Fsn} under {Directory}: {Message}",
+                fsn,
+                FactLogsRootDirectory,
                 ex.Message);
         }
     }

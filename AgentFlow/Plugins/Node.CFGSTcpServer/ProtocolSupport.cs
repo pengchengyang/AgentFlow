@@ -147,148 +147,26 @@ internal static class ProtocolMessage
         if (!TryParseObject(json, out var root, out error))
             return false;
 
-        if (Get(root, "GUID") is JsonArray guidArray)
-            return TryParseIniSettings(root, guidArray, out config, out error);
-
-        var clientsNode = Get(root, "clients");
-        if (clientsNode is not JsonArray clientsArray)
-        {
-            error = "GUID must be a JSON array in the output of Node.ReadIniFile";
-            return false;
-        }
-
         var definitions = new Dictionary<string, CfgClientDefinition>(StringComparer.Ordinal);
-        foreach (var item in clientsArray)
+        if (!TryAddConfiguredClient(root, ProtocolConstants.Cfg1, definitions, out error) ||
+            !TryAddConfiguredClient(root, ProtocolConstants.Cfg2, definitions, out error))
         {
-            if (item is not JsonObject client)
-            {
-                error = "each clients entry must be a JSON object";
-                return false;
-            }
-
-            if (!TryGetString(client, ProtocolConstants.Guid, out var guidText) ||
-                !IsGuid(guidText, out var normalizedGuid))
-            {
-                error = "each clients entry must contain a valid GUID";
-                return false;
-            }
-
-            var hasLocation = TryGetString(client, ProtocolConstants.Location, out var location) &&
-                !string.IsNullOrWhiteSpace(location);
-            var hasRole = TryGetString(client, "ROLE", out var role) &&
-                !string.IsNullOrWhiteSpace(role);
-
-            if (!hasLocation && !hasRole)
-            {
-                error = "each clients entry must contain a non-empty LOCATION or ROLE";
-                return false;
-            }
-
-            if (hasLocation && hasRole &&
-                !string.Equals(location.Trim(), role.Trim(), StringComparison.OrdinalIgnoreCase))
-            {
-                error = $"client {normalizedGuid} has conflicting LOCATION and ROLE values";
-                return false;
-            }
-
-            var configuredLocation = hasLocation ? location.Trim() : role.Trim();
-            if (!IsLocation(configuredLocation))
-            {
-                error = $"client {normalizedGuid} LOCATION must be CFG-1 or CFG-2";
-                return false;
-            }
-
-            if (!definitions.TryAdd(
-                    normalizedGuid,
-                    new CfgClientDefinition(normalizedGuid, NormalizeLocation(configuredLocation))))
-            {
-                error = $"duplicate client GUID '{normalizedGuid}'";
-                return false;
-            }
+            return false;
         }
 
         if (definitions.Count == 0)
         {
-            error = "clients must contain at least one entry";
-            return false;
-        }
-
-        config = new CfgClientConfig { Clients = definitions };
-        return true;
-    }
-
-    private static bool TryParseIniSettings(
-        JsonObject root,
-        JsonArray guidArray,
-        out CfgClientConfig config,
-        out string? error)
-    {
-        config = new CfgClientConfig
-        {
-            Clients = new Dictionary<string, CfgClientDefinition>(StringComparer.Ordinal),
-        };
-        error = null;
-
-        var definitions = new Dictionary<string, CfgClientDefinition>(StringComparer.Ordinal);
-        foreach (var item in guidArray)
-        {
-            if (item is not JsonValue value || !value.TryGetValue<string>(out var entry) ||
-                string.IsNullOrWhiteSpace(entry))
-            {
-                error = "each GUID entry must be a non-empty string in LOCATION=GUID form";
-                return false;
-            }
-
-            var separatorIndex = entry.IndexOf('=');
-            if (separatorIndex <= 0 || separatorIndex == entry.Length - 1)
-            {
-                error = $"GUID entry '{entry}' must use LOCATION=GUID form";
-                return false;
-            }
-
-            var location = entry[..separatorIndex].Trim();
-            var guidText = entry[(separatorIndex + 1)..].Trim();
-            if (!IsLocation(location))
-            {
-                error = $"GUID entry '{entry}' LOCATION must be CFG-1 or CFG-2";
-                return false;
-            }
-
-            if (!IsGuid(guidText, out var normalizedGuid))
-            {
-                error = $"GUID entry '{entry}' must contain a valid GUID";
-                return false;
-            }
-
-            if (!definitions.TryAdd(
-                    normalizedGuid,
-                    new CfgClientDefinition(normalizedGuid, NormalizeLocation(location))))
-            {
-                error = $"duplicate client GUID '{normalizedGuid}'";
-                return false;
-            }
-        }
-
-        if (definitions.Count == 0)
-        {
-            error = "GUID must contain at least one LOCATION=GUID entry";
+            error = "configuration must contain GUID.CFG-1 or GUID.CFG-2";
             return false;
         }
 
         int? port = null;
-        if (Get(root, "PORT.LISTEN") is { } portNode)
-        {
-            if (portNode is not JsonArray portValues || portValues.Count == 0)
-            {
-                error = "PORT.LISTEN must be a non-empty JSON array";
-                return false;
-            }
+        if (!TryGetIniValues(root, "PORT.LISTEN", out var portValues, out var portFound, out error))
+            return false;
 
-            var firstPort = portValues
-                .Select(item => item is JsonValue value && value.TryGetValue<string>(out var text)
-                    ? text
-                    : null)
-                .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+        if (portFound)
+        {
+            var firstPort = portValues.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
             if (firstPort is null || !TryParsePort(firstPort, out var parsedPort))
             {
                 error = "PORT.LISTEN must contain a valid integer port from 1 through 65535";
@@ -299,6 +177,77 @@ internal static class ProtocolMessage
         }
 
         config = new CfgClientConfig { Clients = definitions, Port = port };
+        return true;
+    }
+
+    private static bool TryAddConfiguredClient(
+        JsonObject root,
+        string location,
+        Dictionary<string, CfgClientDefinition> definitions,
+        out string? error)
+    {
+        var key = $"GUID.{location}";
+        if (!TryGetIniValues(root, key, out var values, out var found, out error))
+            return false;
+
+        if (!found)
+            return true;
+
+        var guidText = values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (guidText is null || !IsGuid(guidText, out var normalizedGuid))
+        {
+            error = $"{key} must contain a valid GUID";
+            return false;
+        }
+
+        if (!definitions.TryAdd(
+                normalizedGuid,
+                new CfgClientDefinition(normalizedGuid, NormalizeLocation(location))))
+        {
+            error = $"duplicate client GUID '{normalizedGuid}'";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetIniValues(
+        JsonObject root,
+        string key,
+        out IReadOnlyList<string> values,
+        out bool found,
+        out string? error)
+    {
+        values = Array.Empty<string>();
+        found = false;
+        error = null;
+
+        var node = Get(root, key);
+        if (node is null)
+            return true;
+
+        found = true;
+        if (node is not JsonArray array)
+        {
+            error = $"{key} must be a JSON array produced by Node.ReadIniFile";
+            return false;
+        }
+
+        var parsed = new List<string>(array.Count);
+        foreach (var item in array)
+        {
+            if (item is not JsonValue value ||
+                !value.TryGetValue<string>(out var text) ||
+                text is null)
+            {
+                error = $"{key} must contain only strings";
+                return false;
+            }
+
+            parsed.Add(text);
+        }
+
+        values = parsed;
         return true;
     }
 

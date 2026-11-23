@@ -10,6 +10,9 @@ using System.Text.Json.Nodes;
 using System.Xml;
 using System.Xml.Linq;
 using AgentFlow.Contracts;
+using AgentFlow.Shared.RTS.CFG.Broadcasts;
+using BroadcastKit;
+using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.FACTFlatFileParser;
@@ -32,6 +35,7 @@ public sealed class FactFlatFileParserNode : BaseNode
         new("output_string_json", DataType.STRING, PinDirection.Output);
 
     private ILogger? _logger;
+    private ITopicBus? _topicBus;
 
     public FactFlatFileParserNode()
     {
@@ -59,12 +63,14 @@ public sealed class FactFlatFileParserNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         return Task.CompletedTask;
     }
 
     public override Task Run(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = ResolveTopicBus(context);
         Running = true;
         _logger?.LogTrace("FACT Flat File Parser is running.");
         return Task.CompletedTask;
@@ -74,6 +80,7 @@ public sealed class FactFlatFileParserNode : BaseNode
     {
         Running = false;
         _logger?.LogTrace("FACT Flat File Parser stopped.");
+        _topicBus = null;
         _logger = null;
         return Task.CompletedTask;
     }
@@ -138,6 +145,17 @@ public sealed class FactFlatFileParserNode : BaseNode
 
         PublishOutput(_rawXmlOutputPin, rawXml, "raw XML");
         PublishOutput(_jsonOutputPin, json, "normalized FACT JSON");
+
+        _ = BroadcastFormatAsync(
+            CFGBroadcastSubscriptions.CFGFactFlatFileXml,
+            rawXml,
+            "raw XML",
+            "rawXml");
+        _ = BroadcastFormatAsync(
+            CFGBroadcastSubscriptions.CFGFactFlatFileJson,
+            json,
+            "normalized FACT JSON",
+            "json");
     }
 
     private static string ReadXmlText(string path)
@@ -258,6 +276,42 @@ public sealed class FactFlatFileParserNode : BaseNode
 
         return result;
     }
+
+    private async Task BroadcastFormatAsync(
+        string topic,
+        string value,
+        string formatName,
+        string sampleKey)
+    {
+        try
+        {
+            var sample = StringSample.CreateSample();
+            sample.SetValue(value, sampleKey);
+
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
+                topic,
+                BroadcastTopicMessage.FromSample(sample),
+                ct: CancellationToken.None).ConfigureAwait(false);
+
+            _logger?.LogInformation(
+                "FACT Flat File Parser broadcast {Format} on {Topic}; length={Length}.",
+                formatName,
+                topic,
+                value.Length);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "FACT Flat File Parser failed to broadcast {Format} on {Topic}: {Message}",
+                formatName,
+                topic,
+                ex.Message);
+        }
+    }
+
+    private static ITopicBus ResolveTopicBus(INodeContext context) =>
+        context.GetService<ITopicBus>() ?? TopicBus.Instance;
 
     private void PublishOutput(BasePin outputPin, string value, string operation)
     {

@@ -17,6 +17,7 @@ and launcher-settings broadcasts.
   - `output_string_host` (`STRING`)
   - `output_string_cmd` (`STRING`)
   - `output_int64_ret` (`INT64`, aligned with `input_int64_ret`)
+  - `out_str_flatfilepath` (`STRING`)
 - Parameters: `TimeoutSeconds`, `FactKey`, `Position` (`A`, `B`, `C`, `D`, `F`)
 
 ## Lifecycle
@@ -85,7 +86,10 @@ directly to `CFG TCP Client.input_string_message`.
 
 The raw `output_int64_ret` value is forwarded independently of host payload construction and
 preserves the original Int64 result for downstream calculations such as `PassFailTotalYield`.
-After `output_string_host` successfully dispatches the RET BUSINESS payload, the launcher clears
+On every RET input the launcher also searches `C:\AC710\OUT\Logs` recursively for the newest
+`.xml` file whose name contains the cached FSN. A matching absolute path is sent through
+`out_str_flatfilepath`; an unconnected optional output is skipped without an error. After
+`output_string_host` successfully dispatches the RET BUSINESS payload, the launcher clears
 cached `FSN`, `IMEI`, and the associated SLOT so the next business cycle must provide fresh
 identity data. A disconnected or failed host dispatch does not clear the cache.
 

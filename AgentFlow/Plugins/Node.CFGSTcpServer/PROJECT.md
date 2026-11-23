@@ -22,23 +22,29 @@ The primary input is the flat JSON emitted by `Node.ReadIniFile` after reading
 
 ```json
 {
-  "GUID": [
-    "CFG-1=CA7EFFA7-A2EB-4AC0-864A-1E1100D40B90",
-    "CFG-2=CA7EFFA7-A2EB-4AC0-864A-1E1100D40B92"
-  ],
+  "GUID.CFG-1": ["CA7EFFA7-A2EB-4AC0-864A-1E1100D40B90"],
+  "GUID.CFG-2": ["CA7EFFA7-A2EB-4AC0-864A-1E1100D40B92"],
   "PORT.LISTEN": ["9000"],
   "SLOT.SLOTS": ["1,2,3,4,5,6,7,8,9,10"],
-  "PORTHUB.PORTHUBS": ["5:1,23:1,7:2,8:2,9:2,6:1,21:1,9:2,3:2,25:2"]
+  "IP.CFG-1": ["127.0.0.1"],
+  "IP.CFG-2": ["10.22.43.62"],
+  "NAME.CFG-1": ["admin"],
+  "NAME.CFG-2": ["damon"],
+  "PASSWORD.CFG-1": ["Abc911226."],
+  "PASSWORD.CFG-2": ["Abc911226."]
 }
 ```
 
-Each `GUID` entry uses `LOCATION=GUID` form and supports `CFG-1` or `CFG-2`.
-`PORT.LISTEN` is optional, but when present its first non-empty value must be an integer
-from `1` through `65535`. The port is cached as a runtime listen-port source. The GUID count
-is the authenticated-client limit. Unknown or duplicate GUIDs are rejected.
+The server reads the flat `SECTION.KEY` form emitted by `Node.ReadIniFile`. Each
+`GUID.CFG-1` and `GUID.CFG-2` value is a string array; the first non-empty value must be a valid
+GUID. `PORT.LISTEN` is optional, but when present its first non-empty value must be an integer
+from `1` through `65535`. The port is cached as a runtime listen-port source. The number of
+configured GUIDs is the authenticated-client limit. Unknown keys such as `IP`, `NAME`, or
+`PASSWORD` are ignored by this node and may be used by other nodes.
 
 The first valid configuration is loaded once. A replacement received later is ignored until
-the node is restarted. The legacy `clients` array format is still accepted for existing workflows.
+the node is restarted. Legacy `clients`, nested `GUID`, and `LOCATION=GUID` array formats are not
+supported.
 
 ## Start Modes
 

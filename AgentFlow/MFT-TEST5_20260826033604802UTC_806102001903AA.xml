@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FactLogInfo>
+    <PC os="Microsoft Windows 11 Pro" osversion="10.0.26200" servicepack="N/A" OSArchitecture="64-bit" pcmanufacturer="Dell Inc." pctype="x64-based PC"/>
+    <Station name="MFT-TEST5" ip="10.22.88.92" location="18" number="1" line="1"/>
+    <Software>
+        <FACT ver="5.2.7.4"/>
+        <FDT name="" ver="" crash="0" hang="0"/>
+        <FACTDB ver=""/>
+        <DRIVER ver="10095.20.1015.0"/>
+        <DRIVERWPDll ver="Unavailable"/>
+        <DRIVERStarInterface ver="Unavailable"/>
+    </Software>
+    <Device model="RN932N,RN937N" fsn="806102001903AA" hfsn="" QualcommSerialNumber="" ICCID="">
+        <SKU num="1104918" rev="001.007" cust="Rivian"/>
+        <IMEI old="" new=""/>
+        <MEID old="" new=""/>
+        <Firmware old="" new=""/>
+        <USBSpeed old="" new=""/>
+        <AirVantageFW></AirVantageFW>
+        <PSK type="ATT" keylabel="" data=""/>
+        <CrashDump></CrashDump>
+        <BadBlock>
+            <Flashmanufacturer></Flashmanufacturer>
+            <BadBlockLogInitial></BadBlockLogInitial>
+            <NumOfBadBlockInitial></NumOfBadBlockInitial>
+            <BadBlockRangeInitial></BadBlockRangeInitial>
+            <BadBlockLogEnd></BadBlockLogEnd>
+            <NumOfBadBlockFinal></NumOfBadBlockFinal>
+            <BadBlockRangeFinal></BadBlockRangeFinal>
+        </BadBlock>
+        <FlashCorruptionCountStart></FlashCorruptionCountStart>
+        <FlashCorruptionCountEnd></FlashCorruptionCountEnd>
+        <FlashCorruptionErrorStart></FlashCorruptionErrorStart>
+        <FlashCorruptionErrorEnd></FlashCorruptionErrorEnd>
+        <FlatFile></FlatFile>
+    </Device>
+    <ConfigSession start="2026-08-26 03:36:04" end="2026-08-26 03:37:58" TotalSecond="114">
+        <DeviceDetection PowerOffRecovery="" YellowBangRecovery="" YellowBangErrorCode=""/>
+        <DeviceEnumerationTime></DeviceEnumerationTime>
+        <InitialFWDownload start="" end="" code="" WorkAroundcode=""/>
+        <FirstFWDownload start="" end="" code="" WorkAroundcode=""/>
+        <LastFWDownload start="" end="" code="" WorkAroundcode=""/>
+        <IDSQueryTime start="" end="" TotalSecond="">
+            <DeviceLogin TotalMillisecond=""/>
+            <DevicePW TotalMillisecond=""/>
+            <ServerPW TotalMillisecond=""/>
+            <Nonce TotalMillisecond=""/>
+            <FWPublic TotalMillisecond=""/>
+            <APPLPublic TotalMillisecond=""/>
+            <LWM2MFWKey TotalMillisecond=""/>
+            <LWM2MAPPLKey TotalMillisecond=""/>
+            <BSServerURL TotalMillisecond=""/>
+            <PSKID TotalMillisecond=""/>
+            <PSKBS TotalMillisecond=""/>
+            <PSKATT TotalMillisecond=""/>
+        </IDSQueryTime>
+        <DumpDiffTime start="" end="" TotalSecond=""/>
+        <Return code="7" err="7,93"/>
+    </ConfigSession>
+    <DumpDiff>
+        <TotalCompared></TotalCompared>
+        <TotalMismatched></TotalMismatched>
+        <TotalNotFounded></TotalNotFounded>
+        <TotalSkipped></TotalSkipped>
+        <TotalDeleted></TotalDeleted>
+    </DumpDiff>
+</FactLogInfo>

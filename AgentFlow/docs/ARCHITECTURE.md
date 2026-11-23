@@ -438,7 +438,7 @@ and receive hooks without implementing final business behavior yet:
 
 | Plugin | Role | Default pins |
 | --- | --- | --- |
-| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, raw RET forwarding and OK/NG BUSINESS host payload publication with post-dispatch FSN/IMEI cache clearing, successful position-keyed command broadcasting, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_cmd`, and `output_int64_ret` outputs |
+| `Node.FACTLauncher` | FACT launch entry point with SLOT-aware FSN/IMEI capture, user-settings coordination, raw RET forwarding, newest matching flat-file XML path publication, and OK/NG BUSINESS host payload publication with post-dispatch FSN/IMEI cache clearing, successful position-keyed command broadcasting, cached CMD/IP/SLOT/PORTHUB state, and launcher-settings broadcasts | `str_slotfsnimei_run`, `input_string_settings`, and `input_int64_ret` inputs; `output_string_host`, `output_string_cmd`, `output_int64_ret`, and `out_str_flatfilepath` outputs |
 | `Node.UserSettings` | Consumes `Node.ReadIniFile` JSON, validates `GUID`, publishes the GUID once through a dedicated pin, publishes settings JSON without GUID through `output_string_settings`, broadcasts the keyed snapshot to GUI/CFG consumers, and publishes runtime endpoint/SLOT outputs when settings are accepted | `input_string_settings` string input; `output_string_slotA/B/C/D/F`, `output_string_endpoint`, `output_string_settings`, and `output_string_guid` string outputs |
 | `Node.ReadIniFile` | Generic INI reader supporting section-content and standard key/value styles; runtime input path overrides the `IniPath` parameter and successful reads publish a compact flat JSON dictionary whose values are arrays | `input_string_path` string input; `output_string_sample` string output |
 | `Node.FACTLogCollector` | FACT log collection | `factId` string input; `log` string output |
@@ -451,7 +451,7 @@ and receive hooks without implementing final business behavior yet:
 | `Node.DatabaseWriter` | Database persistence sink | `data` string input; `status` string output |
 | `Node.ProcessRunner` | Windows command runner using the already-elevated AgentFlow host token; streams stdout/stderr lines to the log panel in real time, applies millisecond start/execution timeouts, and publishes the final combined output | `input_string_cmd` string input; `output_string_ret` string output and `output_int64_ret` int64 output |
 | `Node.Heartbeat` | Immediately forwards each input sample and repeatedly publishes a cloned copy of the latest sample on a fixed interval | `input` and `output`; configurable data type and `IntervalMilliseconds` |
-| `Node.CFGSHandler` | Builds CFG-1/CFG-2 BUSINESS envelopes from SLOT/FSN/IMEI batches; launch, stop, and exit pins remain reserved | `in_str_raw_from_cfg`, `in_str_from_upper`, `in_str_user_settings`, `int64_run_ret`, `int64_exit_ret`, `str_run_ret`, `str_exit_ret`, `str_stop_ret`, `int64_stop_ret`; `cmd_run_cfg`, `cmd_stop_cfg`, `cmd_exit_cfg`, `cmd_sure_exit_cfg`, `output_string_message` |
+| `Node.CFGSHandler` | Builds CFG-1/CFG-2 BUSINESS envelopes from SLOT/FSN/IMEI batches, retains the complete Read INI File dictionary, prepares a local PowerShell startup command for CFG-1, runs the local CFG-1 query/kill/verify PID sequence, and runs the remote CFG-2 PsExec query/kill/verify sequence with up to three verification attempts at 750 ms intervals | `input_str_message`, `in_str_from_upper`, `in_str_user_settings`, `str_start_ret1`, `int64_start_ret1`, `str_sure_exit1`, `int64_sure_exit1`, `str_start_ret2`, `int64_start_ret2`, `str_sure_exit2`, `int64_sure_exit2`; `cmd_start_cfg1`, `cmd_start_cfg2`, `cmd_sure_exit_cfg1`, `cmd_sure_exit_cfg2`, `output_string_message` |
 
 `Node.UserSettings` consumes the array-valued JSON dictionary produced by `Node.ReadIniFile`; it no longer reads the fixed INI file itself. On a valid payload it requires a `GUID` section, normalizes the first valid GUID to uppercase `8-4-4-4-12` form, caches the settings, publishes runtime settings/endpoint/SLOT/GUID outputs when running, publishes the remaining keyed `SampleListsByKey` snapshot to GUI consumers through `CFGLauncherSettings`, and publishes representative keyed values through `CFGUserSettingsGuid`. Initialization tolerates settings that have not arrived yet, while invalid JSON or an invalid GUID stops the node. `Node.FACTLauncher` requests settings through pins and does not contain a duplicate parser.
 
@@ -485,8 +485,8 @@ invoke final application `Shutdown`.
 The CFG/CFGS session nodes add protocol-level framing and identity on top of TCP:
 
 - `Node.CFGSTcpServer` accepts the flat `Node.ReadIniFile` JSON on
-  `input_string_client_config`, maps `LOCATION=GUID` entries to `CFG-1` or `CFG-2`, and reads
-  `PORT.LISTEN` as an optional runtime listen-port source. It supports `Immediate` and
+  `input_string_client_config`, reads `GUID.CFG-1` and `GUID.CFG-2` values to map clients to their
+  locations, and reads `PORT.LISTEN` as an optional runtime listen-port source. It supports `Immediate` and
   `WaitForEndpoint` start modes, keeps `Running = true` while waiting, accepts an optional
   integer port on `input_string_endpoint`, loads only the first client configuration, authenticates
   one active session per configured GUID, validates outgoing and incoming BUSINESS payloads,

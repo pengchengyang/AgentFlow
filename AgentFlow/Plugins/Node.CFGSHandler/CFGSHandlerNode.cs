@@ -27,8 +27,19 @@ public sealed class CFGSHandlerNode : BaseNode
     private const string IdleStatus = "IDLE";
     private const string TestStatus = "TEST";
 
-    private readonly BasePin _rawFromCfgInputPin =
-        new("in_str_raw_from_cfg", DataType.STRING, PinDirection.Input, required: false);
+    private const int Cfg2ExitVerificationAttempts = 3;
+    private const int Cfg2ExitVerificationDelayMilliseconds = 750;
+
+    private enum ExitPhase
+    {
+        None,
+        WaitingInitialQuery,
+        WaitingKill,
+        WaitingVerification,
+    }
+
+    private readonly BasePin _messageInputPin =
+        new("input_str_message", DataType.STRING, PinDirection.Input, required: false);
 
     private readonly BasePin _fromUpperInputPin =
         new("in_str_from_upper", DataType.STRING, PinDirection.Input, required: false);
@@ -36,40 +47,50 @@ public sealed class CFGSHandlerNode : BaseNode
     private readonly BasePin _userSettingsInputPin =
         new("in_str_user_settings", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _runReturnInt64InputPin =
-        new("int64_run_ret", DataType.INT64, PinDirection.Input, required: false);
+    private readonly BasePin _startReturnStringInputPin1 =
+        new("str_start_ret1", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _exitReturnInt64InputPin =
-        new("int64_exit_ret", DataType.INT64, PinDirection.Input, required: false);
+    private readonly BasePin _startReturnInt64InputPin1 =
+        new("int64_start_ret1", DataType.INT64, PinDirection.Input, required: false);
 
-    private readonly BasePin _runReturnStringInputPin =
-        new("str_run_ret", DataType.STRING, PinDirection.Input, required: false);
+    private readonly BasePin _sureExitReturnStringInputPin1 =
+        new("str_sure_exit1", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _stopReturnStringInputPin =
-        new("str_stop_ret", DataType.STRING, PinDirection.Input, required: false);
+    private readonly BasePin _sureExitReturnInt64InputPin1 =
+        new("int64_sure_exit1", DataType.INT64, PinDirection.Input, required: false);
 
-    private readonly BasePin _stopReturnInt64InputPin =
-        new("int64_stop_ret", DataType.INT64, PinDirection.Input, required: false);
+    private readonly BasePin _cmdStartCfgOutputPin1 =
+        new("cmd_start_cfg1", DataType.STRING, PinDirection.Output);
 
-    private readonly BasePin _exitReturnStringInputPin =
-        new("str_exit_ret", DataType.STRING, PinDirection.Input, required: false);
+    private readonly BasePin _cmdSureExitCfgOutputPin1 =
+        new("cmd_sure_exit_cfg1", DataType.STRING, PinDirection.Output);
 
-    private readonly BasePin _cmdRunCfgOutputPin =
-        new("cmd_run_cfg", DataType.STRING, PinDirection.Output);
+    private readonly BasePin _startReturnStringInputPin2 =
+        new("str_start_ret2", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _cmdStopCfgOutputPin =
-        new("cmd_stop_cfg", DataType.STRING, PinDirection.Output);
+    private readonly BasePin _startReturnInt64InputPin2 =
+        new("int64_start_ret2", DataType.INT64, PinDirection.Input, required: false);
 
-    private readonly BasePin _cmdExitCfgOutputPin =
-        new("cmd_exit_cfg", DataType.STRING, PinDirection.Output);
+    private readonly BasePin _sureExitReturnStringInputPin2 =
+        new("str_sure_exit2", DataType.STRING, PinDirection.Input, required: false);
 
-    private readonly BasePin _cmdSureExitCfgOutputPin =
-        new("cmd_sure_exit_cfg", DataType.STRING, PinDirection.Output);
+    private readonly BasePin _sureExitReturnInt64InputPin2 =
+        new("int64_sure_exit2", DataType.INT64, PinDirection.Input, required: false);
+
+    private readonly BasePin _cmdStartCfgOutputPin2 =
+        new("cmd_start_cfg2", DataType.STRING, PinDirection.Output);
+
+    private readonly BasePin _cmdSureExitCfgOutputPin2 =
+        new("cmd_sure_exit_cfg2", DataType.STRING, PinDirection.Output);
 
     private readonly BasePin _messageOutputPin =
         new("output_string_message", DataType.STRING, PinDirection.Output);
 
     private ILogger? _logger;
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> _userSettings =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+    private string? _cfg1StartCommand;
+    private string? _cfg2StartCommand;
     private string? _cfg1Guid;
     private string? _cfg2Guid;
     private long _cfg1Sequence;
@@ -78,12 +99,14 @@ public sealed class CFGSHandlerNode : BaseNode
     private bool _cfg2RunSent;
     private bool _cfg1RunAckReceived;
     private bool _cfg2RunAckReceived;
-
-    private sealed record SlotIdentity(int Slot, string Fsn, string Imei)
-    {
-        public bool HasCompleteIdentity =>
-            !string.IsNullOrWhiteSpace(Fsn) && !string.IsNullOrWhiteSpace(Imei);
-    }
+    private ExitPhase _cfg1ExitPhase;
+    private long _cfg1ExitPid;
+    private string _cfg1ExitOutput = string.Empty;
+    private ExitPhase _cfg2ExitPhase;
+    private long _cfg2ExitPid;
+    private string _cfg2ExitOutput = string.Empty;
+    private int _cfg2ExitVerificationAttempt;
+    private CancellationTokenSource? _cfg2ExitRetryCts;
 
     public CFGSHandlerNode()
     {
@@ -98,19 +121,21 @@ public sealed class CFGSHandlerNode : BaseNode
 
     public override void AddPins()
     {
-        AddInputPin(_rawFromCfgInputPin);
+        AddInputPin(_messageInputPin);
         AddInputPin(_fromUpperInputPin);
         AddInputPin(_userSettingsInputPin);
-        AddInputPin(_runReturnInt64InputPin);
-        AddInputPin(_exitReturnInt64InputPin);
-        AddInputPin(_runReturnStringInputPin);
-        AddInputPin(_exitReturnStringInputPin);
-        AddInputPin(_stopReturnStringInputPin);
-        AddInputPin(_stopReturnInt64InputPin);
-        AddOutputPin(_cmdRunCfgOutputPin);
-        AddOutputPin(_cmdStopCfgOutputPin);
-        AddOutputPin(_cmdExitCfgOutputPin);
-        AddOutputPin(_cmdSureExitCfgOutputPin);
+        AddInputPin(_startReturnStringInputPin1);
+        AddInputPin(_startReturnInt64InputPin1);
+        AddInputPin(_sureExitReturnStringInputPin1);
+        AddInputPin(_sureExitReturnInt64InputPin1);
+        AddOutputPin(_cmdStartCfgOutputPin1);
+        AddOutputPin(_cmdSureExitCfgOutputPin1);
+        AddInputPin(_startReturnStringInputPin2);
+        AddInputPin(_startReturnInt64InputPin2);
+        AddInputPin(_sureExitReturnStringInputPin2);
+        AddInputPin(_sureExitReturnInt64InputPin2);
+        AddOutputPin(_cmdStartCfgOutputPin2);
+        AddOutputPin(_cmdSureExitCfgOutputPin2);
         AddOutputPin(_messageOutputPin);
     }
 
@@ -121,6 +146,10 @@ public sealed class CFGSHandlerNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _userSettings = new Dictionary<string, IReadOnlyList<string>>(
+            StringComparer.OrdinalIgnoreCase);
+        _cfg1StartCommand = null;
+        _cfg2StartCommand = null;
         _cfg1Guid = null;
         _cfg2Guid = null;
         _cfg1Sequence = 0;
@@ -129,6 +158,14 @@ public sealed class CFGSHandlerNode : BaseNode
         _cfg2RunSent = false;
         _cfg1RunAckReceived = false;
         _cfg2RunAckReceived = false;
+        _cfg1ExitPhase = ExitPhase.None;
+        _cfg1ExitPid = 0;
+        _cfg1ExitOutput = string.Empty;
+        _cfg2ExitPhase = ExitPhase.None;
+        _cfg2ExitPid = 0;
+        _cfg2ExitOutput = string.Empty;
+        _cfg2ExitVerificationAttempt = 0;
+        CancelCfg2ExitRetry();
         return Task.CompletedTask;
     }
 
@@ -153,13 +190,41 @@ public sealed class CFGSHandlerNode : BaseNode
             return;
         }
 
-        if (ReferenceEquals(pin, _rawFromCfgInputPin))
+        if (ReferenceEquals(pin, _sureExitReturnStringInputPin1))
+        {
+            HandleCfg1ExitString(value);
+            return;
+        }
+
+        if (ReferenceEquals(pin, _sureExitReturnInt64InputPin1))
+        {
+            HandleCfg1ExitExitCode(value);
+            return;
+        }
+
+        if (ReferenceEquals(pin, _sureExitReturnStringInputPin2))
+        {
+            HandleCfg2ExitString(value);
+            return;
+        }
+
+        if (ReferenceEquals(pin, _sureExitReturnInt64InputPin2))
+        {
+            HandleCfg2ExitExitCode(value);
+            return;
+        }
+
+        if (ReferenceEquals(pin, _messageInputPin))
             HandleCfgMessage(value);
     }
 
     public override Task Stop(INodeContext context, CancellationToken ct = default)
     {
         Running = false;
+        _userSettings = new Dictionary<string, IReadOnlyList<string>>(
+            StringComparer.OrdinalIgnoreCase);
+        _cfg1StartCommand = null;
+        _cfg2StartCommand = null;
         _cfg1Guid = null;
         _cfg2Guid = null;
         _cfg1Sequence = 0;
@@ -168,6 +233,14 @@ public sealed class CFGSHandlerNode : BaseNode
         _cfg2RunSent = false;
         _cfg1RunAckReceived = false;
         _cfg2RunAckReceived = false;
+        _cfg1ExitPhase = ExitPhase.None;
+        _cfg1ExitPid = 0;
+        _cfg1ExitOutput = string.Empty;
+        _cfg2ExitPhase = ExitPhase.None;
+        _cfg2ExitPid = 0;
+        _cfg2ExitOutput = string.Empty;
+        _cfg2ExitVerificationAttempt = 0;
+        CancelCfg2ExitRetry();
         return Task.CompletedTask;
     }
 
@@ -182,12 +255,30 @@ public sealed class CFGSHandlerNode : BaseNode
             return;
         }
 
-        if (!TryParseGuids(text.StringValue, out var cfg1Guid, out var cfg2Guid, out var error))
+        if (!TryParseUserSettings(
+                text.StringValue,
+                out var settings,
+                out var cfg1Guid,
+                out var cfg2Guid,
+                out var error))
         {
             Fail("CFGS Handler rejected user settings: {Error}.", error);
             return;
         }
 
+        if (!CFGSCommandBuilder.TryBuildStartCommands(
+                settings,
+                out var cfg1StartCommand,
+                out var cfg2StartCommand,
+                out error))
+        {
+            Fail("CFGS Handler could not prepare startup commands: {Error}.", error);
+            return;
+        }
+
+        _userSettings = settings;
+        _cfg1StartCommand = cfg1StartCommand;
+        _cfg2StartCommand = cfg2StartCommand;
         _cfg1Guid = cfg1Guid;
         _cfg2Guid = cfg2Guid;
         _cfg1RunSent = false;
@@ -195,7 +286,8 @@ public sealed class CFGSHandlerNode : BaseNode
         _cfg1RunAckReceived = false;
         _cfg2RunAckReceived = false;
         _logger?.LogInformation(
-            "CFGS Handler cached CFG GUIDs: CFG-1={Cfg1Guid}, CFG-2={Cfg2Guid}.",
+            "CFGS Handler cached {KeyCount} user setting key(s): CFG-1={Cfg1Guid}, CFG-2={Cfg2Guid}.",
+            _userSettings.Count,
             _cfg1Guid,
             _cfg2Guid);
     }
@@ -208,44 +300,48 @@ public sealed class CFGSHandlerNode : BaseNode
             return;
         }
 
-        // TODO: This parser assumes the upper workflow sends SLOT/FSN/IMEI batches in the agreed
-        // MESSAGES JSON array. The transport and producer-side validation are intentionally outside
-        // this node until the upstream contract is finalized.
-        if (!TryParseSlotIdentities(
+        if (!CFGSCommandBuilder.TryParseUpperMessages(
                 text.StringValue,
-                out var slots,
-                out var stoppedByDuplicate,
+                out var items,
                 out var error))
         {
-            if (stoppedByDuplicate)
-                Running = false;
-            else
-                Fail("CFGS Handler rejected upper message: {Error}.", error);
+            Fail("CFGS Handler rejected upper message: {Error}.", error);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_cfg1Guid) || string.IsNullOrWhiteSpace(_cfg2Guid))
+        if (!CFGSCommandBuilder.TryBuildGroupMessages(
+                items,
+                Cfg1Location,
+                out var cfg1Messages,
+                out var cfg1HasTestData,
+                out error) ||
+            !CFGSCommandBuilder.TryBuildGroupMessages(
+                items,
+                Cfg2Location,
+                out var cfg2Messages,
+                out var cfg2HasTestData,
+                out error))
         {
-            Fail(
-                "CFGS Handler cannot build CFGS messages because user settings have not supplied both GUIDs. CFG-1={Cfg1Guid}, CFG-2={Cfg2Guid}.",
-                _cfg1Guid ?? "<missing>",
-                _cfg2Guid ?? "<missing>");
+            Fail("CFGS Handler could not build CFGS business messages: {Error}.", error);
             return;
         }
 
-        var cfg1Messages = BuildMessages(slots, 1, out var cfg1HasTestData);
-        var cfg2Messages = BuildMessages(slots, 6, out var cfg2HasTestData);
         if (!cfg1HasTestData && !cfg2HasTestData)
         {
             _logger?.LogTrace("CFGS Handler skipped both envelopes because all slots are IDLE.");
             return;
         }
 
-        EnsureRunSent();
-
         var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
         if (cfg1HasTestData)
         {
+            if (string.IsNullOrWhiteSpace(_cfg1Guid))
+            {
+                Fail("CFGS Handler cannot build CFG-1 messages because GUID.CFG-1 is missing.");
+                return;
+            }
+
+            EnsureRunSent(Cfg1Location);
             var envelope = CreateBusinessEnvelope(
                 _cfg1Guid,
                 Cfg1Location,
@@ -257,6 +353,13 @@ public sealed class CFGSHandlerNode : BaseNode
 
         if (cfg2HasTestData)
         {
+            if (string.IsNullOrWhiteSpace(_cfg2Guid))
+            {
+                Fail("CFGS Handler cannot build CFG-2 messages because GUID.CFG-2 is missing.");
+                return;
+            }
+
+            EnsureRunSent(Cfg2Location);
             var envelope = CreateBusinessEnvelope(
                 _cfg2Guid,
                 Cfg2Location,
@@ -267,12 +370,20 @@ public sealed class CFGSHandlerNode : BaseNode
         }
     }
 
-    private void EnsureRunSent()
+    private void EnsureRunSent(string location)
     {
-        if (!_cfg1RunSent)
-            _cfg1RunSent = SendRun(_cfg1Guid!, Cfg1Location, ref _cfg1Sequence);
-        if (!_cfg2RunSent)
-            _cfg2RunSent = SendRun(_cfg2Guid!, Cfg2Location, ref _cfg2Sequence);
+        if (string.Equals(location, Cfg1Location, StringComparison.Ordinal))
+        {
+            if (!_cfg1RunSent)
+                _cfg1RunSent = SendRun(_cfg1Guid!, Cfg1Location, ref _cfg1Sequence);
+            return;
+        }
+
+        if (string.Equals(location, Cfg2Location, StringComparison.Ordinal))
+        {
+            if (!_cfg2RunSent)
+                _cfg2RunSent = SendRun(_cfg2Guid!, Cfg2Location, ref _cfg2Sequence);
+        }
     }
 
     private bool SendRun(string guid, string location, ref long sequence)
@@ -306,33 +417,6 @@ public sealed class CFGSHandlerNode : BaseNode
         }
 
         return sent;
-    }
-
-    private JsonArray BuildMessages(
-        IReadOnlyDictionary<int, SlotIdentity> slots,
-        int startSlot,
-        out bool hasTestData)
-    {
-        var messages = new JsonArray();
-        hasTestData = false;
-        for (var slot = startSlot; slot < startSlot + 5; slot++)
-        {
-            var hasIdentity =
-                slots.TryGetValue(slot, out var identity) &&
-                identity.HasCompleteIdentity;
-            if (hasIdentity)
-                hasTestData = true;
-
-            messages.Add(new JsonObject
-            {
-                ["SLOT"] = slot.ToString(CultureInfo.InvariantCulture),
-                ["FSN"] = hasIdentity ? identity!.Fsn : string.Empty,
-                ["IMEI"] = hasIdentity ? identity!.Imei : string.Empty,
-                ["STATUS"] = hasIdentity ? TestStatus : IdleStatus,
-            });
-        }
-
-        return messages;
     }
 
     private static JsonObject CreateBusinessEnvelope(
@@ -476,98 +560,14 @@ public sealed class CFGSHandlerNode : BaseNode
             _cfg2RunAckReceived);
     }
 
-    private bool TryParseSlotIdentities(
+    private static bool TryParseUserSettings(
         string json,
-        out IReadOnlyDictionary<int, SlotIdentity> slots,
-        out bool stoppedByDuplicate,
-        out string? error)
-    {
-        slots = new Dictionary<int, SlotIdentity>();
-        stoppedByDuplicate = false;
-        error = null;
-
-        JsonObject root;
-        try
-        {
-            if (JsonNode.Parse(json) is not JsonObject parsed)
-            {
-                error = "message must be a JSON object";
-                return false;
-            }
-
-            root = parsed;
-        }
-        catch (JsonException ex)
-        {
-            error = $"invalid JSON: {ex.Message}";
-            return false;
-        }
-
-        if (!TryGetProperty(root, "MESSAGES", out var messagesNode) ||
-            messagesNode is not JsonArray messages ||
-            messages.Count is < 1 or > 10)
-        {
-            error = "MESSAGES must be a JSON array containing between one and ten records";
-            return false;
-        }
-
-        var parsedSlots = new Dictionary<int, SlotIdentity>();
-        for (var index = 0; index < messages.Count; index++)
-        {
-            if (messages[index] is not JsonObject message)
-            {
-                error = $"MESSAGES[{index}] must be a JSON object";
-                return false;
-            }
-
-            if (!TryGetRequiredString(message, "SLOT", out var slotText) ||
-                !int.TryParse(slotText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var slot) ||
-                slot is < 1 or > 10)
-            {
-                error = $"MESSAGES[{index}].SLOT must be an integer string from 1 through 10";
-                return false;
-            }
-
-            if (!TryGetOptionalString(message, "FSN", out var fsn) ||
-                !TryGetOptionalString(message, "IMEI", out var imei))
-            {
-                error = $"MESSAGES[{index}].FSN and IMEI must be strings when present";
-                return false;
-            }
-
-            fsn = fsn.Trim();
-            imei = imei.Trim();
-            if (string.IsNullOrEmpty(fsn) ^ string.IsNullOrEmpty(imei))
-            {
-                _logger?.LogWarning(
-                    "CFGS Handler treated MESSAGES[{Index}] SLOT {Slot} as IDLE because only one of FSN or IMEI was supplied.",
-                    index,
-                    slot);
-                fsn = string.Empty;
-                imei = string.Empty;
-            }
-
-            if (parsedSlots.ContainsKey(slot))
-            {
-                _logger?.LogWarning(
-                    "CFGS Handler found duplicate SLOT {Slot} in MESSAGES; the last value was retained and the node will stop.",
-                    slot);
-                stoppedByDuplicate = true;
-            }
-
-            parsedSlots[slot] = new SlotIdentity(slot, fsn, imei);
-        }
-
-        slots = parsedSlots;
-        return !stoppedByDuplicate;
-    }
-
-    private static bool TryParseGuids(
-        string json,
+        out IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
         out string cfg1Guid,
         out string cfg2Guid,
         out string? error)
     {
+        settings = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
         cfg1Guid = string.Empty;
         cfg2Guid = string.Empty;
         error = null;
@@ -589,35 +589,61 @@ public sealed class CFGSHandlerNode : BaseNode
             return false;
         }
 
-        if (!TryGetProperty(root, "GUID", out var guidNode) || guidNode is not JsonObject guidObject)
+        var parsedSettings = new Dictionary<string, IReadOnlyList<string>>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in root)
         {
-            error = "GUID must be a JSON object containing CFG-1 and CFG-2";
-            return false;
+            if (pair.Value is not JsonArray values)
+            {
+                error = $"settings value for '{pair.Key}' must be a JSON array of strings";
+                return false;
+            }
+
+            var parsedValues = new List<string>(values.Count);
+            foreach (var item in values)
+            {
+                if (item is not JsonValue value ||
+                    !value.TryGetValue<string>(out var text) ||
+                    text is null)
+                {
+                    error = $"settings value for '{pair.Key}' must contain only strings";
+                    return false;
+                }
+
+                parsedValues.Add(text);
+            }
+
+            parsedSettings[pair.Key] = parsedValues;
         }
 
-        if (!TryGetValidGuid(guidObject, Cfg1Location, out cfg1Guid))
+        if (!TryGetValidGuid(parsedSettings, "GUID.CFG-1", out cfg1Guid))
         {
             error = "GUID.CFG-1 must contain a valid GUID";
             return false;
         }
 
-        if (!TryGetValidGuid(guidObject, Cfg2Location, out cfg2Guid))
+        if (!TryGetValidGuid(parsedSettings, "GUID.CFG-2", out cfg2Guid))
         {
             error = "GUID.CFG-2 must contain a valid GUID";
             return false;
         }
 
+        settings = parsedSettings;
         return true;
     }
 
-    private static bool TryGetValidGuid(JsonObject obj, string key, out string guid)
+    private static bool TryGetValidGuid(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
+        string key,
+        out string guid)
     {
         guid = string.Empty;
-        if (!TryGetRequiredString(obj, key, out var rawGuid) ||
-            !Guid.TryParse(rawGuid.Trim(), out var parsedGuid))
-        {
+        if (!settings.TryGetValue(key, out var values))
             return false;
-        }
+
+        var rawGuid = values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (rawGuid is null || !Guid.TryParse(rawGuid.Trim(), out var parsedGuid))
+            return false;
 
         guid = parsedGuid.ToString("D").ToUpperInvariant();
         return true;
@@ -664,6 +690,603 @@ public sealed class CFGSHandlerNode : BaseNode
 
         node = null;
         return false;
+    }
+
+    private bool SendStartCommand(string location)
+    {
+        string? command;
+        BasePin outputPin;
+        if (string.Equals(location, CFGSCommandBuilder.Cfg1, StringComparison.Ordinal))
+        {
+            command = _cfg1StartCommand;
+            outputPin = _cmdStartCfgOutputPin1;
+        }
+        else if (string.Equals(location, CFGSCommandBuilder.Cfg2, StringComparison.Ordinal))
+        {
+            command = _cfg2StartCommand;
+            outputPin = _cmdStartCfgOutputPin2;
+        }
+        else
+        {
+            _logger?.LogError(
+                "CFGS Handler cannot send a startup command for unknown LOCATION {Location}.",
+                location);
+            return false;
+        }
+
+        return SendCommand(outputPin, command, $"{location} startup command");
+    }
+
+    private bool SendSureExitCommand(string location, long pid)
+    {
+        if (string.Equals(location, CFGSCommandBuilder.Cfg1, StringComparison.Ordinal))
+            return StartCfg1ExitSequence(pid);
+
+        if (string.Equals(location, CFGSCommandBuilder.Cfg2, StringComparison.Ordinal))
+            return StartCfg2ExitSequence(pid);
+
+        _logger?.LogError(
+            "CFGS Handler cannot send an exit command for unknown LOCATION {Location}.",
+            location);
+        return false;
+    }
+
+    private bool StartCfg1ExitSequence(long pid)
+    {
+        if (_cfg1ExitPhase != ExitPhase.None)
+        {
+            _logger?.LogError(
+                "CFGS Handler rejected a new CFG-1 exit sequence because phase {Phase} is active.",
+                _cfg1ExitPhase);
+            return false;
+        }
+
+        if (!CFGSCommandBuilder.TryBuildCfg1PidQueryCommand(
+                pid,
+                out var command,
+                out var error))
+        {
+            _logger?.LogError("CFGS Handler could not prepare the CFG-1 PID query: {Error}.", error);
+            return false;
+        }
+
+        _cfg1ExitPid = pid;
+        _cfg1ExitOutput = string.Empty;
+        _cfg1ExitPhase = ExitPhase.WaitingInitialQuery;
+        if (!SendCommand(
+                _cmdSureExitCfgOutputPin1,
+                command,
+                $"CFG-1 initial PID query for PID {pid}"))
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            return false;
+        }
+
+        _logger?.LogInformation(
+            "CFGS Handler started the CFG-1 exit sequence for PID {Pid}.",
+            pid);
+        return true;
+    }
+
+    private void HandleCfg1ExitString(Sample? value)
+    {
+        if (value is not StringSample text)
+        {
+            _logger?.LogError(
+                "CFGS Handler ignored CFG-1 exit output: expected StringSample, got {Type}.",
+                value?.Type.ToString() ?? "null");
+            return;
+        }
+
+        if (_cfg1ExitPhase == ExitPhase.None)
+        {
+            _logger?.LogWarning(
+                "CFGS Handler ignored CFG-1 exit output because no exit sequence is active.");
+            return;
+        }
+
+        _cfg1ExitOutput = text.StringValue ?? string.Empty;
+    }
+
+    private void HandleCfg1ExitExitCode(Sample? value)
+    {
+        if (value is not Int64Sample { Int64Value: { } exitCode })
+        {
+            _logger?.LogError(
+                "CFGS Handler ignored CFG-1 exit code: expected Int64Sample, got {Type}.",
+                value?.Type.ToString() ?? "null");
+            return;
+        }
+
+        if (_cfg1ExitPhase == ExitPhase.None)
+        {
+            _logger?.LogWarning(
+                "CFGS Handler ignored CFG-1 exit code {ExitCode} because no exit sequence is active.",
+                exitCode);
+            return;
+        }
+
+        var output = _cfg1ExitOutput;
+        _cfg1ExitOutput = string.Empty;
+        ProcessCfg1ExitStep(exitCode, output);
+    }
+
+    private void ProcessCfg1ExitStep(long exitCode, string output)
+    {
+        switch (_cfg1ExitPhase)
+        {
+            case ExitPhase.WaitingInitialQuery:
+                ProcessCfg1InitialQuery(exitCode, output);
+                return;
+
+            case ExitPhase.WaitingKill:
+                ProcessCfg1KillResult(exitCode, output);
+                return;
+
+            case ExitPhase.WaitingVerification:
+                ProcessCfg1VerificationQuery(exitCode, output);
+                return;
+
+            default:
+                _logger?.LogWarning(
+                    "CFGS Handler ignored CFG-1 exit result because no exit phase is active.");
+                return;
+        }
+    }
+
+    private void ProcessCfg1InitialQuery(long exitCode, string output)
+    {
+        if (!CFGSCommandBuilder.TryClassifyTasklistOutput(
+                _cfg1ExitPid,
+                output,
+                out var result,
+                out var error))
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not classify the initial CFG-1 PID query for PID {Pid}: {Error}. ExitCode={ExitCode}.",
+                _cfg1ExitPid,
+                error,
+                exitCode);
+            return;
+        }
+
+        if (result == PidLookupResult.NotFound)
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            _logger?.LogInformation(
+                "CFGS Handler confirmed that CFG-1 PID {Pid} is not running; no kill was required.",
+                _cfg1ExitPid);
+            return;
+        }
+
+        if (!CFGSCommandBuilder.TryBuildCfg1KillProcessTreeCommand(
+                _cfg1ExitPid,
+                out var command,
+                out var commandError))
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not prepare the CFG-1 taskkill command: {Error}.",
+                commandError);
+            return;
+        }
+
+        _cfg1ExitPhase = ExitPhase.WaitingKill;
+        if (!SendCommand(
+                _cmdSureExitCfgOutputPin1,
+                command,
+                $"CFG-1 taskkill for PID {_cfg1ExitPid}"))
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not send the CFG-1 taskkill command for PID {Pid}.",
+                _cfg1ExitPid);
+        }
+    }
+
+    private void ProcessCfg1KillResult(long exitCode, string output)
+    {
+        _logger?.LogInformation(
+            "CFGS Handler finished the CFG-1 taskkill for PID {Pid}; ExitCode={ExitCode}, OutputLength={OutputLength}.",
+            _cfg1ExitPid,
+            exitCode,
+            output.Length);
+
+        if (!CFGSCommandBuilder.TryBuildCfg1PidQueryCommand(
+                _cfg1ExitPid,
+                out var command,
+                out var error))
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not prepare the CFG-1 verification PID query: {Error}.",
+                error);
+            return;
+        }
+
+        _cfg1ExitPhase = ExitPhase.WaitingVerification;
+        if (!SendCommand(
+                _cmdSureExitCfgOutputPin1,
+                command,
+                $"CFG-1 verification PID query for PID {_cfg1ExitPid}"))
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not send the CFG-1 verification PID query for PID {Pid}.",
+                _cfg1ExitPid);
+        }
+    }
+
+    private void ProcessCfg1VerificationQuery(long exitCode, string output)
+    {
+        if (!CFGSCommandBuilder.TryClassifyTasklistOutput(
+                _cfg1ExitPid,
+                output,
+                out var result,
+                out var error))
+        {
+            _cfg1ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not classify the verification CFG-1 PID query for PID {Pid}: {Error}. ExitCode={ExitCode}.",
+                _cfg1ExitPid,
+                error,
+                exitCode);
+            return;
+        }
+
+        _cfg1ExitPhase = ExitPhase.None;
+        if (result == PidLookupResult.NotFound)
+        {
+            _logger?.LogInformation(
+                "CFGS Handler verified that CFG-1 PID {Pid} has exited.",
+                _cfg1ExitPid);
+            return;
+        }
+
+        Fail(
+            "CFGS Handler verification found CFG-1 PID {Pid} still running after taskkill. ExitCode={ExitCode}.",
+            _cfg1ExitPid,
+            exitCode);
+    }
+
+    private bool StartCfg2ExitSequence(long pid)
+    {
+        if (_cfg2ExitPhase != ExitPhase.None)
+        {
+            _logger?.LogError(
+                "CFGS Handler rejected a new CFG-2 exit sequence because phase {Phase} is active.",
+                _cfg2ExitPhase);
+            return false;
+        }
+        CancelCfg2ExitRetry();
+
+        if (!CFGSCommandBuilder.TryBuildCfg2PidQueryCommand(
+                _userSettings,
+                pid,
+                out var command,
+                out var error))
+        {
+            _logger?.LogError("CFGS Handler could not prepare the CFG-2 PID query: {Error}.", error);
+            return false;
+        }
+
+        _cfg2ExitPid = pid;
+        _cfg2ExitOutput = string.Empty;
+        _cfg2ExitVerificationAttempt = 0;
+        _cfg2ExitPhase = ExitPhase.WaitingInitialQuery;
+        if (!SendCommand(
+                _cmdSureExitCfgOutputPin2,
+                command,
+                $"CFG-2 initial PID query for PID {pid}"))
+        {
+            _cfg2ExitPhase = ExitPhase.None;
+            return false;
+        }
+
+        _logger?.LogInformation(
+            "CFGS Handler started the CFG-2 exit sequence for PID {Pid}.",
+            pid);
+        return true;
+    }
+
+    private void HandleCfg2ExitString(Sample? value)
+    {
+        if (value is not StringSample text)
+        {
+            _logger?.LogError(
+                "CFGS Handler ignored CFG-2 exit output: expected StringSample, got {Type}.",
+                value?.Type.ToString() ?? "null");
+            return;
+        }
+
+        if (_cfg2ExitPhase == ExitPhase.None)
+        {
+            _logger?.LogWarning(
+                "CFGS Handler ignored CFG-2 exit output because no exit sequence is active.");
+            return;
+        }
+
+        _cfg2ExitOutput = text.StringValue ?? string.Empty;
+    }
+
+    private void HandleCfg2ExitExitCode(Sample? value)
+    {
+        if (value is not Int64Sample { Int64Value: { } exitCode })
+        {
+            _logger?.LogError(
+                "CFGS Handler ignored CFG-2 exit code: expected Int64Sample, got {Type}.",
+                value?.Type.ToString() ?? "null");
+            return;
+        }
+
+        if (_cfg2ExitPhase == ExitPhase.None)
+        {
+            _logger?.LogWarning(
+                "CFGS Handler ignored CFG-2 exit code {ExitCode} because no exit sequence is active.",
+                exitCode);
+            return;
+        }
+
+        var output = _cfg2ExitOutput;
+        _cfg2ExitOutput = string.Empty;
+        ProcessCfg2ExitStep(exitCode, output);
+    }
+
+    private void ProcessCfg2ExitStep(long exitCode, string output)
+    {
+        switch (_cfg2ExitPhase)
+        {
+            case ExitPhase.WaitingInitialQuery:
+                ProcessCfg2InitialQuery(exitCode, output);
+                return;
+
+            case ExitPhase.WaitingKill:
+                ProcessCfg2KillResult(exitCode, output);
+                return;
+
+            case ExitPhase.WaitingVerification:
+                ProcessCfg2VerificationQuery(exitCode, output);
+                return;
+
+            default:
+                _logger?.LogWarning(
+                    "CFGS Handler ignored CFG-2 exit result because no exit phase is active.");
+                return;
+        }
+    }
+
+    private void ProcessCfg2InitialQuery(long exitCode, string output)
+    {
+        if (!CFGSCommandBuilder.TryClassifyTasklistOutput(
+                _cfg2ExitPid,
+                output,
+                out var result,
+                out var error))
+        {
+            _cfg2ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not classify the initial CFG-2 PID query for PID {Pid}: {Error}. ExitCode={ExitCode}.",
+                _cfg2ExitPid,
+                error,
+                exitCode);
+            return;
+        }
+
+        if (result == PidLookupResult.NotFound)
+        {
+            _cfg2ExitPhase = ExitPhase.None;
+            _logger?.LogInformation(
+                "CFGS Handler confirmed that CFG-2 PID {Pid} is not running; no kill was required.",
+                _cfg2ExitPid);
+            return;
+        }
+
+        if (!CFGSCommandBuilder.TryBuildCfg2KillProcessTreeCommand(
+                _userSettings,
+                _cfg2ExitPid,
+                out var command,
+                out var commandError))
+        {
+            _cfg2ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not prepare the CFG-2 taskkill command: {Error}.",
+                commandError);
+            return;
+        }
+
+        _cfg2ExitPhase = ExitPhase.WaitingKill;
+        if (!SendCommand(
+                _cmdSureExitCfgOutputPin2,
+                command,
+                $"CFG-2 taskkill for PID {_cfg2ExitPid}"))
+        {
+            _cfg2ExitPhase = ExitPhase.None;
+            Fail(
+                "CFGS Handler could not send the CFG-2 taskkill command for PID {Pid}.",
+                _cfg2ExitPid);
+        }
+    }
+
+    private void ProcessCfg2KillResult(long exitCode, string output)
+    {
+        _logger?.LogInformation(
+            "CFGS Handler finished the CFG-2 taskkill for PID {Pid}; ExitCode={ExitCode}, OutputLength={OutputLength}. Verification will retry up to {Attempts} times.",
+            _cfg2ExitPid,
+            exitCode,
+            output.Length,
+            Cfg2ExitVerificationAttempts);
+
+        _cfg2ExitVerificationAttempt = 0;
+        SendCfg2VerificationQuery();
+    }
+
+    private bool SendCfg2VerificationQuery()
+    {
+        if (_cfg2ExitPhase == ExitPhase.None)
+        {
+            _logger?.LogError(
+                "CFGS Handler could not send the CFG-2 verification query because the exit sequence is not active.");
+            return false;
+        }
+
+        _cfg2ExitVerificationAttempt++;
+        if (!CFGSCommandBuilder.TryBuildCfg2PidQueryCommand(
+                _userSettings,
+                _cfg2ExitPid,
+                out var command,
+                out var error))
+        {
+            EndCfg2ExitSequence();
+            Fail(
+                "CFGS Handler could not prepare the CFG-2 verification query: {Error}.",
+                error);
+            return false;
+        }
+
+        _cfg2ExitPhase = ExitPhase.WaitingVerification;
+        if (!SendCommand(
+                _cmdSureExitCfgOutputPin2,
+                command,
+                $"CFG-2 verification PID query {_cfg2ExitVerificationAttempt}/{Cfg2ExitVerificationAttempts} for PID {_cfg2ExitPid}"))
+        {
+            EndCfg2ExitSequence();
+            Fail(
+                "CFGS Handler could not send the CFG-2 verification query for PID {Pid}.",
+                _cfg2ExitPid);
+            return false;
+        }
+
+        return true;
+    }
+
+    private void ProcessCfg2VerificationQuery(long exitCode, string output)
+    {
+        if (!CFGSCommandBuilder.TryClassifyTasklistOutput(
+                _cfg2ExitPid,
+                output,
+                out var result,
+                out var error))
+        {
+            EndCfg2ExitSequence();
+            Fail(
+                "CFGS Handler could not classify the CFG-2 verification query for PID {Pid}: {Error}. ExitCode={ExitCode}.",
+                _cfg2ExitPid,
+                error,
+                exitCode);
+            return;
+        }
+
+        if (result == PidLookupResult.NotFound)
+        {
+            EndCfg2ExitSequence();
+            _logger?.LogInformation(
+                "CFGS Handler verified that CFG-2 PID {Pid} has exited after {Attempt}/{Attempts} verification attempt(s).",
+                _cfg2ExitPid,
+                _cfg2ExitVerificationAttempt,
+                Cfg2ExitVerificationAttempts);
+            return;
+        }
+
+        if (_cfg2ExitVerificationAttempt < Cfg2ExitVerificationAttempts)
+        {
+            _logger?.LogInformation(
+                "CFGS Handler found CFG-2 PID {Pid} still present on verification attempt {Attempt}/{Attempts}; retrying in {DelayMilliseconds} ms.",
+                _cfg2ExitPid,
+                _cfg2ExitVerificationAttempt,
+                Cfg2ExitVerificationAttempts,
+                Cfg2ExitVerificationDelayMilliseconds);
+            ScheduleCfg2ExitVerificationRetry();
+            return;
+        }
+
+        EndCfg2ExitSequence();
+        Fail(
+            "CFGS Handler verification still found CFG-2 PID {Pid} after {Attempts} attempts. ExitCode={ExitCode}.",
+            _cfg2ExitPid,
+            Cfg2ExitVerificationAttempts,
+            exitCode);
+    }
+
+    private void EndCfg2ExitSequence()
+    {
+        _cfg2ExitPhase = ExitPhase.None;
+        _cfg2ExitOutput = string.Empty;
+        CancelCfg2ExitRetry();
+    }
+
+    private void ScheduleCfg2ExitVerificationRetry()
+    {
+        CancelCfg2ExitRetry();
+        var cts = new CancellationTokenSource();
+        _cfg2ExitRetryCts = cts;
+        var expectedPid = _cfg2ExitPid;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(
+                    Cfg2ExitVerificationDelayMilliseconds,
+                    cts.Token).ConfigureAwait(false);
+                if (!Running ||
+                    _cfg2ExitPhase != ExitPhase.WaitingVerification ||
+                    _cfg2ExitPid != expectedPid)
+                {
+                    return;
+                }
+
+                SendCfg2VerificationQuery();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(
+                    ex,
+                    "CFGS Handler failed while scheduling the CFG-2 verification retry for PID {Pid}.",
+                    expectedPid);
+            }
+        });
+    }
+
+    private void CancelCfg2ExitRetry()
+    {
+        var cts = _cfg2ExitRetryCts;
+        _cfg2ExitRetryCts = null;
+        if (cts is null)
+            return;
+
+        cts.Cancel();
+        cts.Dispose();
+    }
+
+    private bool SendCommand(BasePin outputPin, string? command, string operation)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            _logger?.LogError(
+                "CFGS Handler could not send {Operation} because the command has not been prepared.",
+                operation);
+            return false;
+        }
+
+        var sample = StringSample.CreateSample();
+        sample.SetValue(command, outputPin.Name);
+        var sent = outputPin.SendSampleWithDispatchLog(
+            sample,
+            operation,
+            LogLevel.Information);
+
+        if (!sent)
+        {
+            _logger?.LogWarning(
+                "CFGS Handler could not send {Operation} because output pin {Pin} is not connected.",
+                operation,
+                outputPin.Name);
+        }
+
+        return sent;
     }
 
     private static string FormatTimestamp(DateTimeOffset timestamp) =>

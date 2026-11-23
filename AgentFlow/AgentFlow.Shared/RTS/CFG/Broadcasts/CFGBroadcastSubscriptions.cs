@@ -33,6 +33,12 @@ public static class CFGBroadcastSubscriptions
     /// <summary>Subscription used to publish parsed PRI file settings as a keyed Sample dictionary.</summary>
     public const string CFGPriFileSettings = "Pri.File.Settings.00850D6A-1F19-4040-B2D2-BA4E3E8E0F93";
 
+    /// <summary>Subscription used to publish the original FACT Flat File XML text as one StringSample.</summary>
+    public const string CFGFactFlatFileXml = "FACT.FlatFile.Xml.17135905-2023-4B95-A82D-2041AAF75094";
+
+    /// <summary>Subscription used to publish the normalized FACT Flat File JSON text as one StringSample.</summary>
+    public const string CFGFactFlatFileJson = "FACT.FlatFile.Json.F13B9428-A945-4982-9B1E-A1862EB8A55E";
+
     /// <summary>Subscription used by Node.AutoRunStop to broadcast the stop request payload.</summary>
     public const string CFGAutoStopExit = "Workflow.AutoStop.Exit.5526559F-0CEF-4728-90F2-C87943496AA8";
 

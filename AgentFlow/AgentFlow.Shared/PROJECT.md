@@ -46,6 +46,12 @@ containing C# types are renamed.
   - Published by `Node.PriFileParser` after parsing a PRI file.
   - Carries the parsed key/value dictionary as `BroadcastTopicMessage.SamplesByKey`,
     with one string sample per key.
+- `CFGBroadcastSubscriptions.CFGFactFlatFileXml`: `FACT.FlatFile.Xml.17135905-2023-4B95-A82D-2041AAF75094`
+  - Published by `Node.FACTFlatFileParser` after a successful parse.
+  - Carries one `StringSample` containing the original XML text, keyed `rawXml`.
+- `CFGBroadcastSubscriptions.CFGFactFlatFileJson`: `FACT.FlatFile.Json.F13B9428-A945-4982-9B1E-A1862EB8A55E`
+  - Published by `Node.FACTFlatFileParser` after a successful parse.
+  - Carries one `StringSample` containing the normalized JSON text, keyed `json`.
 - `CFGBroadcastSubscriptions.CFGUserSettingsGuid`: `CFG.UserSettings.Guid.D7D7367B-61A4-4CE7-B41B-E2E1E4B55F91`
   - Published by `Node.UserSettings` when `input_string_settings` receives the JSON dictionary
     produced by `Node.ReadIniFile`.
