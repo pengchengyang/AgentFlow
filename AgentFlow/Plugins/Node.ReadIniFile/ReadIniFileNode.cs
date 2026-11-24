@@ -74,17 +74,6 @@ public sealed class ReadIniFileNode : BaseNode
         Running = false;
         _initialDefaultLoaded = false;
 
-        var configuredPath =
-            ParameterValues.GetString(Param("IniPath").Value) ?? DefaultIniPath;
-
-        if (string.IsNullOrWhiteSpace(configuredPath))
-        {
-            _logger?.LogDebug(
-                "Read INI File skipped initialization because the configured IniPath is empty.");
-            return Task.CompletedTask;
-        }
-
-        _initialDefaultLoaded = LoadAndPublish(null);
         return Task.CompletedTask;
     }
 
@@ -93,14 +82,23 @@ public sealed class ReadIniFileNode : BaseNode
         _logger = context.Logger;
         Running = true;
 
-        var inputPath = GetCurrentInputPath();
-        if (!string.IsNullOrWhiteSpace(inputPath))
+        var configuredPath =
+    ParameterValues.GetString(Param("IniPath").Value) ?? DefaultIniPath;
+
+        if (string.IsNullOrWhiteSpace(configuredPath))
         {
-            LoadAndPublish(inputPath);
+            _logger?.LogDebug(
+                "Read INI File skipped initialization because the configured IniPath is empty.");
+            return Task.CompletedTask;
         }
-        else if (!_initialDefaultLoaded)
+
+        _initialDefaultLoaded = LoadAndPublish(configuredPath);
+        if (_initialDefaultLoaded)
         {
-            LoadAndPublish(null);
+
+            _logger?.LogInformation(
+                "Read INI File successfully loaded the configured IniPath during initialization: {IniPath}",
+                configuredPath);
         }
 
         return Task.CompletedTask;

@@ -19,10 +19,19 @@
                       PrivateAssets="all" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <NativeNodeProxyOutput Condition="'$(NativeNodeProxyOutput)' == ''">$(MSBuildThisFileDirectory)Generated\NativeNodeProxies.g.cs</NativeNodeProxyOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Generated\NativeNodeProxies.g.cs" Condition="'$(NativeNodeProxyOutput)' != '$(MSBuildThisFileDirectory)Generated\NativeNodeProxies.g.cs'" />
+    <Compile Include="$(NativeNodeProxyOutput)" Condition="'$(NativeNodeProxyOutput)' != '$(MSBuildThisFileDirectory)Generated\NativeNodeProxies.g.cs'" />
+  </ItemGroup>
   <Target Name="GenerateNativeNodeProxies" BeforeTargets="CoreCompile">
     <PropertyGroup>
-      <NativeNodeCodeGenAssembly>$(MSBuildThisFileDirectory)..\..\..\Tools\NativeNodeCodeGen\bin\$(PluginPlatformOutputPath)$(Configuration)\$(AgentFlowTargetFramework)\NativeNodeCodeGen.dll</NativeNodeCodeGenAssembly>
+      <NativeNodeCodeGenAssembly Condition="'$(NativeNodeCodeGenAssembly)' == ''">$(MSBuildThisFileDirectory)..\..\..\Tools\NativeNodeCodeGen\bin\$(PluginPlatformOutputPath)$(Configuration)\$(AgentFlowTargetFramework)\NativeNodeCodeGen.dll</NativeNodeCodeGenAssembly>
     </PropertyGroup>
-    <Exec Command="dotnet &quot;$(NativeNodeCodeGenAssembly)&quot; &quot;$(MSBuildThisFileDirectory)..\..\..&quot; &quot;$(MSBuildThisFileDirectory)..\Src&quot; &quot;$(MSBuildThisFileDirectory)Generated\NativeNodeProxies.g.cs&quot;" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName($(NativeNodeProxyOutput)))" />
+    <Exec Command="dotnet &quot;$(NativeNodeCodeGenAssembly)&quot; &quot;$(MSBuildThisFileDirectory)..\..\..&quot; &quot;$(MSBuildThisFileDirectory)..\Src&quot; &quot;$(NativeNodeProxyOutput)&quot;" />
   </Target>
 </Project>

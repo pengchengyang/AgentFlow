@@ -516,11 +516,13 @@ public sealed class UserSettingsNode : BaseNode
         out string guid)
     {
         guid = string.Empty;
-        if (!settings.TryGetValue(GuidSectionName, out var values) || values.Count == 0)
+        var values = FindSectionValues(settings, GuidSectionName);
+        if (values is null || values.Count == 0)
         {
             _logger?.LogError(
-                "UserSettings requires section [{Section}] in the received settings JSON, but the section is missing or empty.",
-                GuidSectionName);
+                "UserSettings requires section [{Section}] in the received settings JSON, but the section is missing or empty. Keys received: {Keys}.",
+                GuidSectionName,
+                string.Join(", ", settings.Keys));
             return false;
         }
 
@@ -611,7 +613,65 @@ public sealed class UserSettingsNode : BaseNode
     }
 
     private static bool IsGuidSection(string key)
-        => string.Equals(key, GuidSectionName, StringComparison.OrdinalIgnoreCase);
+        => MatchesSection(key, GuidSectionName);
+
+    /// <summary>
+    /// Matches a settings key against a target section name, case-insensitively. Accepts the
+    /// bare section key (<c>GUID</c>) and a compound <c>SECTION.KEY</c> whose first segment
+    /// equals the section name (<c>GUID.GUID</c>). Used to recognize the GUID section when
+    /// excluding it from downstream snapshots; the conservative rule avoids treating a key
+    /// that merely ends in the section name under another section as the GUID section.
+    /// </summary>
+    private static bool MatchesSection(string key, string sectionName)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
+
+        if (string.Equals(key, sectionName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var segments = key.Split('.');
+        return segments.Length >= 2 &&
+               string.Equals(segments[0].Trim(), sectionName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Locates the value collection for a target section in settings emitted by ReadIniFile.
+    /// Lookup order: exact key match, then a compound <c>SECTION.KEY</c> whose first segment
+    /// equals the section name, then a last-segment fallback (e.g. <c>GLOBAL.GUID</c>).
+    /// </summary>
+    private static IReadOnlyList<string>? FindSectionValues(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
+        string sectionName)
+    {
+        if (settings.TryGetValue(sectionName, out var exact) && exact.Count > 0)
+            return exact;
+
+        IReadOnlyList<string>? fallback = null;
+        foreach (var pair in settings)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value.Count == 0)
+                continue;
+
+            var segments = pair.Key.Split('.');
+            if (segments.Length < 2)
+                continue;
+
+            var first = segments[0].Trim();
+            var last = segments[^1].Trim();
+
+            if (string.Equals(first, sectionName, StringComparison.OrdinalIgnoreCase))
+                return pair.Value;
+
+            if (fallback is null &&
+                string.Equals(last, sectionName, StringComparison.OrdinalIgnoreCase))
+            {
+                fallback = pair.Value;
+            }
+        }
+
+        return fallback;
+    }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<string>> GetSettingsWithoutGuid(
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings)
@@ -626,7 +686,8 @@ public sealed class UserSettingsNode : BaseNode
         IReadOnlyDictionary<string, IReadOnlyList<string>> settings,
         string key)
     {
-        if (!settings.TryGetValue(key, out var sectionValues) || sectionValues.Count == 0)
+        var sectionValues = FindSectionValues(settings, key);
+        if (sectionValues is null || sectionValues.Count == 0)
             return Array.Empty<string>();
 
         var values = new List<string>();

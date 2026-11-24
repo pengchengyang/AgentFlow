@@ -1,15 +1,39 @@
 param(
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Debug'
+    [string]$Configuration = 'Debug',
+    [string]$BuildDir = '',
+    [string]$OutputDir = '',
+    [string]$StateDir = '',
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
+$env:MSBUILDDISABLENODEREUSE = '1'
+$env:DOTNET_CLI_USE_MSBUILD_SERVER = '0'
 
 $root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $sourceDir = Join-Path $root 'Plugins\Windows\Src'
-$outputFile = Join-Path $root 'Plugins\Windows\win-x64\NativeUpperCase\Node.NativeUpperCase.Windows.dll'
-$buildDir = Join-Path $root "artifacts\WindowsNative\$Configuration"
-$stateDir = Join-Path $root 'artifacts\WindowsNative'
+$defaultOutputDir = Join-Path $root 'Plugins\Windows\win-x64'
+$outputDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $defaultOutputDir
+}
+else {
+    [System.IO.Path]::GetFullPath($OutputDir)
+}
+$moduleOutputDir = Join-Path $outputDir 'NativeUpperCase'
+$outputFile = Join-Path $moduleOutputDir 'Node.NativeUpperCase.Windows.dll'
+$buildDir = if ([string]::IsNullOrWhiteSpace($BuildDir)) {
+    Join-Path $root "artifacts\WindowsNative\$Configuration"
+}
+else {
+    [System.IO.Path]::GetFullPath($BuildDir)
+}
+$stateDir = if ([string]::IsNullOrWhiteSpace($StateDir)) {
+    Join-Path $root 'artifacts\WindowsNative'
+}
+else {
+    [System.IO.Path]::GetFullPath($StateDir)
+}
 $lockPath = Join-Path $stateDir '.build.lock'
 $stampPath = Join-Path $stateDir 'build.stamp'
 $scriptPath = $PSCommandPath
@@ -151,8 +175,19 @@ if (-not (Test-Path -LiteralPath $sourceDir -PathType Container)) {
     throw "Windows native source directory was not found: $sourceDir"
 }
 
+if ($Force) {
+    if (Test-Path -LiteralPath $buildDir) {
+        Remove-Item -LiteralPath $buildDir -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $stampPath) {
+        Remove-Item -LiteralPath $stampPath -Force
+    }
+}
+
 [System.IO.Directory]::CreateDirectory($buildDir) | Out-Null
 [System.IO.Directory]::CreateDirectory($stateDir) | Out-Null
+[System.IO.Directory]::CreateDirectory($outputDir) | Out-Null
+[System.IO.Directory]::CreateDirectory($moduleOutputDir) | Out-Null
 
 $cmake = Find-CMake
 $generator = Select-CMakeGenerator $cmake
@@ -179,11 +214,13 @@ if ($null -eq $lock) {
 
 try {
     $existingStamp = $null
-    if (Test-Path -LiteralPath $stampPath -PathType Leaf) {
+    if (-not $Force -and (Test-Path -LiteralPath $stampPath -PathType Leaf)) {
         $existingStamp = ([System.IO.File]::ReadAllText($stampPath)).Trim()
     }
 
-    if ((Test-Path -LiteralPath $outputFile -PathType Leaf) -and $existingStamp -eq $fingerprint) {
+    if (-not $Force -and
+        (Test-Path -LiteralPath $outputFile -PathType Leaf) -and
+        $existingStamp -eq $fingerprint) {
         Write-Host "Windows native nodes are up to date ($Configuration)."
     }
     else {
@@ -192,7 +229,12 @@ try {
         if ($generator.FreshSupported) {
             $configureArgs += '--fresh'
         }
-        $configureArgs += @('-S', $sourceDir, '-B', $buildDir, '-G', $generator.Name)
+        $configureArgs += @(
+            '-S', $sourceDir,
+            '-B', $buildDir,
+            '-G', $generator.Name,
+            "-DNATIVE_OUTPUT_DIR=$moduleOutputDir"
+        )
         if (-not [string]::IsNullOrWhiteSpace($generator.Architecture)) {
             $configureArgs += @('-A', $generator.Architecture)
         }
@@ -209,12 +251,12 @@ try {
         }
 
         if (-not (Test-Path -LiteralPath $outputFile -PathType Leaf)) {
-            throw "CMake completed successfully but the expected native node DLL was not produced: $outputFile"
+            throw "CMake produced no native node DLL at $outputFile."
         }
 
         $utf8 = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($stampPath, $fingerprint, $utf8)
-        Write-Host "Windows native nodes built under Plugins\Windows\win-x64."
+        Write-Host "Windows native nodes built under $outputDir."
     }
 }
 finally {

@@ -14,13 +14,18 @@ namespace Node.CFGConfimer;
 
 /// <summary>
 /// Confirms that a complete CFG protocol envelope targets this local GUID and location.
-/// BUSINESS envelopes emit only the validated MESSAGES wrapper; other TYPE values emit the
-/// complete original envelope. Any validation failure logs an error and stops the node.
+/// The location is derived from the SLOT values in the complete UserSettings JSON received on
+/// in_str_user_settings. BUSINESS envelopes emit only the validated MESSAGES wrapper; other
+/// TYPE values emit the complete original envelope. Any validation failure logs an error and
+/// stops the node.
 /// </summary>
 public sealed class CFGConfimerNode : BaseNode
 {
     private const string RunType = "RUN";
     private const string BusinessType = "BUSINESS";
+    private const string SlotKey = "SLOT";
+    private static readonly int[] Cfg1Slots = { 1, 2, 3, 4, 5 };
+    private static readonly int[] Cfg2Slots = { 6, 7, 8, 9, 10 };
 
     private readonly object _stateGate = new();
     private ILogger? _logger;
@@ -42,6 +47,9 @@ public sealed class CFGConfimerNode : BaseNode
     public BasePin LocalGuidInputPin { get; } =
         new("in_string_local_guid", DataType.STRING, PinDirection.Input, required: false);
 
+    public BasePin UserSettingsInputPin { get; } =
+        new("in_str_user_settings", DataType.STRING, PinDirection.Input, required: false);
+
     public BasePin MessagesInputPin { get; } =
         new("in_string_messages", DataType.STRING, PinDirection.Input, required: false);
 
@@ -54,53 +62,30 @@ public sealed class CFGConfimerNode : BaseNode
     public override void AddPins()
     {
         AddInputPin(LocalGuidInputPin);
+        AddInputPin(UserSettingsInputPin);
         AddInputPin(MessagesInputPin);
         AddOutputPin(MessagesOutputPin);
         AddOutputPin(OthersOutputPin);
     }
 
-    protected override void AddParam()
-    {
-        base.AddParam();
-        AddParameter(new NodeParameter("LocalLocation", typeof(string), string.Empty,
-            isEditable: true, group: "Protocol", zone: "CFGConfimerZone"));
-    }
-
     public override void Configure(IReadOnlyDictionary<string, object?> parameters)
     {
-        if (parameters.TryGetValue("LocalLocation", out var localLocation) && localLocation is not null)
-            Param("LocalLocation").Value = ParameterValues.GetString(localLocation, string.Empty) ?? string.Empty;
+        // This node has no custom parameters; LocalLocation is derived from in_str_user_settings.
     }
 
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
-        var configuredLocation = (ParameterValues.GetString(Param("LocalLocation").Value, string.Empty) ?? string.Empty).Trim();
-        if (!string.IsNullOrWhiteSpace(configuredLocation) && !IsLocation(configuredLocation))
-        {
-            context.Logger.LogWarning(
-                "CFG Confimer LocalLocation {Location} is invalid; expected CFG-1 or CFG-2.",
-                configuredLocation);
-            configuredLocation = string.Empty;
-            Param("LocalLocation").Value = string.Empty;
-        }
 
         lock (_stateGate)
         {
             _localGuid = string.Empty;
-            _localLocation = NormalizeLocation(configuredLocation);
+            _localLocation = string.Empty;
             _lastBusinessTimestampUtc = null;
         }
 
-        if (string.IsNullOrWhiteSpace(configuredLocation))
-        {
-            context.Logger.LogWarning(
-                "CFG Confimer LocalLocation is not configured; incoming messages will be rejected.");
-        }
-
         context.Logger.LogInformation(
-            "CFG Confimer initialized; localLocation={Location}, waiting for input_string_local_guid.",
-            string.IsNullOrWhiteSpace(configuredLocation) ? "<unset>" : configuredLocation);
+            "CFG Confimer initialized; waiting for in_str_user_settings to derive LocalLocation and in_string_local_guid.");
         return Task.CompletedTask;
     }
 
@@ -130,6 +115,12 @@ public sealed class CFGConfimerNode : BaseNode
         if (ReferenceEquals(pin, LocalGuidInputPin))
         {
             HandleLocalGuid(value);
+            return;
+        }
+
+        if (ReferenceEquals(pin, UserSettingsInputPin))
+        {
+            HandleUserSettingsInput(value);
             return;
         }
 
@@ -164,6 +155,65 @@ public sealed class CFGConfimerNode : BaseNode
         _logger?.LogInformation("CFG Confimer accepted local GUID {Guid}.", normalized);
     }
 
+    private void HandleUserSettingsInput(Sample? value)
+    {
+        if (value is not StringSample text || text.StringValue is null)
+        {
+            RejectSettingsAndStop(
+                "CFG Confimer ignored in_str_user_settings: expected StringSample.");
+            return;
+        }
+
+        if (!TryParseObject(text.StringValue, out var settings, out var error))
+        {
+            RejectSettingsAndStop(
+                "CFG Confimer rejected in_str_user_settings: {Error}.",
+                error);
+            return;
+        }
+
+        if (!TryGetStringValues(settings, SlotKey, out var slotValues, out error))
+        {
+            RejectSettingsAndStop(
+                "CFG Confimer rejected in_str_user_settings: {Error}.",
+                error);
+            return;
+        }
+
+        if (!TryResolveLocationFromSlots(slotValues, out var location, out error))
+        {
+            RejectSettingsAndStop(
+                "CFG Confimer rejected in_str_user_settings SLOT values: {Error}.",
+                error);
+            return;
+        }
+
+        var changed = false;
+        lock (_stateGate)
+        {
+            changed = !string.Equals(_localLocation, location, StringComparison.Ordinal);
+            _localLocation = location;
+            if (changed)
+                _lastBusinessTimestampUtc = null;
+        }
+
+        _logger?.LogInformation(
+            "CFG Confimer derived LocalLocation={Location} from in_str_user_settings; changed={Changed}.",
+            location,
+            changed);
+    }
+
+    private void RejectSettingsAndStop(string message, params object?[] args)
+    {
+        lock (_stateGate)
+        {
+            _localLocation = string.Empty;
+            _lastBusinessTimestampUtc = null;
+        }
+
+        RejectAndStop(message, args);
+    }
+
     private void HandleMessagesInput(Sample? value)
     {
         if (value is not StringSample text || text.StringValue is null)
@@ -190,7 +240,7 @@ public sealed class CFGConfimerNode : BaseNode
         if (string.IsNullOrWhiteSpace(localLocation))
         {
             RejectAndStop(
-                "CFG Confimer rejected message because LocalLocation is not configured as CFG-1 or CFG-2.");
+                "CFG Confimer rejected message because in_str_user_settings has not supplied a valid SLOT-derived location yet.");
             return;
         }
 
@@ -481,6 +531,114 @@ public sealed class CFGConfimerNode : BaseNode
         return true;
     }
 
+    private static bool TryGetStringValues(
+        JsonObject obj,
+        string key,
+        out IReadOnlyList<string> values,
+        out string? error)
+    {
+        values = Array.Empty<string>();
+        error = null;
+
+        var node = Get(obj, key);
+        if (node is null)
+        {
+            error = $"{key} is required";
+            return false;
+        }
+
+        if (node is JsonArray array)
+        {
+            var parsedValues = new List<string>(array.Count);
+            foreach (var item in array)
+            {
+                if (item is not JsonValue value ||
+                    !value.TryGetValue<string>(out var text) ||
+                    text is null)
+                {
+                    error = $"{key} must contain only strings";
+                    return false;
+                }
+
+                parsedValues.Add(text);
+            }
+
+            values = parsedValues;
+            return true;
+        }
+
+        if (node is JsonValue single &&
+            single.TryGetValue<string>(out var singleText) &&
+            singleText is not null)
+        {
+            values = new[] { singleText };
+            return true;
+        }
+
+        error = $"{key} must be a string or an array of strings";
+        return false;
+    }
+
+    private static bool TryResolveLocationFromSlots(
+        IReadOnlyList<string> slotValues,
+        out string location,
+        out string? error)
+    {
+        location = string.Empty;
+        error = null;
+        var slots = new HashSet<int>();
+
+        foreach (var rawValue in slotValues)
+        {
+            foreach (var token in rawValue.Split(
+                         ',',
+                         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out var slot) ||
+                    slot is < 1 or > 10)
+                {
+                    error = $"SLOT value {token} must be an integer from 1 through 10";
+                    return false;
+                }
+
+                if (!slots.Add(slot))
+                {
+                    error = $"SLOT {slot} is duplicated";
+                    return false;
+                }
+            }
+        }
+
+        if (slots.Count == Cfg1Slots.Length && Cfg1Slots.All(slots.Contains))
+        {
+            location = "CFG-1";
+            return true;
+        }
+
+        if (slots.Count == Cfg2Slots.Length && Cfg2Slots.All(slots.Contains))
+        {
+            location = "CFG-2";
+            return true;
+        }
+
+        if (slots.Count == 0)
+        {
+            error = "SLOT must contain 1,2,3,4,5 or 6,7,8,9,10";
+            return false;
+        }
+
+        var hasCfg1Slots = slots.Any(slot => slot is >= 1 and <= 5);
+        var hasCfg2Slots = slots.Any(slot => slot is >= 6 and <= 10);
+        if (hasCfg1Slots && hasCfg2Slots)
+        {
+            error = "SLOT mixes the CFG-1 and CFG-2 slot ranges";
+            return false;
+        }
+
+        error = "SLOT must contain exactly 1,2,3,4,5 or 6,7,8,9,10";
+        return false;
+    }
+
     private static bool IsLocation(string value) =>
         string.Equals(NormalizeLocation(value), "CFG-1", StringComparison.Ordinal) ||
         string.Equals(NormalizeLocation(value), "CFG-2", StringComparison.Ordinal);
@@ -516,5 +674,4 @@ public sealed class CFGConfimerNode : BaseNode
         return false;
     }
 
-    private NodeParameter Param(string name) => NodeParameters.First(p => p.Name == name);
 }

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`Node.CFGConfimer` validates complete CFG protocol envelopes for the current local GUID and configured location.
+`Node.CFGConfimer` validates complete CFG protocol envelopes for the current local GUID and settings-derived location.
 
 - `TYPE` equal to `BUSINESS` routes the validated `DATA.MESSAGES` payload through `output_string_messages`.
 - Any other `TYPE`, including `RUN` and `RUN_ACK`, routes the complete original envelope through
@@ -15,27 +15,31 @@ Each transport frame carries exactly one envelope. `VERSION` and `SEQ` are ignor
 
 | Pin | Direction | Type | Behavior |
 | --- | --- | --- | --- |
-| `input_string_local_guid` | Input | STRING | Supplies the current local GUID. A changed valid GUID clears the cached BUSINESS timestamp. |
-| `input_string_messages` | Input | STRING | Accepts one complete protocol envelope without the outer semicolon frame. |
+| `in_string_local_guid` | Input | STRING | Supplies the current local GUID. A changed valid GUID clears the cached BUSINESS timestamp. |
+| `in_str_user_settings` | Input | STRING | Accepts the complete JSON object emitted by `Node.ReadIniFile`. The active `SLOT` values derive `CFG-1` or `CFG-2`. |
+| `in_string_messages` | Input | STRING | Accepts one complete protocol envelope without the outer semicolon frame. |
 | `output_string_messages` | Output | STRING | Emits a compact JSON wrapper containing the validated BUSINESS `MESSAGES` array. |
 | `output_string_others` | Output | STRING | Emits the complete original envelope when `TYPE` is not `BUSINESS`. |
 
-The two input pins are added in the order shown above, matching their visual alignment in the node editor.
+The three input pins are added in the order shown above, matching their visual alignment in the node editor.
 
-## Parameters
+## Local Location
 
-| Parameter | Default | Behavior |
-| --- | --- | --- |
-| `LocalLocation` | empty | Must be configured as `CFG-1` or `CFG-2`. Incoming top-level `LOCATION` is required and must match this value. |
+There is no `LocalLocation` parameter. The node derives the local location from the complete UserSettings JSON received on `in_str_user_settings`:
 
-`LocalGuid` is supplied by a pin rather than a parameter. The local GUID provider should run first or be connected through `DependsOn`.
+- active `SLOT` values exactly equal to `1,2,3,4,5` derive `CFG-1`
+- active `SLOT` values exactly equal to `6,7,8,9,10` derive `CFG-2`
+
+Comment lines starting with `#` or `;` are ignored by the INI parser before the JSON reaches this node. Missing, empty, incomplete, duplicate, mixed-range, or otherwise invalid SLOT values log an error, clear the derived location, and stop the node.
+
+The local GUID is supplied by a pin rather than a parameter. The UserSettings and local GUID providers should run first or be connected through `DependsOn`.
 
 ## Routing and Validation
 
 Every incoming envelope is checked for:
 
 - A valid target `GUID` equal to the current local GUID.
-- A top-level `LOCATION` equal to `LocalLocation`.
+- A top-level `LOCATION` equal to the location derived from `in_str_user_settings`.
 - A non-empty `TYPE`.
 
 ### BUSINESS envelopes
@@ -56,7 +60,7 @@ Non-`BUSINESS` envelopes do not require `DATA.MESSAGES` and are not compared aga
 
 Any validation failure logs an `ERROR` and sets `Running = false`:
 
-- Missing local GUID or incomplete `LocalLocation` configuration.
+- Missing local GUID or missing/invalid `in_str_user_settings` SLOT configuration.
 - Invalid envelope JSON.
 - Missing or invalid target `GUID`.
 - GUID mismatch.

@@ -12,7 +12,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(NATIVE_API_DIR "${CMAKE_CURRENT_SOURCE_DIR}/AgentFlow.NativeNodeApi")
 set(NATIVE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Node.NativeUpperCase.Windows")
-set(NATIVE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../win-x64/NativeUpperCase")
+set(NATIVE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../win-x64/NativeUpperCase" CACHE PATH "Directory where Windows native node artifacts are written.")
 
 add_library(Node.NativeUpperCase.Windows SHARED
   "${NATIVE_SOURCE_DIR}/NativeUpperCaseNode.cpp"

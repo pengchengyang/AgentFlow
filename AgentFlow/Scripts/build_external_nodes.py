@@ -31,6 +31,14 @@ ARTIFACTS = ROOT / "artifacts"
 EXTERNAL_OUTPUT = ARTIFACTS / "External"
 BUILD_WORK = ARTIFACTS / "External-Build"
 PYINSTALLER_VERSION = "6.22.3"
+
+
+def set_artifacts_root(root: Path) -> None:
+    """Redirect all external build outputs and caches to an explicit artifacts root."""
+    global ARTIFACTS, EXTERNAL_OUTPUT, BUILD_WORK
+    ARTIFACTS = root.resolve()
+    EXTERNAL_OUTPUT = ARTIFACTS / "External"
+    BUILD_WORK = ARTIFACTS / "External-Build"
 SOURCES = (ROOT / "Plugins" / "External",)
 SUPPORTED_RIDS = (
     "win-x64",
@@ -826,7 +834,11 @@ def build_test_client(config: str, rid: str) -> Path:
     run([
         dotnet, "build", project, "-c", config,
         f"-p:Platform={target_msbuild_platform(rid)}",
+        "-p:UseSharedCompilation=false",
         "-o", output, "-v:minimal",
+        "--no-incremental",
+        "--disable-build-servers",
+        "--artifacts-path", BUILD_WORK / "dotnet-artifacts" / config / rid,
     ], cwd=ROOT)
     dll = output / "ExternalWorkerTestClient.dll"
     if not dll.is_file():
@@ -1172,6 +1184,7 @@ def add_common_selection(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="Release", choices=("Debug", "Release"))
     parser.add_argument("--rid", default=host_rid(), choices=SUPPORTED_RIDS)
     parser.add_argument("--fail-fast", action="store_true")
+    parser.add_argument("--artifacts-root", help="Directory for external outputs and isolated build caches.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1212,6 +1225,8 @@ def main(argv: list[str] | None = None) -> int:
     clean_parser.set_defaults(func=command_clean)
 
     args = parser.parse_args(argv)
+    if getattr(args, "artifacts_root", None):
+        set_artifacts_root(Path(args.artifacts_root))
     try:
         return int(args.func(args))
     except Exception as error:  # noqa: BLE001 - command-line entrypoint reports a concise error

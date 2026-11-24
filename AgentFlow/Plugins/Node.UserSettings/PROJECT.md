@@ -38,8 +38,18 @@ Section names are case-insensitive. Values preserve their original casing and or
 `CFG-1=11111111-1111-1111-1111-111111111111`; the first non-empty valid GUID is normalized
 to uppercase `8-4-4-4-12` form for `output_string_guid`.
 
+Section lookup tolerates the compound `SECTION.KEY` keys emitted by ReadIniFile for
+`KEY=VALUE` INI lines. For a target section such as `GUID`, `IP`, `SLOT`, or `PORTHUB`,
+values are located in this order: an exact bare key match, a compound key whose first
+segment equals the section name (e.g. `GUID.GUID`), then a last-segment fallback
+(e.g. `GLOBAL.GUID`). The GUID section excluded from downstream snapshots is recognized
+by exact match or first segment only; a key under another section that merely ends in
+`GUID` is not treated as the GUID section.
+
 Invalid JSON, an empty payload, a missing `GUID` section, or an invalid GUID logs `ERROR`
-and sets `Running = false`.
+and sets `Running = false`. When the `GUID` section cannot be located, the error log also
+lists the keys actually received to distinguish a missing section from a compound-key
+format mismatch.
 
 ## Lifecycle
 

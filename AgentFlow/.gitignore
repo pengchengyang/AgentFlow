@@ -472,3 +472,15 @@ $RECYCLE.BIN/
 Plugins/Windows/win-x64/
 Plugins/Windows/Src/win-x64/
 __pycache__/
+
+# QuickBuilder compiler outputs
+QuickBuilder/QuickBuilder/x64/
+
+# QuickBuilder generated SDK package
+artifacts-quick/
+
+# Root-level QuickBuilder executable outputs
+/QuickBuilder.exe
+/QuickBuilder.exe.recipe
+/QuickBuilder.pdb
+/QuickBuilder.ilk
