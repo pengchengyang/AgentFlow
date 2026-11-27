@@ -115,13 +115,11 @@ public sealed class CFGConfimerNode : BaseNode
         if (ReferenceEquals(pin, LocalGuidInputPin))
         {
             HandleLocalGuid(value);
-            return;
         }
 
         if (ReferenceEquals(pin, UserSettingsInputPin))
         {
             HandleUserSettingsInput(value);
-            return;
         }
 
         if (ReferenceEquals(pin, MessagesInputPin))
@@ -164,6 +162,11 @@ public sealed class CFGConfimerNode : BaseNode
             return;
         }
 
+        _logger?.LogInformation(
+            "CFG Confimer received user settings on {Pin}: {Json}",
+            UserSettingsInputPin.Name,
+            text.StringValue);
+
         if (!TryParseObject(text.StringValue, out var settings, out var error))
         {
             RejectSettingsAndStop(
@@ -175,16 +178,18 @@ public sealed class CFGConfimerNode : BaseNode
         if (!TryGetStringValues(settings, SlotKey, out var slotValues, out error))
         {
             RejectSettingsAndStop(
-                "CFG Confimer rejected in_str_user_settings: {Error}.",
-                error);
+                "CFG Confimer rejected in_str_user_settings: {Error}. Received keys: {Keys}.",
+                error,
+                string.Join(", ", settings.Select(pair => pair.Key)));
             return;
         }
 
         if (!TryResolveLocationFromSlots(slotValues, out var location, out error))
         {
             RejectSettingsAndStop(
-                "CFG Confimer rejected in_str_user_settings SLOT values: {Error}.",
-                error);
+                "CFG Confimer rejected in_str_user_settings SLOT values: {Error}. Received SLOT values: {SlotValues}.",
+                error,
+                string.Join(" | ", slotValues));
             return;
         }
 
@@ -233,14 +238,18 @@ public sealed class CFGConfimerNode : BaseNode
         if (string.IsNullOrWhiteSpace(localGuid))
         {
             RejectAndStop(
-                "CFG Confimer rejected message because input_string_local_guid has not received a valid GUID yet.");
+                "CFG Confimer rejected message because input_string_local_guid has not received a valid GUID yet. Cached LocalGuid={LocalGuid}, LocalLocation={LocalLocation}.",
+                localGuid,
+                localLocation);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(localLocation))
         {
             RejectAndStop(
-                "CFG Confimer rejected message because in_str_user_settings has not supplied a valid SLOT-derived location yet.");
+                "CFG Confimer rejected message because in_str_user_settings has not supplied a valid SLOT-derived location yet. Cached LocalGuid={LocalGuid}, LocalLocation={LocalLocation}.",
+                localGuid,
+                localLocation);
             return;
         }
 

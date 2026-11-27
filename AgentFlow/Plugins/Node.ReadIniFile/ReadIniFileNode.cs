@@ -201,6 +201,11 @@ public sealed class ReadIniFileNode : BaseNode
                     fullPath,
                     sent);
 
+                _logger?.LogInformation(
+                    "Read INI File parsed settings from {FilePath}: {Json}",
+                    fullPath,
+                    json);
+
                 return true;
             }
             catch (Exception ex)

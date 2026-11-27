@@ -8,6 +8,9 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgentFlow.Contracts;
+using AgentFlow.Shared.RTS.CFGS.Broadcasts;
+using BroadcastKit;
+using BroadcastKit.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace Node.CFGSHandler;
@@ -29,6 +32,13 @@ public sealed class CFGSHandlerNode : BaseNode
 
     private const int Cfg2ExitVerificationAttempts = 3;
     private const int Cfg2ExitVerificationDelayMilliseconds = 750;
+
+    // Data-plane results are never allowed to stop the workflow: only the RUN_ACK control
+    // path keeps its Fail() behavior (see HandleCfgMessage). Results are forwarded once per
+    // received frame and are not de-duplicated by SEQ: each result is a one-shot event, and a
+    // restarted CFG workflow restarts its SEQ numbering.
+
+    private ITopicBus? _topicBus;
 
     private enum ExitPhase
     {
@@ -146,6 +156,7 @@ public sealed class CFGSHandlerNode : BaseNode
     public override Task Initialize(INodeContext context, CancellationToken ct = default)
     {
         _logger = context.Logger;
+        _topicBus = context.GetService<ITopicBus>() ?? TopicBus.Instance;
         _userSettings = new Dictionary<string, IReadOnlyList<string>>(
             StringComparer.OrdinalIgnoreCase);
         _cfg1StartCommand = null;
@@ -240,6 +251,7 @@ public sealed class CFGSHandlerNode : BaseNode
         _cfg2ExitPid = 0;
         _cfg2ExitOutput = string.Empty;
         _cfg2ExitVerificationAttempt = 0;
+        _topicBus = null;
         CancelCfg2ExitRetry();
         return Task.CompletedTask;
     }
@@ -342,13 +354,17 @@ public sealed class CFGSHandlerNode : BaseNode
             }
 
             EnsureRunSent(Cfg1Location);
+            var sequence = ++_cfg1Sequence;
             var envelope = CreateBusinessEnvelope(
                 _cfg1Guid,
                 Cfg1Location,
-                ++_cfg1Sequence,
+                sequence,
                 timestamp,
                 cfg1Messages);
-            SendEnvelope(envelope, Cfg1Location, BusinessType);
+            if (SendEnvelope(envelope, Cfg1Location, BusinessType))
+            {
+                BroadcastTestLaunches(_cfg1Guid, Cfg1Location, sequence, timestamp, cfg1Messages);
+            }
         }
 
         if (cfg2HasTestData)
@@ -360,13 +376,17 @@ public sealed class CFGSHandlerNode : BaseNode
             }
 
             EnsureRunSent(Cfg2Location);
+            var sequence = ++_cfg2Sequence;
             var envelope = CreateBusinessEnvelope(
                 _cfg2Guid,
                 Cfg2Location,
-                ++_cfg2Sequence,
+                sequence,
                 timestamp,
                 cfg2Messages);
-            SendEnvelope(envelope, Cfg2Location, BusinessType);
+            if (SendEnvelope(envelope, Cfg2Location, BusinessType))
+            {
+                BroadcastTestLaunches(_cfg2Guid, Cfg2Location, sequence, timestamp, cfg2Messages);
+            }
         }
     }
 
@@ -458,9 +478,12 @@ public sealed class CFGSHandlerNode : BaseNode
 
     private void HandleCfgMessage(Sample? value)
     {
+        // Data plane: BUSINESS test results and every malformed envelope are reported or
+        // skipped without stopping the workflow. Only the RUN_ACK control path may stop it.
         if (value is not StringSample text || string.IsNullOrWhiteSpace(text.StringValue))
         {
-            Fail("CFGS Handler rejected CFG message: expected a non-empty STRING payload.");
+            _logger?.LogWarning(
+                "CFGS Handler ignored CFG message: expected a non-empty STRING payload.");
             return;
         }
 
@@ -469,7 +492,7 @@ public sealed class CFGSHandlerNode : BaseNode
         {
             if (JsonNode.Parse(text.StringValue) is not JsonObject parsed)
             {
-                Fail("CFGS Handler rejected CFG message: payload must be a JSON object.");
+                _logger?.LogWarning("CFGS Handler ignored CFG message: payload must be a JSON object.");
                 return;
             }
 
@@ -477,34 +500,42 @@ public sealed class CFGSHandlerNode : BaseNode
         }
         catch (JsonException ex)
         {
-            Fail("CFGS Handler rejected CFG message: invalid JSON: {Message}", ex.Message);
+            _logger?.LogWarning("CFGS Handler ignored CFG message: invalid JSON: {Message}", ex.Message);
             return;
         }
 
         if (!TryGetRequiredString(envelope, "TYPE", out var type))
         {
-            Fail("CFGS Handler rejected CFG message: TYPE is required.");
+            _logger?.LogWarning("CFGS Handler ignored CFG message: TYPE is required.");
+            return;
+        }
+
+        if (string.Equals(type, BusinessType, StringComparison.OrdinalIgnoreCase))
+        {
+            HandleBusinessResult(envelope);
             return;
         }
 
         if (!string.Equals(type, RunAckType, StringComparison.OrdinalIgnoreCase))
         {
             _logger?.LogTrace(
-                "CFGS Handler ignored CFG message TYPE {Type}; only RUN_ACK is consumed.",
-                type);
+                "CFGS Handler ignored CFG message TYPE {Type}; only {RunAck} and {Business} are consumed.",
+                type,
+                RunAckType,
+                BusinessType);
             return;
         }
 
         if (!TryGetRequiredString(envelope, "GUID", out var guidText) ||
             !Guid.TryParse(guidText, out var guid))
         {
-            Fail("CFGS Handler rejected RUN_ACK: GUID is invalid.");
+            _logger?.LogWarning("CFGS Handler ignored RUN_ACK: GUID is invalid.");
             return;
         }
 
         if (!TryGetRequiredString(envelope, "LOCATION", out var location))
         {
-            Fail("CFGS Handler rejected RUN_ACK: LOCATION is required.");
+            _logger?.LogWarning("CFGS Handler ignored RUN_ACK: LOCATION is required.");
             return;
         }
 
@@ -515,8 +546,8 @@ public sealed class CFGSHandlerNode : BaseNode
             (normalizedLocation != Cfg2Location ||
              !string.Equals(normalizedGuid, _cfg2Guid, StringComparison.Ordinal)))
         {
-            Fail(
-                "CFGS Handler rejected RUN_ACK for unexpected GUID/LOCATION: {Guid}/{Location}.",
+            _logger?.LogWarning(
+                "CFGS Handler ignored RUN_ACK for unexpected GUID/LOCATION: {Guid}/{Location}.",
                 normalizedGuid,
                 normalizedLocation);
             return;
@@ -525,7 +556,7 @@ public sealed class CFGSHandlerNode : BaseNode
         if (!TryGetProperty(envelope, "DATA", out var dataNode) || dataNode is not JsonObject data ||
             !TryGetRequiredString(data, "RESULT", out var result))
         {
-            Fail("CFGS Handler rejected RUN_ACK: DATA.RESULT is required.");
+            _logger?.LogWarning("CFGS Handler ignored RUN_ACK: DATA.RESULT is required.");
             return;
         }
 
@@ -558,6 +589,210 @@ public sealed class CFGSHandlerNode : BaseNode
             state,
             _cfg1RunAckReceived,
             _cfg2RunAckReceived);
+    }
+
+    private void HandleBusinessResult(JsonObject envelope)
+    {
+        // A BUSINESS envelope carries the CFG client's test results. GUID, LOCATION, SEQ, and
+        // TIMESTAMP are passed through verbatim (the TCP server already authenticated the
+        // session); SLOT and STATUS are the minimum a GUI needs to update one slot. STATUS is
+        // the decimal RET code: 0 is a pass and any positive value is a failure. Every record
+        // is broadcast; results are one-shot events and are not de-duplicated by SEQ.
+        if (!TryGetOptionalString(envelope, "GUID", out var guid) || string.IsNullOrWhiteSpace(guid))
+        {
+            _logger?.LogWarning("CFGS Handler ignored BUSINESS result: GUID is missing.");
+            return;
+        }
+
+        TryGetOptionalString(envelope, "LOCATION", out var location);
+        TryGetOptionalString(envelope, "TIMESTAMP", out var timestamp);
+
+        if (!TryGetProperty(envelope, "DATA", out var dataNode) ||
+            dataNode is not JsonObject data ||
+            !TryGetProperty(data, "MESSAGES", out var messagesNode) ||
+            messagesNode is not JsonArray messages ||
+            messages.Count == 0)
+        {
+            _logger?.LogWarning(
+                "CFGS Handler ignored BUSINESS result for GUID {Guid}: DATA.MESSAGES must be a non-empty JSON array.",
+                guid);
+            return;
+        }
+
+        long sequence = 0;
+        var hasSequence = false;
+        if (TryGetProperty(envelope, "SEQ", out var seqNode) &&
+            seqNode is JsonValue seqValue &&
+            seqValue.TryGetValue<long>(out var parsedSeq))
+        {
+            sequence = parsedSeq;
+            hasSequence = true;
+        }
+        else if (TryGetOptionalString(envelope, "SEQ", out var seqText) &&
+                 long.TryParse(seqText.Trim(), out var parsedSeqText))
+        {
+            sequence = parsedSeqText;
+            hasSequence = true;
+        }
+
+        var publishedCount = 0;
+        foreach (var message in messages)
+        {
+            if (message is not JsonObject record)
+            {
+                _logger?.LogWarning(
+                    "CFGS Handler skipped a BUSINESS MESSAGES record for GUID {Guid}: the record must be a JSON object.",
+                    guid);
+                continue;
+            }
+
+            if (!TryGetRequiredString(record, "SLOT", out var slot) ||
+                !TryGetRequiredString(record, "STATUS", out var status))
+            {
+                _logger?.LogWarning(
+                    "CFGS Handler skipped a BUSINESS MESSAGES record for GUID {Guid}: SLOT and STATUS are required.",
+                    guid);
+                continue;
+            }
+
+            TryGetOptionalString(record, "FSN", out var fsn);
+            TryGetOptionalString(record, "IMEI", out var imei);
+
+            BroadcastTestResult(
+                guid,
+                location,
+                slot,
+                fsn,
+                imei,
+                status,
+                hasSequence ? sequence.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                timestamp);
+            publishedCount++;
+        }
+
+        _logger?.LogInformation(
+            "CFGS Handler broadcast {Published}/{Total} BUSINESS result record(s) for GUID {Guid}{SequenceSuffix}.",
+            publishedCount,
+            messages.Count,
+            guid,
+            hasSequence ? $" with SEQ {sequence}" : " without SEQ");
+    }
+
+    private void BroadcastTestResult(
+        string guid,
+        string location,
+        string slot,
+        string fsn,
+        string imei,
+        string status,
+        string sequence,
+        string timestamp)
+    {
+        _ = PublishSlotBroadcastAsync(
+            CFGSTcpProtocolBroadcasts.CFGSTestResult,
+            CreateSlotSamples(guid, location, slot, fsn, imei, status, sequence, timestamp),
+            slot,
+            "test result");
+    }
+
+    private void BroadcastTestLaunches(
+        string guid,
+        string location,
+        long sequence,
+        string timestamp,
+        JsonArray messages)
+    {
+        // Tell the GUI which slots this batch starts so their cards enter the testing state.
+        // IDLE records carry no identity and are not announced.
+        foreach (var node in messages)
+        {
+            if (node is not JsonObject record ||
+                !TryGetRequiredString(record, "SLOT", out var slot) ||
+                !TryGetOptionalString(record, "FSN", out var fsn) ||
+                !TryGetOptionalString(record, "IMEI", out var imei) ||
+                !TryGetOptionalString(record, "STATUS", out var status) ||
+                !string.Equals(status, TestStatus, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            _ = PublishSlotBroadcastAsync(
+                CFGSTcpProtocolBroadcasts.CFGSTestLaunch,
+                CreateSlotSamples(
+                    guid,
+                    location,
+                    slot,
+                    fsn,
+                    imei,
+                    status,
+                    sequence.ToString(CultureInfo.InvariantCulture),
+                    timestamp),
+                slot,
+                "test launch");
+        }
+    }
+
+    private static Dictionary<string, Sample> CreateSlotSamples(
+        string guid,
+        string location,
+        string slot,
+        string fsn,
+        string imei,
+        string status,
+        string sequence,
+        string timestamp)
+    {
+        return new Dictionary<string, Sample>(StringComparer.Ordinal)
+        {
+            [CFGSTestResultKeys.GUID] = CreateStringSample(CFGSTestResultKeys.GUID, guid),
+            [CFGSTestResultKeys.LOCATION] = CreateStringSample(CFGSTestResultKeys.LOCATION, location),
+            [CFGSTestResultKeys.SLOT] = CreateStringSample(CFGSTestResultKeys.SLOT, slot),
+            [CFGSTestResultKeys.FSN] = CreateStringSample(CFGSTestResultKeys.FSN, fsn),
+            [CFGSTestResultKeys.IMEI] = CreateStringSample(CFGSTestResultKeys.IMEI, imei),
+            [CFGSTestResultKeys.STATUS] = CreateStringSample(CFGSTestResultKeys.STATUS, status),
+            [CFGSTestResultKeys.SEQ] = CreateStringSample(CFGSTestResultKeys.SEQ, sequence),
+            [CFGSTestResultKeys.TIMESTAMP] = CreateStringSample(CFGSTestResultKeys.TIMESTAMP, timestamp),
+        };
+    }
+
+    private async Task PublishSlotBroadcastAsync(
+        string topic,
+        Dictionary<string, Sample> samples,
+        string slot,
+        string kind)
+    {
+        try
+        {
+            await (_topicBus ?? TopicBus.Instance).PublishAsync(
+                topic,
+                BroadcastTopicMessage.FromSampleDictionary(samples),
+                ct: CancellationToken.None).ConfigureAwait(false);
+
+            _logger?.LogTrace(
+                "CFGS Handler broadcast {Kind} for SLOT {Slot} on {Topic}.",
+                kind,
+                slot,
+                topic);
+        }
+        catch (Exception ex)
+        {
+            // The envelope was already sent, so a failed GUI notification must not stop the
+            // workflow. The host treats error-level logs as a request to stop.
+            _logger?.LogWarning(
+                ex,
+                "CFGS Handler failed to broadcast the {Kind} for SLOT {Slot} on {Topic}: {Message}",
+                kind,
+                slot,
+                topic,
+                ex.Message);
+        }
+    }
+
+    private static StringSample CreateStringSample(string key, string value)
+    {
+        var sample = StringSample.CreateSample();
+        sample.SetValue(string.IsNullOrWhiteSpace(value) ? string.Empty : value, key);
+        return sample;
     }
 
     private static bool TryParseUserSettings(

@@ -34,8 +34,6 @@ internal static class ProtocolConstants
     public const string Cfg2 = "CFG-2";
     public const string Idle = "IDLE";
     public const string Test = "TEST";
-    public const string Ok = "OK";
-    public const string Ng = "NG";
 }
 
 internal static class ProtocolMessage
@@ -359,21 +357,14 @@ internal static class ProtocolMessage
                 return false;
             }
 
-            if (!TryGetString(message, "STATUS", out var statusText))
+            if (!TryGetString(message, "STATUS", out var statusText) ||
+                !(IsLaunchStatus(statusText) || IsResultCode(statusText)))
             {
-                error = $"DATA.MESSAGES[{index}].STATUS must be IDLE, TEST, OK, or NG";
+                error = $"DATA.MESSAGES[{index}].STATUS must be IDLE, TEST, or a non-negative integer";
                 return false;
             }
 
             var status = statusText.Trim().ToUpperInvariant();
-            if (!string.Equals(status, ProtocolConstants.Idle, StringComparison.Ordinal) &&
-                !string.Equals(status, ProtocolConstants.Test, StringComparison.Ordinal) &&
-                !string.Equals(status, ProtocolConstants.Ok, StringComparison.Ordinal) &&
-                !string.Equals(status, ProtocolConstants.Ng, StringComparison.Ordinal))
-            {
-                error = $"DATA.MESSAGES[{index}].STATUS must be IDLE, TEST, OK, or NG";
-                return false;
-            }
 
             if (string.IsNullOrEmpty(fsn) &&
                 !string.Equals(status, ProtocolConstants.Idle, StringComparison.Ordinal))
@@ -421,6 +412,22 @@ internal static class ProtocolMessage
 
         return null;
     }
+
+    // Launch batches (CFGS to CFG) use IDLE/TEST. Result frames (CFG to CFGS) carry the decimal
+    // RET code, where 0 is a pass and any positive value is a failure.
+    private static bool IsLaunchStatus(string status)
+    {
+        var normalized = status.Trim().ToUpperInvariant();
+        return string.Equals(normalized, ProtocolConstants.Idle, StringComparison.Ordinal) ||
+               string.Equals(normalized, ProtocolConstants.Test, StringComparison.Ordinal);
+    }
+
+    private static bool IsResultCode(string status) =>
+        long.TryParse(
+            status.Trim(),
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out _);
 
     public static bool TryGetString(JsonObject obj, string key, out string value)
     {

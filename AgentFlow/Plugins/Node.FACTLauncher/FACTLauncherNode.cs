@@ -234,6 +234,17 @@ public sealed class FACTLauncherNode : BaseNode
             return;
         }
 
+        if (ret < 0)
+        {
+            // STATUS can only carry 0 or a positive failure code, so a negative RET is not a
+            // test result. Report it as an error; the host stops the workflow on error logs.
+            Running = false;
+            _logger?.LogError(
+                "FACTLauncher rejected RET {Ret}: a negative return code is not a valid test result.",
+                ret);
+            return;
+        }
+
         try
         {
             var retOutput = Int64Sample.CreateSample();
@@ -271,7 +282,7 @@ public sealed class FACTLauncherNode : BaseNode
             output.SetValue(json, _outputPin.Name);
             var sent = _outputPin.SendSampleWithDispatchLog(
                 output,
-                $"RET {ret} with STATUS {GetRetStatus(ret)}",
+                $"RET {ret} ({GetRetOutcome(ret)}) as STATUS",
                 LogLevel.Information);
             if (sent)
                 ClearFsnImeiCache();
@@ -327,7 +338,7 @@ public sealed class FACTLauncherNode : BaseNode
                     fsn,
                     FactLogsRootDirectory,
                     ret,
-                    GetRetStatus(ret));
+                    GetRetOutcome(ret));
                 return;
             }
 
@@ -345,7 +356,7 @@ public sealed class FACTLauncherNode : BaseNode
                 "FACTLauncher resolved flat-file log for FSN {Fsn}, RET {Ret} ({Status}): {Path}",
                 fsn,
                 ret,
-                GetRetStatus(ret),
+                GetRetOutcome(ret),
                 match.FullName);
 
             if (_flatFilePathOutputPin.TargetCount == 0)
@@ -417,7 +428,7 @@ public sealed class FACTLauncherNode : BaseNode
                         SLOT = slot,
                         FSN = fsn,
                         IMEI = imei,
-                        STATUS = GetRetStatus(ret),
+                        STATUS = ret.ToString(CultureInfo.InvariantCulture),
                     },
                 },
             },
@@ -425,7 +436,9 @@ public sealed class FACTLauncherNode : BaseNode
         return true;
     }
 
-    private static string GetRetStatus(long ret) => ret == 0 ? "OK" : "NG";
+    // Log wording only. The wire STATUS carries the RET value itself: 0 is a pass and any
+    // positive value is a failure code.
+    private static string GetRetOutcome(long ret) => ret == 0 ? "PASS" : "FAIL";
 
     private void ClearFsnImeiCache()
     {
